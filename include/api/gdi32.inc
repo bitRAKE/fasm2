@@ -248,7 +248,6 @@ import gdi32,\
        InvertRgn,'InvertRgn',\
        LPtoDP,'LPtoDP',\
        LineDDA,'LineDDA',\
-       LineDDW,'LineDDW',\
        LineTo,'LineTo',\
        MaskBlt,'MaskBlt',\
        ModifyWorldTransform,'ModifyWorldTransform',\
@@ -269,7 +268,6 @@ import gdi32,\
        PolyBezier,'PolyBezier',\
        PolyBezierTo,'PolyBezierTo',\
        PolyDraw,'PolyDraw',\
-       PolyPatBlt,'PolyPatBlt',\
        PolyPolygon,'PolyPolygon',\
        PolyPolyline,'PolyPolyline',\
        PolyTextOutA,'PolyTextOutA',\

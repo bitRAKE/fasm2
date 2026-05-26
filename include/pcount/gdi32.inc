@@ -227,7 +227,6 @@ PlgBlt% =  10
 PolyBezier% =  3
 PolyBezierTo% =  3
 PolyDraw% =  4
-PolyPatBlt% =  5
 PolyPolygon% =	4
 PolyPolyline% =  4
 PolyTextOut% =	3
