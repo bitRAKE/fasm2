@@ -1,8 +1,6 @@
 # Modern fasm2 Win64 Example
 
-`examples/modern` is an instructional GUI example modeled on the source
-structure of `C:\Z_gpt\mru_rtfedit`, but trimmed to a study-sized program.
-It builds a Unicode Win64 text editor with UTF-8 file I/O and a persistent
+`examples/modern` is an instructional GUI example trimmed to a study-sized program. It builds a Unicode Win64 text editor with UTF-8 file I/O and a persistent
 recent-file menu backed by the comctl32 MRU ordinals.
 
 ## Build
