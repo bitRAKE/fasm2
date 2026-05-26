@@ -157,15 +157,6 @@ struct UDACCEL
   nInc dd ?
 ends
 
-struct MRUINFOA
-  cbSize	dd ?
-  uMax		dd ?
-  fFlags	dd ?
-  hKey		dd ?
-  lpszSubKey	dd ?
-  lpfnCompare	dd ?
-ends
-
 struct MRUINFOW
   cbSize	dd ?
   uMax		dd ?
@@ -390,7 +381,7 @@ struct INITCOMMONCONTROLSEX
   dwICC  dd ?
 ends
 
-; MRU list flags (MRUINFOA/MRUINFOW.fFlags)
+; MRU list flags (MRUINFOW.fFlags)
 
 MRU_BINARY     = 1h
 MRU_CACHEWRITE = 2h
@@ -1890,3 +1881,138 @@ CDIS_DEFAULT	       = 20h
 CDIS_HOT	       = 40h
 CDIS_MARKED	       = 80h
 CDIS_INDETERMINATE     = 100h
+
+; TaskDialog common button flags
+
+TDCBF_OK_BUTTON     = 0001h
+TDCBF_YES_BUTTON    = 0002h
+TDCBF_NO_BUTTON     = 0004h
+TDCBF_CANCEL_BUTTON = 0008h
+TDCBF_RETRY_BUTTON  = 0010h
+TDCBF_CLOSE_BUTTON  = 0020h
+
+; TaskDialog flags (TASKDIALOGCONFIG.dwFlags)
+
+TDF_ENABLE_HYPERLINKS           = 0001h
+TDF_USE_HICON_MAIN              = 0002h
+TDF_USE_HICON_FOOTER            = 0004h
+TDF_ALLOW_DIALOG_CANCELLATION   = 0008h
+TDF_USE_COMMAND_LINKS           = 0010h
+TDF_USE_COMMAND_LINKS_NO_ICON   = 0020h
+TDF_EXPAND_FOOTER_AREA          = 0040h
+TDF_EXPANDED_BY_DEFAULT         = 0080h
+TDF_VERIFICATION_FLAG_CHECKED   = 0100h
+TDF_SHOW_PROGRESS_BAR           = 0200h
+TDF_SHOW_MARQUEE_PROGRESS_BAR   = 0400h
+TDF_CALLBACK_TIMER              = 0800h
+TDF_POSITION_RELATIVE_TO_WINDOW = 1000h
+TDF_RTL_LAYOUT                  = 2000h
+TDF_NO_DEFAULT_RADIO_BUTTON     = 4000h
+TDF_CAN_BE_MINIMIZED            = 8000h
+TDF_NO_SET_FOREGROUND           = 00010000h
+TDF_SIZE_TO_CONTENT             = 01000000h
+
+; TaskDialog icon identifiers (passed as pszMainIcon / pszFooterIcon)
+
+TD_WARNING_ICON     = -1
+TD_ERROR_ICON       = -2
+TD_INFORMATION_ICON = -3
+TD_SHIELD_ICON      = -4
+
+; TaskDialog notifications (sent to pfCallback)
+
+TDN_CREATED               = 0
+TDN_NAVIGATED             = 1
+TDN_BUTTON_CLICKED        = 2
+TDN_HYPERLINK_CLICKED     = 3
+TDN_TIMER                 = 4
+TDN_DESTROYED             = 5
+TDN_RADIO_BUTTON_CLICKED  = 6
+TDN_DIALOG_CONSTRUCTED    = 7
+TDN_VERIFICATION_CLICKED  = 8
+TDN_HELP                  = 9
+TDN_EXPANDO_BUTTON_CLICKED = 10
+
+; TaskDialog messages (for TaskDialogIndirect navigation)
+
+TDM_NAVIGATE_PAGE                = WM_USER + 101
+TDM_CLICK_BUTTON                 = WM_USER + 102
+TDM_SET_MARQUEE_PROGRESS_BAR     = WM_USER + 103
+TDM_SET_PROGRESS_BAR_STATE       = WM_USER + 104
+TDM_SET_PROGRESS_BAR_RANGE       = WM_USER + 105
+TDM_SET_PROGRESS_BAR_POS         = WM_USER + 106
+TDM_SET_PROGRESS_BAR_MARQUEE     = WM_USER + 107
+TDM_SET_ELEMENT_TEXT             = WM_USER + 108
+TDM_CLICK_RADIO_BUTTON           = WM_USER + 110
+TDM_ENABLE_BUTTON                = WM_USER + 111
+TDM_ENABLE_RADIO_BUTTON          = WM_USER + 112
+TDM_CLICK_VERIFICATION           = WM_USER + 113
+TDM_UPDATE_ELEMENT_TEXT          = WM_USER + 114
+TDM_SET_BUTTON_ELEVATION_REQUIRED_STATE = WM_USER + 115
+TDM_UPDATE_ICON                  = WM_USER + 116
+
+; TaskDialog element IDs (TDM_SET_ELEMENT_TEXT)
+
+TDE_CONTENT              = 0
+TDE_EXPANDED_INFORMATION = 1
+TDE_FOOTER               = 2
+TDE_MAIN_INSTRUCTION     = 3
+
+; TaskDialog icon element IDs (TDM_UPDATE_ICON)
+
+TDIE_ICON_MAIN   = 0
+TDIE_ICON_FOOTER = 1
+
+; TASKDIALOG_BUTTON structure
+
+struct TASKDIALOG_BUTTON
+  nButtonID    dd ?
+  pszButtonText dd ?
+ends
+
+; TASKDIALOGCONFIG structure (32-bit)
+
+struct TASKDIALOGCONFIG
+  cbSize               dd ?
+  hwndParent           dd ?
+  hInstance            dd ?
+  dwFlags              dd ?
+  dwCommonButtons      dd ?
+  pszWindowTitle       dd ?
+  hMainIcon            dd ?  ; union: hMainIcon / pszMainIcon
+  pszMainInstruction   dd ?
+  pszContent           dd ?
+  cButtons             dd ?
+  pButtons             dd ?
+  nDefaultButton       dd ?
+  cRadioButtons        dd ?
+  pRadioButtons        dd ?
+  nDefaultRadioButton  dd ?
+  pszVerificationText  dd ?
+  pszExpandedInformation  dd ?
+  pszExpandedControlText  dd ?
+  pszCollapsedControlText dd ?
+  hFooterIcon          dd ?  ; union: hFooterIcon / pszFooterIcon
+  pszFooter            dd ?
+  pfCallback           dd ?
+  lpCallbackData       dd ?
+  cxWidth              dd ?
+ends
+
+; LoadIconMetric sizes
+
+LIM_SMALL = 0
+LIM_LARGE = 1
+
+; DPA/DSA stream format flags (DPA_LoadStream / DPA_SaveStream)
+
+DPAS_SORTED    = 0001h
+DPAS_INSERTBEFORE = 0002h
+DPAS_INSERTAFTER  = 0004h
+
+; DPA_Merge options (dwFlags parameter)
+
+DPAM_SORTED    = 0001h
+DPAM_NORMAL    = 0004h
+DPAM_UNION     = 0005h
+DPAM_INTERSECT = 0006h

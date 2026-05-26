@@ -2,9 +2,8 @@
 ; COMCTL32 API calls
 
 import comctl32,\
-       AddMRUData,'AddMRUData',\
+       AddMRUStringW,'AddMRUStringW',\
        CreateMappedBitmap,'CreateMappedBitmap',\
-       CreateMRUListA,'CreateMRUListA',\
        CreateMRUListW,'CreateMRUListW',\
        CreatePropertySheetPageA,'CreatePropertySheetPageA',\
        CreatePropertySheetPageW,'CreatePropertySheetPageW',\
@@ -13,14 +12,45 @@ import comctl32,\
        CreateToolbar,'CreateToolbar',\
        CreateToolbarEx,'CreateToolbarEx',\
        CreateUpDownControl,'CreateUpDownControl',\
-       DelMRUString,'DelMRUString',\
+       DefSubclassProc,'DefSubclassProc',\
        DestroyPropertySheetPage,'DestroyPropertySheetPage',\
+       DPA_Clone,'DPA_Clone',\
+       DPA_Create,'DPA_Create',\
+       DPA_CreateEx,'DPA_CreateEx',\
+       DPA_DeleteAllPtrs,'DPA_DeleteAllPtrs',\
+       DPA_DeletePtr,'DPA_DeletePtr',\
+       DPA_Destroy,'DPA_Destroy',\
+       DPA_DestroyCallback,'DPA_DestroyCallback',\
+       DPA_EnumCallback,'DPA_EnumCallback',\
+       DPA_GetPtr,'DPA_GetPtr',\
+       DPA_GetPtrIndex,'DPA_GetPtrIndex',\
+       DPA_GetSize,'DPA_GetSize',\
+       DPA_Grow,'DPA_Grow',\
+       DPA_InsertPtr,'DPA_InsertPtr',\
+       DPA_LoadStream,'DPA_LoadStream',\
+       DPA_Merge,'DPA_Merge',\
+       DPA_SaveStream,'DPA_SaveStream',\
+       DPA_Search,'DPA_Search',\
+       DPA_SetPtr,'DPA_SetPtr',\
+       DPA_Sort,'DPA_Sort',\
        DrawInsert,'DrawInsert',\
+       DrawShadowText,'DrawShadowText',\
        DrawStatusTextA,'DrawStatusTextA',\
        DrawStatusTextW,'DrawStatusTextW',\
-       EnumMRUListA,'EnumMRUListA',\
+       DSA_Clone,'DSA_Clone',\
+       DSA_Create,'DSA_Create',\
+       DSA_DeleteAllItems,'DSA_DeleteAllItems',\
+       DSA_DeleteItem,'DSA_DeleteItem',\
+       DSA_Destroy,'DSA_Destroy',\
+       DSA_DestroyCallback,'DSA_DestroyCallback',\
+       DSA_EnumCallback,'DSA_EnumCallback',\
+       DSA_GetItem,'DSA_GetItem',\
+       DSA_GetItemPtr,'DSA_GetItemPtr',\
+       DSA_GetSize,'DSA_GetSize',\
+       DSA_InsertItem,'DSA_InsertItem',\
+       DSA_SetItem,'DSA_SetItem',\
+       DSA_Sort,'DSA_Sort',\
        EnumMRUListW,'EnumMRUListW',\
-       FindMRUData,'FindMRUData',\
        FlatSB_EnableScrollBar,'FlatSB_EnableScrollBar',\
        FlatSB_GetScrollInfo,'FlatSB_GetScrollInfo',\
        FlatSB_GetScrollPos,'FlatSB_GetScrollPos',\
@@ -33,10 +63,14 @@ import comctl32,\
        FlatSB_ShowScrollBar,'FlatSB_ShowScrollBar',\
        FreeMRUList,'FreeMRUList',\
        GetEffectiveClientRect,'GetEffectiveClientRect',\
+       GetMUILanguage,'GetMUILanguage',\
+       GetWindowSubclass,'GetWindowSubclass',\
+       HIMAGELIST_QueryInterface,'HIMAGELIST_QueryInterface',\
        ImageList_Add,'ImageList_Add',\
        ImageList_AddIcon,'ImageList_AddIcon',\
        ImageList_AddMasked,'ImageList_AddMasked',\
        ImageList_BeginDrag,'ImageList_BeginDrag',\
+       ImageList_CoCreateInstance,'ImageList_CoCreateInstance',\
        ImageList_Copy,'ImageList_Copy',\
        ImageList_Create,'ImageList_Create',\
        ImageList_Destroy,'ImageList_Destroy',\
@@ -60,6 +94,7 @@ import comctl32,\
        ImageList_LoadImageW,'ImageList_LoadImageW',\
        ImageList_Merge,'ImageList_Merge',\
        ImageList_Read,'ImageList_Read',\
+       ImageList_ReadEx,'ImageList_ReadEx',\
        ImageList_Remove,'ImageList_Remove',\
        ImageList_Replace,'ImageList_Replace',\
        ImageList_ReplaceIcon,'ImageList_ReplaceIcon',\
@@ -70,22 +105,29 @@ import comctl32,\
        ImageList_SetImageCount,'ImageList_SetImageCount',\
        ImageList_SetOverlayImage,'ImageList_SetOverlayImage',\
        ImageList_Write,'ImageList_Write',\
+       ImageList_WriteEx,'ImageList_WriteEx',\
        InitCommonControls,'InitCommonControls',\
        InitCommonControlsEx,'InitCommonControlsEx',\
        InitializeFlatSB,'InitializeFlatSB',\
+       InitMUILanguage,'InitMUILanguage',\
        LBItemFromPt,'LBItemFromPt',\
+       LoadIconMetric,'LoadIconMetric',\
+       LoadIconWithScaleDown,'LoadIconWithScaleDown',\
        MakeDragList,'MakeDragList',\
        MenuHelp,'MenuHelp',\
        PropertySheetA,'PropertySheetA',\
        PropertySheetW,'PropertySheetW',\
+       RemoveWindowSubclass,'RemoveWindowSubclass',\
+       SetWindowSubclass,'SetWindowSubclass',\
        ShowHideMenuCtl,'ShowHideMenuCtl',\
+       Str_SetPtrW,'Str_SetPtrW',\
+       TaskDialog,'TaskDialog',\
+       TaskDialogIndirect,'TaskDialogIndirect',\
        UninitializeFlatSB,'UninitializeFlatSB',\
        _TrackMouseEvent,'_TrackMouseEvent'
 
-api CreateMRUList,\
-    CreatePropertySheetPage,\
+api CreatePropertySheetPage,\
     CreateStatusWindow,\
     DrawStatusText,\
-    EnumMRUList,\
     ImageList_LoadImage,\
     PropertySheet
