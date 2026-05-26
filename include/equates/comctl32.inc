@@ -157,6 +157,24 @@ struct UDACCEL
   nInc dd ?
 ends
 
+struct MRUINFOA
+  cbSize	dd ?
+  uMax		dd ?
+  fFlags	dd ?
+  hKey		dd ?
+  lpszSubKey	dd ?
+  lpfnCompare	dd ?
+ends
+
+struct MRUINFOW
+  cbSize	dd ?
+  uMax		dd ?
+  fFlags	dd ?
+  hKey		dd ?
+  lpszSubKey	dd ?
+  lpfnCompare	dd ?
+ends
+
 struct NM_UPDOWN
   hdr	 NMHDR
   iPos	 dd ?
@@ -371,6 +389,11 @@ struct INITCOMMONCONTROLSEX
   dwSize dd ?
   dwICC  dd ?
 ends
+
+; MRU list flags (MRUINFOA/MRUINFOW.fFlags)
+
+MRU_BINARY     = 1h
+MRU_CACHEWRITE = 2h
 
 ; Common control window classes
 

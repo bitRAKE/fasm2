@@ -114,6 +114,37 @@ struct WINDOWPLACEMENT
   rcNormalPosition RECT
 ends
 
+struct MONITORINFO
+  cbSize    dd ?
+  rcMonitor RECT
+  rcWork    RECT
+  dwFlags   dd ?
+ends
+
+struct MONITORINFOEXA
+  cbSize    dd ?
+  rcMonitor RECT
+  rcWork    RECT
+  dwFlags   dd ?
+  szDevice  db 32 dup (?)
+ends
+
+struct MONITORINFOEXW
+  cbSize    dd ?
+  rcMonitor RECT
+  rcWork    RECT
+  dwFlags   dd ?
+  szDevice  du 32 dup (?)
+ends
+
+struct MONITORINFOEX
+  cbSize    dd ?
+  rcMonitor RECT
+  rcWork    RECT
+  dwFlags   dd ?
+  szDevice  TCHAR 32 dup (?)
+ends
+
 struct WINDOWPOS
   hwnd		  dd ?
   hwndInsertAfter dd ?
@@ -1932,3 +1963,13 @@ GC_TWOFINGERTAP = 0x00000001
 
 GC_PRESSANDTAP = 0x00000001
 GC_ROLLOVER    = GC_PRESSANDTAP
+
+; Multi-monitor constants
+
+CCHDEVICENAME = 32
+
+MONITOR_DEFAULTTONULL    = 0
+MONITOR_DEFAULTTOPRIMARY = 1
+MONITOR_DEFAULTTONEAREST = 2
+
+MONITORINFOF_PRIMARY = 1

@@ -2,7 +2,10 @@
 ; COMCTL32 API calls
 
 import comctl32,\
+       AddMRUData,'AddMRUData',\
        CreateMappedBitmap,'CreateMappedBitmap',\
+       CreateMRUListA,'CreateMRUListA',\
+       CreateMRUListW,'CreateMRUListW',\
        CreatePropertySheetPageA,'CreatePropertySheetPageA',\
        CreatePropertySheetPageW,'CreatePropertySheetPageW',\
        CreateStatusWindowA,'CreateStatusWindowA',\
@@ -10,10 +13,14 @@ import comctl32,\
        CreateToolbar,'CreateToolbar',\
        CreateToolbarEx,'CreateToolbarEx',\
        CreateUpDownControl,'CreateUpDownControl',\
+       DelMRUString,'DelMRUString',\
        DestroyPropertySheetPage,'DestroyPropertySheetPage',\
        DrawInsert,'DrawInsert',\
        DrawStatusTextA,'DrawStatusTextA',\
        DrawStatusTextW,'DrawStatusTextW',\
+       EnumMRUListA,'EnumMRUListA',\
+       EnumMRUListW,'EnumMRUListW',\
+       FindMRUData,'FindMRUData',\
        FlatSB_EnableScrollBar,'FlatSB_EnableScrollBar',\
        FlatSB_GetScrollInfo,'FlatSB_GetScrollInfo',\
        FlatSB_GetScrollPos,'FlatSB_GetScrollPos',\
@@ -24,6 +31,7 @@ import comctl32,\
        FlatSB_SetScrollProp,'FlatSB_SetScrollProp',\
        FlatSB_SetScrollRange,'FlatSB_SetScrollRange',\
        FlatSB_ShowScrollBar,'FlatSB_ShowScrollBar',\
+       FreeMRUList,'FreeMRUList',\
        GetEffectiveClientRect,'GetEffectiveClientRect',\
        ImageList_Add,'ImageList_Add',\
        ImageList_AddIcon,'ImageList_AddIcon',\
@@ -74,8 +82,10 @@ import comctl32,\
        UninitializeFlatSB,'UninitializeFlatSB',\
        _TrackMouseEvent,'_TrackMouseEvent'
 
-api CreatePropertySheetPage,\
+api CreateMRUList,\
+    CreatePropertySheetPage,\
     CreateStatusWindow,\
     DrawStatusText,\
+    EnumMRUList,\
     ImageList_LoadImage,\
     PropertySheet

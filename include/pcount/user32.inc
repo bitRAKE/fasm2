@@ -474,4 +474,6 @@ WindowFromDC% =  1
 WindowFromPoint% =  2
 keybd_event% =	4
 mouse_event% =	5
+wsprintfA% =  2
+wsprintfW% =  2
 wvsprintf% =  3

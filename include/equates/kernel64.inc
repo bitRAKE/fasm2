@@ -76,6 +76,19 @@ struct STARTUPINFO
   hStdError	  dq ?
 ends
 
+struct SECURITY_ATTRIBUTES
+  nLength		 dd ?
+			 dd ?	; align lpSecurityDescriptor to 8 bytes
+  lpSecurityDescriptor	 dq ?
+  bInheritHandle	 dd ?
+			 dd ?	; tail padding
+ends
+
+struct LARGE_INTEGER
+  LowPart  dd ?
+  HighPart dd ?
+ends
+
 struct PROCESS_INFORMATION
   hProcess    dq ?
   hThread     dq ?
@@ -297,6 +310,11 @@ STD_ERROR_HANDLE     = -12
 DUPLICATE_CLOSE_SOURCE = 1
 DUPLICATE_SAME_ACCESS  = 2
 
+; Handle flags (SetHandleInformation)
+
+HANDLE_FLAG_INHERIT            = 01h
+HANDLE_FLAG_PROTECT_FROM_CLOSE = 02h
+
 ; File mapping acccess rights
 
 SECTION_QUERY	    = 01h
@@ -444,6 +462,7 @@ HIGH_PRIORITY_CLASS	 = 080h
 REALTIME_PRIORITY_CLASS  = 100h
 CREATE_NEW_PROCESS_GROUP = 200h
 CREATE_SEPARATE_WOW_VDM  = 800h
+CREATE_NO_WINDOW	 = 08000000h
 
 ; Thread priority values
 

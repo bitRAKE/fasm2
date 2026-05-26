@@ -1,15 +1,22 @@
 
 ; COMCTL32 API calls parameters' count
 
+AddMRUData% =  3
 CreateMappedBitmap% =  5
+CreateMRUListA% =  1
+CreateMRUListW% =  1
 CreatePropertySheetPage% =  1
 CreateStatusWindow% =  4
 CreateToolbar% =  8
 CreateToolbarEx% =  13
 CreateUpDownControl% =	12
+DelMRUString% =  2
 DestroyPropertySheetPage% =  1
 DrawInsert% =  3
 DrawStatusText% =  4
+EnumMRUListA% =  4
+EnumMRUListW% =  4
+FindMRUData% =  4
 FlatSB_EnableScrollBar% =  3
 FlatSB_GetScrollInfo% =  3
 FlatSB_GetScrollPos% =	2
@@ -20,6 +27,7 @@ FlatSB_SetScrollPos% =	4
 FlatSB_SetScrollProp% =  4
 FlatSB_SetScrollRange% =  5
 FlatSB_ShowScrollBar% =  3
+FreeMRUList% =  1
 GetEffectiveClientRect% =  3
 ImageList_Add% =  3
 ImageList_AddIcon% =  2
