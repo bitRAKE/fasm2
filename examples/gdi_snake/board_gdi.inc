@@ -1,22 +1,48 @@
 ; board_gdi.inc - off-screen board rendering and WM_ERASEBKGND blitting.
 
 proc CreateGameBrushes
-	invoke	CreateSolidBrush,COLORREF_BOARD
-	mov	[brush_board],rax
-	invoke	CreateSolidBrush,COLORREF_SNAKE
-	mov	[brush_snake],rax
-	invoke	CreateSolidBrush,COLORREF_APPLE_RED
-	mov	[brush_red],rax
-	invoke	CreateSolidBrush,COLORREF_APPLE_GOLD
-	mov	[brush_gold],rax
-	invoke	CreateSolidBrush,COLORREF_APPLE_BLUE
-	mov	[brush_blue],rax
-	invoke	CreateSolidBrush,COLORREF_APPLE_PURPLE
-	mov	[brush_purple],rax
-	invoke	CreateSolidBrush,COLORREF_APPLE_CYAN
-	mov	[brush_cyan],rax
+	iterate <name,	colorref>,\
+		board,	COLORREF_BOARD,\
+		snake,	COLORREF_SNAKE,\
+		red,	COLORREF_APPLE_RED,\
+		gold,	COLORREF_APPLE_GOLD,\
+		blue,	COLORREF_APPLE_BLUE,\
+		purple,	COLORREF_APPLE_PURPLE,\
+		cyan,	COLORREF_APPLE_CYAN
+
+		invoke CreateSolidBrush, colorref
+		mov [brush_#name], rax
+	end iterate
 	xor	eax,eax
 	ret
+endp
+
+proc DestroyGameBrushes
+	iterate name, board,snake,red,gold,blue,purple,cyan
+		mov rcx, [brush_#name]
+		jrcxz .%
+		invoke DeleteObject, rcx
+		and [brush_#name], 0
+	.%:
+	end iterate
+	ret
+endp
+
+proc BrushForCell cell_value
+	iterate <brush,	cell>,\
+		snake,	SNAKE,\
+		red,	APPLE_NORMAL,\
+		gold,	APPLE_GROW,\
+		purple,	APPLE_INVINCIBLE,\
+		blue,	APPLE_TELEPORT,\
+		cyan,	APPLE_SPLIT
+
+		mov rax, [brush_#brush]
+		cmp ecx, CELL_#cell
+		jz @F
+	end iterate
+	xor eax, eax
+@@:	retn
 endp
 
 proc DestroyBoardSurface
@@ -35,45 +61,6 @@ proc DestroyBoardSurface
 	mov	qword [board_dc],0
 	mov	qword [board_bitmap],0
 	mov	qword [board_old_bitmap],0
-	ret
-endp
-
-proc DestroyGameBrushes
-	cmp	qword [brush_board],0
-	je	.no_board
-	invoke	DeleteObject,[brush_board]
-  .no_board:
-	cmp	qword [brush_snake],0
-	je	.no_snake
-	invoke	DeleteObject,[brush_snake]
-  .no_snake:
-	cmp	qword [brush_red],0
-	je	.no_red
-	invoke	DeleteObject,[brush_red]
-  .no_red:
-	cmp	qword [brush_gold],0
-	je	.no_gold
-	invoke	DeleteObject,[brush_gold]
-  .no_gold:
-	cmp	qword [brush_blue],0
-	je	.no_blue
-	invoke	DeleteObject,[brush_blue]
-  .no_blue:
-	cmp	qword [brush_purple],0
-	je	.no_purple
-	invoke	DeleteObject,[brush_purple]
-  .no_purple:
-	cmp	qword [brush_cyan],0
-	je	.done
-	invoke	DeleteObject,[brush_cyan]
-  .done:
-	mov	qword [brush_board],0
-	mov	qword [brush_snake],0
-	mov	qword [brush_red],0
-	mov	qword [brush_gold],0
-	mov	qword [brush_blue],0
-	mov	qword [brush_purple],0
-	mov	qword [brush_cyan],0
 	ret
 endp
 
@@ -113,42 +100,6 @@ proc CreateBoardSurface
 	fastcall DestroyBoardSurface
   .fail:
 	xor	eax,eax
-	ret
-endp
-
-proc BrushForCell cell_value
-	mov	eax,ecx
-	cmp	eax,CELL_SNAKE
-	je	.snake
-	cmp	eax,CELL_APPLE_NORMAL
-	je	.red
-	cmp	eax,CELL_APPLE_GROW
-	je	.gold
-	cmp	eax,CELL_APPLE_INVINCIBLE
-	je	.purple
-	cmp	eax,CELL_APPLE_TELEPORT
-	je	.blue
-	cmp	eax,CELL_APPLE_SPLIT
-	je	.cyan
-	xor	eax,eax
-	ret
-  .snake:
-	mov	rax,[brush_snake]
-	ret
-  .red:
-	mov	rax,[brush_red]
-	ret
-  .gold:
-	mov	rax,[brush_gold]
-	ret
-  .purple:
-	mov	rax,[brush_purple]
-	ret
-  .blue:
-	mov	rax,[brush_blue]
-	ret
-  .cyan:
-	mov	rax,[brush_cyan]
 	ret
 endp
 
