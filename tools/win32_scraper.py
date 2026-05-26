@@ -593,6 +593,302 @@ def _fasm2_struct_64(info: dict, known_types: dict[str, str]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Struct layout verification
+# ---------------------------------------------------------------------------
+
+#: Byte size of each fasm2 data directive
+_DIRECTIVE_SIZE: dict[str, int] = {
+    "db": 1, "dw": 2, "dd": 4, "dq": 8, "dt": 10,
+    "TCHAR": 2,  # assume Unicode build
+}
+
+
+def get_sdk_struct_layout(
+    struct_name: str,
+    headers: list[str],
+    llvm_bin: Path,
+    sdk_root: Path,
+    sdk_ver: str,
+    arch: int = 64,
+) -> dict | None:
+    """
+    Return the SDK's authoritative packed layout for *struct_name* using
+    clang -Xclang -fdump-record-layouts-complete.
+
+    Returns a dict:
+        {
+            "size":   total size in bytes,
+            "align":  alignment in bytes (1 = packed),
+            "fields": [(field_name, byte_offset, size_bytes), ...],
+        }
+    or None if the struct is not found.
+    """
+    import tempfile
+
+    inc_dir = sdk_root / "Include" / sdk_ver
+    um     = inc_dir / "um"
+    shared = inc_dir / "shared"
+    ucrt   = inc_dir / "ucrt"
+
+    target = "x86_64-pc-windows-msvc" if arch == 64 else "i686-pc-windows-msvc"
+
+    # Build a small C file that forces the struct to be instantiated
+    include_block = "\n".join(f"#include <{h}>" for h in headers)
+    c_src = (
+        "#define NTDDI_VERSION 0x06000000\n"
+        "#define _WIN32_WINNT 0x0600\n"
+        "#include <windows.h>\n"
+        f"{include_block}\n"
+        f"// Force layout emission:\n"
+        f"{struct_name} __verify_struct_instance;\n"
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".c", delete=False, mode="w",
+                                     encoding="utf-8") as f:
+        f.write(c_src)
+        tmp_path = f.name
+
+    try:
+        clang = str(llvm_bin / "clang.exe")
+        cmd = [
+            clang, "-target", target, "-fsyntax-only",
+            "-Xclang", "-fdump-record-layouts-complete",
+            f"-I{um}", f"-I{shared}", f"-I{ucrt}",
+            "-D_WIN32", "-DWIN32", "-DUNICODE", "-D_UNICODE",
+        ] + (["-D_WIN64"] if arch == 64 else []) + [
+            "-w",  # suppress warnings
+            tmp_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        out = result.stdout
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    # Find the block for this struct.  Clang uses the tag-decl name like
+    # "struct _TASKDIALOGCONFIG" for typedef'd structs.
+    candidates = [
+        f"struct {struct_name}\n",
+        f"struct _{struct_name}\n",
+        f"struct tag{struct_name}\n",
+    ]
+    block_text = None
+    for cand in candidates:
+        idx = out.find(cand)
+        if idx >= 0:
+            block_start = out.rfind("*** Dumping", 0, idx)
+            sizeof_idx  = out.find("sizeof=", idx)
+            if sizeof_idx < 0:
+                continue
+            block_end   = out.find("\n", sizeof_idx) + 1
+            block_text  = out[block_start:block_end]
+            break
+
+    if block_text is None:
+        return None
+
+    # Parse fields: lines like "        36 |   PCWSTR pszWindowTitle"
+    # Skip anonymous union/struct wrapper lines (they contain "(anonymous")
+    fields: list[tuple[str, int, int]] = []
+    prev_offset = -1
+    prev_size   = 0
+
+    field_re  = re.compile(r"^\s*(\d+)\s+\|\s+\S.*\s(\w+)$")
+    sizeof_re = re.compile(r"\[sizeof=(\d+),\s*align=(\d+)\]")
+
+    total_size = 0
+    align_val  = 1
+
+    for line in block_text.splitlines():
+        sm = sizeof_re.search(line)
+        if sm:
+            total_size = int(sm.group(1))
+            align_val  = int(sm.group(2))
+            continue
+        if "anonymous" in line or "unnamed" in line:
+            continue   # skip union/struct container lines
+        fm = field_re.match(line)
+        if not fm:
+            continue
+        offset    = int(fm.group(1))
+        field_name = fm.group(2)
+        # Compute size of previous field = current_offset - prev_offset
+        if prev_offset >= 0 and prev_offset != offset:
+            # Update last field's size
+            if fields and fields[-1][2] == 0:
+                fields[-1] = (fields[-1][0], fields[-1][1], offset - prev_offset)
+        fields.append((field_name, offset, 0))
+        prev_offset = offset
+
+    # Size of last field = total_size - last_offset
+    if fields:
+        last = fields[-1]
+        fields[-1] = (last[0], last[1], total_size - last[1])
+
+    return {"size": total_size, "align": align_val, "fields": fields}
+
+
+def parse_fasm2_struct(
+    struct_name: str,
+    fasm2_root: Path,
+    arch: int = 64,
+) -> dict | None:
+    """
+    Scan equates/{name}32.inc and equates/{name}64.inc for *struct_name* and
+    return its field layout as computed by walking the fasm2 data directives.
+
+    Returns:
+        {
+            "packed": bool,
+            "fields": [(field_name, byte_offset, size_bytes), ...],
+            "size":   total size in bytes,
+        }
+    or None if not found.
+    """
+    suffix = "64" if arch == 64 else "32"
+    # Search all equates files (some structs are in un-suffixed files)
+    candidates = list((fasm2_root / "include" / "equates").glob("*.inc"))
+
+    struct_re = re.compile(
+        r"^struct\s+" + re.escape(struct_name) + r"(\s*,\s*packed)?\s*$",
+        re.IGNORECASE,
+    )
+    field_re = re.compile(
+        r"^\s+(?:(\w+)\s+)?"               # optional field name
+        r"(db|dw|dd|dq|dt|TCHAR|du)\s+"    # directive
+        r"(?:(\d+)\s+dup\s*\(\s*\?\s*\))?" # optional count  dup (?)
+        r"\s*\??",                          # or bare ?
+        re.IGNORECASE,
+    )
+
+    for inc_path in candidates:
+        # Prefer arch-appropriate file
+        if arch == 64 and "32.inc" in inc_path.name:
+            continue
+        if arch == 32 and "64.inc" in inc_path.name:
+            continue
+
+        text = inc_path.read_text(encoding="utf-8", errors="ignore")
+        lines = text.splitlines()
+
+        for i, line in enumerate(lines):
+            if struct_re.match(line.strip()):
+                packed = "packed" in line.lower()
+                fields: list[tuple[str, int, int]] = []
+                offset = 0
+
+                for fline in lines[i + 1:]:
+                    stripped = fline.strip()
+                    if stripped.lower() == "ends":
+                        break
+                    fm = field_re.match(fline)
+                    if not fm:
+                        continue
+                    fname    = fm.group(1) or ""
+                    dir_     = fm.group(2).lower()
+                    count    = int(fm.group(3)) if fm.group(3) else 1
+                    elem_sz  = _DIRECTIVE_SIZE.get(dir_, 0)
+                    fsize    = elem_sz * count
+
+                    if not packed:
+                        # Apply natural alignment (max 8 on x64, 4 on x86)
+                        max_align = 8 if arch == 64 else 4
+                        align = min(elem_sz, max_align)
+                        if align > 1:
+                            offset = ((offset + align - 1) // align) * align
+
+                    fields.append((fname, offset, fsize))
+                    offset += fsize
+
+                return {"packed": packed, "fields": fields, "size": offset,
+                        "file": str(inc_path)}
+
+    return None
+
+
+def verify_struct(
+    struct_name: str,
+    dll_name: str,
+    fasm2_root: Path,
+    llvm_bin: Path,
+    sdk_root: Path,
+    sdk_ver: str,
+    arch: int = 64,
+) -> str:
+    """
+    Cross-check the fasm2 struct definition against the SDK's actual layout.
+    Returns a human-readable report string.
+    """
+    headers = DLL_HEADERS.get(dll_name, ["windows.h"])
+
+    sdk = get_sdk_struct_layout(struct_name, headers, llvm_bin, sdk_root, sdk_ver, arch)
+    fasm = parse_fasm2_struct(struct_name, fasm2_root, arch)
+
+    lines = [
+        f"Struct layout verification: {struct_name}  (arch={arch})",
+        "=" * 60,
+    ]
+
+    if sdk is None:
+        lines.append(f"  SDK: struct not found in {dll_name} headers")
+    else:
+        lines.append(f"  SDK: sizeof={sdk['size']}, align={sdk['align']}"
+                     f"  ({'packed' if sdk['align'] == 1 else 'default-aligned'})")
+
+    if fasm is None:
+        lines.append(f"  fasm2: struct not found in equates files (arch={arch})")
+    else:
+        packed_str = "packed" if fasm["packed"] else "non-packed"
+        lines.append(f"  fasm2: sizeof={fasm['size']}, {packed_str}"
+                     f"  ({fasm['file'].split(chr(92))[-1]})")
+
+    if sdk is None or fasm is None:
+        return "\n".join(lines)
+
+    # Size check
+    if sdk["size"] != fasm["size"]:
+        lines.append(f"\n  *** SIZE MISMATCH: SDK={sdk['size']} fasm2={fasm['size']} ***")
+    else:
+        lines.append(f"\n  Size match: {sdk['size']} bytes ✓")
+
+    # Field-by-field comparison
+    # Build offset→field maps
+    sdk_by_offset  = {f[1]: f for f in sdk["fields"]}
+    fasm_by_offset = {f[1]: f for f in fasm["fields"] if f[0]}  # skip unnamed padding
+
+    all_offsets = sorted(set(sdk_by_offset) | set(fasm_by_offset))
+    mismatches = []
+    for off in all_offsets:
+        s = sdk_by_offset.get(off)
+        f_ = fasm_by_offset.get(off)
+        if s and f_:
+            sdk_end  = s[1] + s[2]
+            fasm_end = f_[1] + f_[2]
+            if sdk_end != fasm_end:
+                mismatches.append(
+                    f"  offset {off:4d}: SDK  {s[0]}  [{s[1]}..{sdk_end})\n"
+                    f"               fasm2 {f_[0]} [{f_[1]}..{fasm_end})"
+                )
+        elif s and not f_:
+            # Might be covered by a dup field
+            covered = any(
+                f[1] <= off < f[1] + f[2]
+                for f in fasm["fields"]
+            )
+            if not covered:
+                mismatches.append(f"  offset {off:4d}: SDK  {s[0]}  — no fasm2 field")
+        elif f_ and not s:
+            mismatches.append(f"  offset {off:4d}: fasm2 {f_[0]}  — no SDK field")
+
+    if mismatches:
+        lines.append("\n  Field mismatches:")
+        lines.extend(mismatches)
+    else:
+        lines.append("  Fields match ✓")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Existing fasm2 include gap analysis
 # ---------------------------------------------------------------------------
 
@@ -990,6 +1286,11 @@ def main():
                     help="Print all exported symbol names and exit")
     ap.add_argument("--gap-only", action="store_true",
                     help="Only report gaps vs existing fasm2 includes")
+    ap.add_argument("--verify-struct", metavar="STRUCTNAME", default=None,
+                    help="Cross-check a struct definition against SDK layout"
+                         " (use with --dll to pick headers; use --arch 32|64)")
+    ap.add_argument("--arch", type=int, choices=[32, 64], default=64,
+                    help="Target architecture for --verify-struct (default: 64)")
     ap.add_argument("--write", action="store_true",
                     help="Write generated files to --out-dir")
     ap.add_argument("--out-dir", default=None,
@@ -1016,6 +1317,15 @@ def main():
     print(f"[*] SDK:     {sdk_root / 'Include' / sdk_ver}")
     print(f"[*] fasm2:   {fasm2_root}")
     print()
+
+    # -- Struct verification shortcut -----------------------------------------
+    if args.verify_struct:
+        report = verify_struct(
+            args.verify_struct, args.dll, fasm2_root,
+            llvm_bin, sdk_root, sdk_ver, arch=args.arch,
+        )
+        print(report)
+        return
 
     # -- Run scraper ----------------------------------------------------------
     scraper = Scraper(args.dll, llvm_bin, sdk_root, sdk_ver, fasm2_root)

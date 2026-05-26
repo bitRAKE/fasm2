@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coding Policy</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --text: #18202a;
+  --muted: #617083;
+  --border: #d7dee8;
+  --accent: #1769aa;
+  --accent-2: #0f766e;
+  --code-bg: #f1f5f9;
+  --shadow: 0 18px 45px rgba(15, 23, 42, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --panel: #1b2027;
+    --text: #e7edf5;
+    --muted: #a6b2c1;
+    --border: #323b47;
+    --accent: #7cc4ff;
+    --accent-2: #5eead4;
+    --code-bg: #141920;
+    --shadow: 0 18px 45px rgba(0, 0, 0, .28);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.58 "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+a { color: var(--accent); text-decoration-thickness: .08em; text-underline-offset: .18em; }
+a:hover { color: var(--accent-2); }
+.doc-shell { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 1180px; margin: 0 auto; padding: 32px 18px 56px; gap: 18px; }
+.doc-header, .doc-body { background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.doc-header { border-radius: 10px; padding: 28px 32px; }
+.doc-header h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 2.5vw, 3rem); line-height: 1.12; letter-spacing: 0; }
+.doc-meta { color: var(--muted); font-size: .94rem; }
+.doc-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; align-items: start; }
+.toc { position: sticky; top: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+.toc h2 { margin: 0 0 10px; font-size: .82rem; text-transform: uppercase; color: var(--muted); letter-spacing: .08em; }
+.toc a { display: block; padding: 4px 0; color: var(--muted); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.toc .toc-level-1 { font-weight: 700; color: var(--text); }
+.toc .toc-level-3 { padding-left: 14px; font-size: .94rem; }
+.toc .toc-level-4, .toc .toc-level-5, .toc .toc-level-6 { padding-left: 26px; font-size: .9rem; }
+.doc-body { border-radius: 10px; padding: 34px 40px; min-width: 0; }
+.doc-body h1, .doc-body h2, .doc-body h3, .doc-body h4 { line-height: 1.2; letter-spacing: 0; margin: 1.55em 0 .55em; }
+.doc-body h1:first-child, .doc-body h2:first-child { margin-top: 0; }
+.doc-body h1 { font-size: 2.1rem; border-bottom: 1px solid var(--border); padding-bottom: .35em; }
+.doc-body h2 { font-size: 1.55rem; }
+.doc-body h3 { font-size: 1.2rem; }
+.doc-body p { margin: .75em 0; }
+.anchor { opacity: 0; margin-left: -1.1em; padding-right: .35em; text-decoration: none; }
+h1:hover .anchor, h2:hover .anchor, h3:hover .anchor, h4:hover .anchor, h5:hover .anchor, h6:hover .anchor { opacity: .55; }
+code { font-family: Consolas, "Cascadia Mono", "Courier New", monospace; background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: .08em .28em; font-size: .92em; }
+pre { overflow: auto; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 15px 16px; line-height: 1.45; }
+pre code { background: transparent; border: 0; padding: 0; font-size: .9rem; }
+ul, ol { padding-left: 1.35rem; }
+li { margin: .25em 0; }
+blockquote { margin: 1em 0; padding: .65em 1em; border-left: 4px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.table-wrap { overflow-x: auto; margin: 1.1em 0; }
+table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+th, td { border: 1px solid var(--border); padding: 8px 10px; vertical-align: top; }
+th { background: color-mix(in srgb, var(--accent) 12%, transparent); text-align: left; }
+.align-right { text-align: right; } .align-center { text-align: center; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
+.doc-footer { color: var(--muted); font-size: .9rem; text-align: center; padding-top: 12px; }
+@media (max-width: 900px) {
+  .doc-layout { grid-template-columns: 1fr; }
+  .toc { position: static; max-height: none; }
+  .doc-body { padding: 24px 20px; }
+}
+</style>
+</head>
+<body>
+  <main class="doc-shell">
+    <header class="doc-header">
+      <h1>Coding Policy</h1>
+      <div class="doc-meta">Project documentation</div>
+    </header>
+    <div class="doc-layout">
+      <nav class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <a class="toc-level-1" href="#coding-policy">Coding Policy</a>
+<a class="toc-level-2" href="#build-validation">Build Validation</a>
+<a class="toc-level-2" href="#calling-convention">Calling Convention</a>
+<a class="toc-level-2" href="#abstraction-boundaries">Abstraction Boundaries</a>
+<a class="toc-level-2" href="#string-handling">String Handling</a>
+<a class="toc-level-2" href="#data-ownership">Data Ownership</a>
+<a class="toc-level-2" href="#resource-ids">Resource IDs</a>
+<a class="toc-level-2" href="#documentation">Documentation</a>
+      </nav>
+      <article class="doc-body">
+<h1 id="coding-policy"><a class="anchor" href="#coding-policy" aria-label="Link to section">#</a>Coding Policy</h1>
+<p>This project is a fasm2 Win64 GUI application. Prefer small, local changes that match the existing assembly style and keep application state explicit.</p>
+<h2 id="build-validation"><a class="anchor" href="#build-validation" aria-label="Link to section">#</a>Build Validation</h2>
+<ul>
+<li>Build from a Visual Studio developer environment.</li>
+<li>Use <code>_build.cmd</code> as the normal executable validation path.</li>
+<li>Treat assembler success as necessary but not sufficient for UI or persistence changes; run a focused smoke test when behavior changes.</li>
+</ul>
+<h2 id="calling-convention"><a class="anchor" href="#calling-convention" aria-label="Link to section">#</a>Calling Convention</h2>
+<ul>
+<li>Use <code>fastcall</code> for local <code>proc</code> labels.</li>
+<li>Use <code>invoke</code> for imported APIs and function pointers.</li>
+<li>Spill <code>proc</code> arguments at entry before calls if they are needed later; proc parameter labels are home-slot addresses, not live register aliases.</li>
+<li>Use <code>addr local</code> for out-parameters instead of preloading volatile argument registers and passing those registers positionally.</li>
+<li>The project uses the RSP-based <code>proc64.inc</code> frame macros, so <code>rbp</code> is available as a normal nonvolatile register. Add <code>rbp</code> to the <code>uses</code> list before using it. It is a good choice for stable pointers to local structures or context structures, because <code>[rbp+field]</code> encodings are often smaller than the equivalent high-register addressing. This does not change the rule above: proc parameter labels are still home-slot addresses, not register aliases.</li>
+</ul>
+<h2 id="abstraction-boundaries"><a class="anchor" href="#abstraction-boundaries" aria-label="Link to section">#</a>Abstraction Boundaries</h2>
+<ul>
+<li>Do not add a <code>proc</code>, macro, or helper that only renames a single API call or replaces one obvious line with another single line.</li>
+<li>An abstraction must remove real duplication, hide a fragile calling convention, centralize a tested algorithm, own state or lifetime, or provide a clearer contract than the raw call site.</li>
+<li>Prefer direct Win32 calls for one-off setup and obvious operations, especially when the helper body would be only <code>invoke SomeApi,...</code> plus <code>ret</code>.</li>
+<li>If a helper exists only to make a call look uniform, delete it and keep the call site explicit.</li>
+</ul>
+<p>Avoid wrappers like this:</p>
+<pre><code class="language-asm">proc RedirLoadMsftEdit
+        invoke  LoadLibraryW,&#x27;msftedit.dll&#x27;
+        ret
+endp</code></pre>
+<h2 id="string-handling"><a class="anchor" href="#string-handling" aria-label="Link to section">#</a>String Handling</h2>
+<p>The project includes <code>win64wx.inc</code>, so the default inline string materializer matches wide-character <code>TCHAR</code> strings. <code>windows.inc</code> provides an A/W-dispatching <code>fastcall.inline_string</code>:</p>
+<ul>
+<li>Plain literals use the active <code>TCHAR</code> flavor.</li>
+<li><code>&lt;A,&#x27;text&#x27;&gt;</code> forces ANSI.</li>
+<li><code>&lt;W,&#x27;text&#x27;&gt;</code> forces wide characters.</li>
+<li><code>GLOBSTR.reuse</code> and <code>GLOBWSTR.reuse</code> deduplicate repeated inline literals.</li>
+</ul>
+<p>For APIs that have generic A/W aliases, prefer the generic API name with an undecorated literal:</p>
+<pre><code class="language-asm">invoke  LoadLibrary,&#x27;user32.dll&#x27;
+invoke  MessageBox,[hMain],&#x27;Saved.&#x27;,&#x27;rtfedit&#x27;,MB_OK</code></pre>
+<p>Use decorated API names only when the call genuinely requires that specific entry point or when the argument is not a string literal and the code is already explicitly wide or ANSI:</p>
+<pre><code class="language-asm">invoke  GetSaveFileNameW,addr ofn
+invoke  SendMessageW,[hRichEd],EM_STREAMIN,[stream_flags],addr estr</code></pre>
+<p>Use explicit string materializers only when the Windows contract requires a specific byte format. The important current example is <code>GetProcAddress</code>, whose export-name argument is ANSI:</p>
+<pre><code class="language-asm">invoke  GetProcAddress,rax,&lt;A,&#x27;RegDeleteTreeW&#x27;&gt;</code></pre>
+<p>Do not keep ordinary call-site text in the data section. If a string is only passed to <code>invoke</code> or <code>fastcall</code>, put it directly at that call site:</p>
+<pre><code class="language-asm">fastcall ConsoleAppendMessage,&#x27;terminal&#x27;,&#x27;warning&#x27;,&#x27;cancel requested&#x27;,0x00008080
+invoke   wsprintf,console_wide_buf,&#x27;process exited with code %u&#x27;,eax</code></pre>
+<p>Keep a named data-section string only when a stable address is required outside the argument materializer. Current valid cases include:</p>
+<ul>
+<li>structure initializers such as <code>WNDCLASSEX.lpszClassName</code>;</li>
+<li><code>MRUINFO.lpszSubKey</code> registry subkeys;</li>
+<li><code>OPENFILENAME</code> filter and default-extension pointers;</li>
+<li>pointer tables, such as font candidate lists;</li>
+<li>mutable buffers and runtime-built text storage.</li>
+</ul>
+<p>Literal class names are still string values. For example, <code>RICHEDIT50W</code> is the registered RichEdit class name, but the API call should still use the generic dispatcher unless a specific API flavor is needed:</p>
+<pre><code class="language-asm">invoke  CreateWindowEx,0,&#x27;RICHEDIT50W&#x27;,0,...</code></pre>
+<h2 id="data-ownership"><a class="anchor" href="#data-ownership" aria-label="Link to section">#</a>Data Ownership</h2>
+<ul>
+<li>MRU blobs should own persisted identity and comparison keys.</li>
+<li>UI labels may be derived from MRU blobs but should not become hidden identity unless that is the documented policy.</li>
+<li>Keep scratch buffers global only when they are shared by existing code paths or required by Win32 structures; prefer locals for short-lived state.</li>
+<li>Module-level global storage registers itself through <code>__GLOBAL_DATA__</code> and <code>__GLOBAL_BSS__</code>, then is emitted by the central <code>GLOBAL_EMIT_DATA</code> / <code>GLOBAL_EMIT_BSS</code> section points. This is the repo-wide data/BSS policy: do not add new feature-specific section emitters or direct feature data macro calls in <code>rtfedit.asm</code>.</li>
+<li>Keep initialized constants and nonzero defaults in the data emitter; keep zero or uninitialized storage in the BSS emitter.</li>
+<li>Feature emitters must own their alignment. Do not assume the previous emitter ended on a useful boundary; start BSS emitters with <code>align 8</code>, and add local <code>align</code> directives before qword tables or structures that follow byte/word buffers or 32-bit fields.</li>
+</ul>
+<pre><code class="language-asm">define __GLOBAL_DATA__ feature_data
+define __GLOBAL_BSS__  feature_bss
+
+macro feature_data
+  feature_name du &#x27;example&#x27;,0
+  align 8
+  feature_default dd -1
+end macro
+
+macro feature_bss
+  align 8
+  feature_handle dq ?
+  feature_buffer rw 260
+end macro</code></pre>
+<h2 id="resource-ids"><a class="anchor" href="#resource-ids" aria-label="Link to section">#</a>Resource IDs</h2>
+<p>Resource and control IDs shared by assembly and the Windows resource compiler live in <code>rtfedit.h</code>. This file is included by both <code>windows.inc</code> and <code>rtfedit.rc</code>, so it is the single source of truth for menu, dialog, icon, dynamic-range, and child-control IDs.</p>
+<p>Keep <code>rtfedit.h</code> intentionally austere:</p>
+<ul>
+<li>only <code>#define NAME value</code> lines;</li>
+<li>no comments;</li>
+<li>no include guards;</li>
+<li>no blank policy prose or assembler-only expressions;</li>
+<li>use numeric constants that both fasm2 and <code>rc.exe</code> accept.</li>
+</ul>
+<p>Do not duplicate resource IDs in <code>rtfedit.rc</code> or <code>windows.inc</code>. Derived assembly-only constants, such as range sizes, may stay in <code>windows.inc</code> after the shared include.</p>
+<h2 id="documentation"><a class="anchor" href="#documentation" aria-label="Link to section">#</a>Documentation</h2>
+<ul>
+<li>Keep audit notes additive while issues are being worked down.</li>
+<li>When a policy or convention becomes explicit through cleanup, record it here instead of leaving it implicit in scattered call sites.</li>
+</ul>
+      </article>
+    </div>
+    <footer class="doc-footer">Generated as project documentation HTML.</footer>
+  </main>
+</body>
+</html>

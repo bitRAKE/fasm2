@@ -1963,40 +1963,40 @@ TDE_MAIN_INSTRUCTION     = 3
 TDIE_ICON_MAIN   = 0
 TDIE_ICON_FOOTER = 1
 
-; TASKDIALOG_BUTTON structure
+; TASKDIALOG_BUTTON structure  (pshpack1 — packed, sizeof=8 x86)
 
-struct TASKDIALOG_BUTTON
-  nButtonID    dd ?
-  pszButtonText dd ?
+struct TASKDIALOG_BUTTON, packed
+  nButtonID     dd ?  ; int
+  pszButtonText dd ?  ; PCWSTR
 ends
 
-; TASKDIALOGCONFIG structure (32-bit)
+; TASKDIALOGCONFIG structure (pshpack1 — packed, sizeof=96 x86)
 
-struct TASKDIALOGCONFIG
-  cbSize               dd ?
-  hwndParent           dd ?
-  hInstance            dd ?
-  dwFlags              dd ?
-  dwCommonButtons      dd ?
-  pszWindowTitle       dd ?
-  hMainIcon            dd ?  ; union: hMainIcon / pszMainIcon
-  pszMainInstruction   dd ?
-  pszContent           dd ?
-  cButtons             dd ?
-  pButtons             dd ?
-  nDefaultButton       dd ?
-  cRadioButtons        dd ?
-  pRadioButtons        dd ?
-  nDefaultRadioButton  dd ?
-  pszVerificationText  dd ?
-  pszExpandedInformation  dd ?
-  pszExpandedControlText  dd ?
-  pszCollapsedControlText dd ?
-  hFooterIcon          dd ?  ; union: hFooterIcon / pszFooterIcon
-  pszFooter            dd ?
-  pfCallback           dd ?
-  lpCallbackData       dd ?
-  cxWidth              dd ?
+struct TASKDIALOGCONFIG, packed
+  cbSize               dd ?  ; UINT
+  hwndParent           dd ?  ; HWND
+  hInstance            dd ?  ; HINSTANCE
+  dwFlags              dd ?  ; TASKDIALOG_FLAGS
+  dwCommonButtons      dd ?  ; TASKDIALOG_COMMON_BUTTON_FLAGS
+  pszWindowTitle       dd ?  ; PCWSTR
+  hMainIcon            dd ?  ; union: HICON / PCWSTR pszMainIcon
+  pszMainInstruction   dd ?  ; PCWSTR
+  pszContent           dd ?  ; PCWSTR
+  cButtons             dd ?  ; UINT
+  pButtons             dd ?  ; *const TASKDIALOG_BUTTON
+  nDefaultButton       dd ?  ; int
+  cRadioButtons        dd ?  ; UINT
+  pRadioButtons        dd ?  ; *const TASKDIALOG_BUTTON
+  nDefaultRadioButton  dd ?  ; int
+  pszVerificationText  dd ?  ; PCWSTR
+  pszExpandedInformation  dd ?  ; PCWSTR
+  pszExpandedControlText  dd ?  ; PCWSTR
+  pszCollapsedControlText dd ?  ; PCWSTR
+  hFooterIcon          dd ?  ; union: HICON / PCWSTR pszFooterIcon
+  pszFooter            dd ?  ; PCWSTR
+  pfCallback           dd ?  ; PFTASKDIALOGCALLBACK
+  lpCallbackData       dd ?  ; LONG_PTR
+  cxWidth              dd ?  ; UINT
 ends
 
 ; LoadIconMetric sizes

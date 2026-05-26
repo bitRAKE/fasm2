@@ -1994,47 +1994,42 @@ TDE_MAIN_INSTRUCTION     = 3
 TDIE_ICON_MAIN   = 0
 TDIE_ICON_FOOTER = 1
 
-; TASKDIALOG_BUTTON structure (64-bit)
+; TASKDIALOG_BUTTON structure (pshpack1 — packed, sizeof=12 x64)
+; nButtonID(4) immediately followed by pszButtonText(8) — no padding.
 
-struct TASKDIALOG_BUTTON
-  nButtonID    dd ?
-               dd ?       ; pad to align pszButtonText to 8 bytes
-  pszButtonText dq ?
+struct TASKDIALOG_BUTTON, packed
+  nButtonID     dd ?  ; int         — offset 0
+  pszButtonText dq ?  ; PCWSTR      — offset 4 (packed, no gap)
 ends
 
-; TASKDIALOGCONFIG structure (64-bit)
-; All pointer fields are 8 bytes; DWORD fields remain 4 bytes.
-; Unions are represented by their pointer-sized member (largest).
+; TASKDIALOGCONFIG structure (pshpack1 — packed, sizeof=160 x64)
+; No alignment gaps between fields; pointer fields follow directly after DWORDs.
 
-struct TASKDIALOGCONFIG
-  cbSize               dd ?
-                       dd ?       ; pad to align hwndParent to 8 bytes
-  hwndParent           dq ?
-  hInstance            dq ?
-  dwFlags              dd ?
-  dwCommonButtons      dd ?
-  pszWindowTitle       dq ?
-  hMainIcon            dq ?       ; union: hMainIcon / pszMainIcon
-  pszMainInstruction   dq ?
-  pszContent           dq ?
-  cButtons             dd ?
-                       dd ?       ; pad to align pButtons to 8 bytes
-  pButtons             dq ?
-  nDefaultButton       dd ?
-  cRadioButtons        dd ?
-  pRadioButtons        dq ?
-  nDefaultRadioButton  dd ?
-                       dd ?       ; pad to align pszVerificationText to 8 bytes
-  pszVerificationText  dq ?
-  pszExpandedInformation  dq ?
-  pszExpandedControlText  dq ?
-  pszCollapsedControlText dq ?
-  hFooterIcon          dq ?       ; union: hFooterIcon / pszFooterIcon
-  pszFooter            dq ?
-  pfCallback           dq ?
-  lpCallbackData       dq ?
-  cxWidth              dd ?
-                       dd ?       ; tail padding to multiple of 8
+struct TASKDIALOGCONFIG, packed
+  cbSize               dd ?  ; UINT                              offset   0
+  hwndParent           dq ?  ; HWND                              offset   4
+  hInstance            dq ?  ; HINSTANCE                         offset  12
+  dwFlags              dd ?  ; TASKDIALOG_FLAGS                  offset  20
+  dwCommonButtons      dd ?  ; TASKDIALOG_COMMON_BUTTON_FLAGS    offset  24
+  pszWindowTitle       dq ?  ; PCWSTR                            offset  28
+  hMainIcon            dq ?  ; union: HICON / PCWSTR pszMainIcon offset  36
+  pszMainInstruction   dq ?  ; PCWSTR                            offset  44
+  pszContent           dq ?  ; PCWSTR                            offset  52
+  cButtons             dd ?  ; UINT                              offset  60
+  pButtons             dq ?  ; *const TASKDIALOG_BUTTON          offset  64
+  nDefaultButton       dd ?  ; int                               offset  72
+  cRadioButtons        dd ?  ; UINT                              offset  76
+  pRadioButtons        dq ?  ; *const TASKDIALOG_BUTTON          offset  80
+  nDefaultRadioButton  dd ?  ; int                               offset  88
+  pszVerificationText  dq ?  ; PCWSTR                            offset  92
+  pszExpandedInformation  dq ?  ; PCWSTR                         offset 100
+  pszExpandedControlText  dq ?  ; PCWSTR                         offset 108
+  pszCollapsedControlText dq ?  ; PCWSTR                         offset 116
+  hFooterIcon          dq ?  ; union: HICON / PCWSTR pszFooterIcon  offset 124
+  pszFooter            dq ?  ; PCWSTR                            offset 132
+  pfCallback           dq ?  ; PFTASKDIALOGCALLBACK              offset 140
+  lpCallbackData       dq ?  ; LONG_PTR                          offset 148
+  cxWidth              dd ?  ; UINT                              offset 156
 ends
 
 ; LoadIconMetric sizes
