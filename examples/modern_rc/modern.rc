@@ -1,0 +1,86 @@
+#include <windows.h>
+#include "resource.h"
+
+LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
+
+1 RT_MANIFEST "manifest.xml"
+
+IDR_MAINMENU MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&New\tCtrl+N", ID_FILE_NEW
+        MENUITEM "&Open...\tCtrl+O", ID_FILE_OPEN
+        MENUITEM "&Save\tCtrl+S", ID_FILE_SAVE
+        MENUITEM "Save &As...\tCtrl+Shift+S", ID_FILE_SAVE_AS
+        MENUITEM SEPARATOR
+        POPUP "Recent &Files"
+        BEGIN
+            MENUITEM "(empty)", ID_RECENT_END, GRAYED
+        END
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit", ID_FILE_EXIT
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "&Find...\tCtrl+F", ID_EDIT_FIND
+        MENUITEM SEPARATOR
+        MENUITEM "Select &All\tCtrl+A", ID_EDIT_SELECT_ALL
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About", ID_HELP_ABOUT
+    END
+END
+
+IDR_ACCELERATORS ACCELERATORS
+BEGIN
+    "N", ID_FILE_NEW, VIRTKEY, CONTROL
+    "O", ID_FILE_OPEN, VIRTKEY, CONTROL
+    "S", ID_FILE_SAVE, VIRTKEY, CONTROL
+    "S", ID_FILE_SAVE_AS, VIRTKEY, CONTROL, SHIFT
+    "F", ID_EDIT_FIND, VIRTKEY, CONTROL
+    "A", ID_EDIT_SELECT_ALL, VIRTKEY, CONTROL
+    VK_F3, ID_FIND_NEXT, VIRTKEY
+END
+
+IDD_FIND DIALOG 0, 0, 208, 56
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_SETFONT
+CAPTION "Find"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Find &what:", -1, 7, 10, 48, 8
+    EDITTEXT IDC_FIND_TEXT, 58, 7, 94, 14, ES_AUTOHSCROLL
+    PUSHBUTTON "&Find Next", ID_FIND_NEXT, 158, 7, 43, 14
+    AUTOCHECKBOX "Match &case", IDC_MATCH_CASE, 58, 29, 62, 10
+    AUTOCHECKBOX "&Whole word", IDC_WHOLE_WORD, 128, 29, 66, 10
+    PUSHBUTTON "Close", IDCANCEL, 158, 38, 43, 14
+END
+
+1 VERSIONINFO
+FILEVERSION 0,3,0,0
+PRODUCTVERSION 0,3,0,0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS__WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "fasm2 examples\0"
+            VALUE "FileDescription", "Modern RC MRU Edit - fasm2 example\0"
+            VALUE "FileVersion", "0.3.0\0"
+            VALUE "InternalName", "modern_rc\0"
+            VALUE "OriginalFilename", "modern.exe\0"
+            VALUE "ProductName", "Modern fasm2 examples\0"
+            VALUE "ProductVersion", "0.3.0\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END
