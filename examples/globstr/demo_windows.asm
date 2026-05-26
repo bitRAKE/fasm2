@@ -2,7 +2,7 @@
 ; Global strings demonstration for Windows.
 
 include 'win64ax.inc'
-include 'globstr.inc'
+include 'macro/globstr.inc'
 
 GLOBSTR.reuse := 1
 

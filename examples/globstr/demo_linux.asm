@@ -4,7 +4,7 @@
 format ELF64 executable 3
 entry start
 
-include 'globstr.inc'
+include 'macro/globstr.inc'
 include 'macro/inline.inc'
 
 	inlinemacro GLOB(value&)
