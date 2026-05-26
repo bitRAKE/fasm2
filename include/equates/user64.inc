@@ -1995,3 +1995,171 @@ MONITOR_DEFAULTTOPRIMARY = 1
 MONITOR_DEFAULTTONEAREST = 2
 
 MONITORINFOF_PRIMARY = 1
+
+; DPI awareness context values (SetProcessDpiAwarenessContext etc.)
+
+DPI_AWARENESS_CONTEXT_UNAWARE              = -1
+DPI_AWARENESS_CONTEXT_SYSTEM_AWARE         = -2
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE    = -3
+DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = -4
+DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED    = -5
+
+; DPI_AWARENESS enum
+
+DPI_AWARENESS_INVALID           = -1
+DPI_AWARENESS_UNAWARE           = 0
+DPI_AWARENESS_SYSTEM_AWARE      = 1
+DPI_AWARENESS_PER_MONITOR_AWARE = 2
+
+; FlashWindow/FlashWindowEx flags (FLASHWINFO.dwFlags)
+
+FLASHW_STOP      = 0
+FLASHW_CAPTION   = 00000001h
+FLASHW_TRAY      = 00000002h
+FLASHW_ALL       = FLASHW_CAPTION or FLASHW_TRAY
+FLASHW_TIMER     = 00000004h
+FLASHW_TIMERNOFG = 0000000Ch
+
+; FLASHWINFO structure (64-bit)
+; cbSize(4) + pad(4) + hwnd(8) + dwFlags(4) + uCount(4) + dwTimeout(4) + pad(4) = 32 bytes
+
+struct FLASHWINFO
+  cbSize    dd ?
+             dd ?      ; pad — hwnd must be 8-byte aligned
+  hwnd      dq ?       ; HWND (8 bytes on x64) at offset 8
+  dwFlags   dd ?       ; offset 16
+  uCount    dd ?       ; offset 20
+  dwTimeout dd ?       ; offset 24
+             dd ?      ; tail padding to multiple of 8
+ends
+
+; UpdateLayeredWindow flags
+
+ULW_COLORKEY    = 00000001h
+ULW_ALPHA       = 00000002h
+ULW_OPAQUE      = 00000004h
+ULW_EX_NORESIZE = 00000008h
+
+; Raw input device flags (RAWINPUTDEVICE.dwFlags)
+
+RIDEV_REMOVE       = 00000001h
+RIDEV_EXCLUDE      = 00000010h
+RIDEV_PAGEONLY     = 00000020h
+RIDEV_NOLEGACY     = 00000030h
+RIDEV_INPUTSINK    = 00000100h
+RIDEV_CAPTUREMOUSE = 00000200h
+RIDEV_NOHOTKEYS    = 00000200h
+RIDEV_APPKEYS      = 00000400h
+RIDEV_EXINPUTSINK  = 00001000h
+RIDEV_DEVNOTIFY    = 00002000h
+
+; GetRawInputData command values
+
+RID_INPUT   = 10000003h
+RID_HEADER  = 10000005h
+
+; GetRawInputDeviceInfo command values
+
+RIDI_PREPARSEDDATA = 20000005h
+RIDI_DEVICENAME    = 20000007h
+RIDI_DEVICEINFO    = 2000000Bh
+
+; Raw input device types
+
+RIM_TYPEMOUSE    = 0
+RIM_TYPEKEYBOARD = 1
+RIM_TYPEHID      = 2
+
+; Raw input mouse flags
+
+MOUSE_MOVE_RELATIVE      = 0
+MOUSE_MOVE_ABSOLUTE      = 1
+MOUSE_VIRTUAL_DESKTOP    = 2
+MOUSE_ATTRIBUTES_CHANGED = 4
+MOUSE_MOVE_NOCOALESCE    = 8
+
+RI_MOUSE_BUTTON_1_DOWN   = 0001h
+RI_MOUSE_BUTTON_1_UP     = 0002h
+RI_MOUSE_BUTTON_2_DOWN   = 0004h
+RI_MOUSE_BUTTON_2_UP     = 0008h
+RI_MOUSE_BUTTON_3_DOWN   = 0010h
+RI_MOUSE_BUTTON_3_UP     = 0020h
+RI_MOUSE_BUTTON_4_DOWN   = 0040h
+RI_MOUSE_BUTTON_4_UP     = 0080h
+RI_MOUSE_BUTTON_5_DOWN   = 0100h
+RI_MOUSE_BUTTON_5_UP     = 0200h
+RI_MOUSE_WHEEL           = 0400h
+RI_MOUSE_HWHEEL          = 0800h
+RI_MOUSE_LEFT_BUTTON_DOWN   = RI_MOUSE_BUTTON_1_DOWN
+RI_MOUSE_LEFT_BUTTON_UP     = RI_MOUSE_BUTTON_1_UP
+RI_MOUSE_RIGHT_BUTTON_DOWN  = RI_MOUSE_BUTTON_2_DOWN
+RI_MOUSE_RIGHT_BUTTON_UP    = RI_MOUSE_BUTTON_2_UP
+RI_MOUSE_MIDDLE_BUTTON_DOWN = RI_MOUSE_BUTTON_3_DOWN
+RI_MOUSE_MIDDLE_BUTTON_UP   = RI_MOUSE_BUTTON_3_UP
+
+; Raw input keyboard flags
+
+RI_KEY_MAKE  = 0
+RI_KEY_BREAK = 1
+RI_KEY_E0    = 2
+RI_KEY_E1    = 4
+
+; RAWINPUTDEVICE structure (64-bit: hwndTarget is pointer-sized)
+
+struct RAWINPUTDEVICE
+  usUsagePage dw ?
+  usUsage     dw ?
+  dwFlags     dd ?
+  hwndTarget  dq ?     ; HWND — 8 bytes on x64
+ends
+
+; RAWINPUTHEADER structure (64-bit: hDevice and wParam are pointer-sized)
+; dwType(4) + dwSize(4) = 8 bytes, so hDevice is naturally 8-byte aligned.
+
+struct RAWINPUTHEADER
+  dwType  dd ?          ; offset 0
+  dwSize  dd ?          ; offset 4
+  hDevice dq ?          ; offset 8 (HANDLE — 8 bytes on x64)
+  wParam  dq ?          ; offset 16 (WPARAM — pointer-sized)
+ends
+
+; RAWMOUSE structure (layout identical 32/64 — no pointer fields)
+
+struct RAWMOUSE
+  usFlags            dw ?
+  usButtonFlags      dw ?
+  usButtonData       dw ?
+		     dw ?   ; pad
+  ulRawButtons       dd ?
+  lLastX	     dd ?
+  lLastY	     dd ?
+  ulExtraInformation dd ?
+ends
+
+; RAWKEYBOARD structure (layout identical 32/64 — no pointer fields)
+
+struct RAWKEYBOARD
+  MakeCode         dw ?
+  Flags            dw ?
+  Reserved         dw ?
+  VKey             dw ?
+  Message          dd ?
+  ExtraInformation dd ?
+ends
+
+; ChangeWindowMessageFilterEx action values
+
+MSGFLT_RESET    = 0
+MSGFLT_ALLOW    = 1
+MSGFLT_DISALLOW = 2
+
+; SetWindowDisplayAffinity flags
+
+WDA_NONE               = 00000000h
+WDA_MONITOR            = 00000001h
+WDA_EXCLUDEFROMCAPTURE = 00000011h
+
+; PrintWindow flags
+
+PW_CLIENTONLY        = 1
+PW_RENDERFULLCONTENT = 2

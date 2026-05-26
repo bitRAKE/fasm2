@@ -5,10 +5,13 @@ import user32,\
        ActivateKeyboardLayout,'ActivateKeyboardLayout',\
        AdjustWindowRect,'AdjustWindowRect',\
        AdjustWindowRectEx,'AdjustWindowRectEx',\
+       AdjustWindowRectExForDpi,'AdjustWindowRectExForDpi',\
+       AllowSetForegroundWindow,'AllowSetForegroundWindow',\
        AnimateWindow,'AnimateWindow',\
        AnyPopup,'AnyPopup',\
        AppendMenuA,'AppendMenuA',\
        AppendMenuW,'AppendMenuW',\
+       AreDpiAwarenessContextsEqual,'AreDpiAwarenessContextsEqual',\
        ArrangeIconicWindows,'ArrangeIconicWindows',\
        AttachThreadInput,'AttachThreadInput',\
        BeginDeferWindowPos,'BeginDeferWindowPos',\
@@ -26,31 +29,31 @@ import user32,\
        CascadeWindows,'CascadeWindows',\
        ChangeClipboardChain,'ChangeClipboardChain',\
        ChangeDisplaySettingsA,'ChangeDisplaySettingsA',\
-       ChangeDisplaySettingsW,'ChangeDisplaySettingsW',\
        ChangeDisplaySettingsExA,'ChangeDisplaySettingsExA',\
        ChangeDisplaySettingsExW,'ChangeDisplaySettingsExW',\
+       ChangeDisplaySettingsW,'ChangeDisplaySettingsW',\
        ChangeMenuA,'ChangeMenuA',\
        ChangeMenuW,'ChangeMenuW',\
+       ChangeWindowMessageFilter,'ChangeWindowMessageFilter',\
+       ChangeWindowMessageFilterEx,'ChangeWindowMessageFilterEx',\
        CharLowerA,'CharLowerA',\
-       CharLowerW,'CharLowerW',\
        CharLowerBuffA,'CharLowerBuffA',\
        CharLowerBuffW,'CharLowerBuffW',\
+       CharLowerW,'CharLowerW',\
        CharNextA,'CharNextA',\
-       CharNextW,'CharNextW',\
        CharNextExA,'CharNextExA',\
-       CharNextExW,'CharNextExW',\
+       CharNextW,'CharNextW',\
        CharPrevA,'CharPrevA',\
-       CharPrevW,'CharPrevW',\
        CharPrevExA,'CharPrevExA',\
-       CharPrevExW,'CharPrevExW',\
+       CharPrevW,'CharPrevW',\
        CharToOemA,'CharToOemA',\
-       CharToOemW,'CharToOemW',\
        CharToOemBuffA,'CharToOemBuffA',\
        CharToOemBuffW,'CharToOemBuffW',\
+       CharToOemW,'CharToOemW',\
        CharUpperA,'CharUpperA',\
-       CharUpperW,'CharUpperW',\
        CharUpperBuffA,'CharUpperBuffA',\
        CharUpperBuffW,'CharUpperBuffW',\
+       CharUpperW,'CharUpperW',\
        CheckDlgButton,'CheckDlgButton',\
        CheckMenuItem,'CheckMenuItem',\
        CheckMenuRadioItem,'CheckMenuRadioItem',\
@@ -108,7 +111,6 @@ import user32,\
        DdeFreeStringHandle,'DdeFreeStringHandle',\
        DdeGetData,'DdeGetData',\
        DdeGetLastError,'DdeGetLastError',\
-       DdeGetQualityOfService,'DdeGetQualityOfService',\
        DdeImpersonateClient,'DdeImpersonateClient',\
        DdeInitializeA,'DdeInitializeA',\
        DdeInitializeW,'DdeInitializeW',\
@@ -126,14 +128,16 @@ import user32,\
        DdeUninitialize,'DdeUninitialize',\
        DefDlgProcA,'DefDlgProcA',\
        DefDlgProcW,'DefDlgProcW',\
+       DeferWindowPos,'DeferWindowPos',\
        DefFrameProcA,'DefFrameProcA',\
        DefFrameProcW,'DefFrameProcW',\
        DefMDIChildProcA,'DefMDIChildProcA',\
        DefMDIChildProcW,'DefMDIChildProcW',\
+       DefRawInputProc,'DefRawInputProc',\
        DefWindowProcA,'DefWindowProcA',\
        DefWindowProcW,'DefWindowProcW',\
-       DeferWindowPos,'DeferWindowPos',\
        DeleteMenu,'DeleteMenu',\
+       DeregisterShellHookWindow,'DeregisterShellHookWindow',\
        DestroyAcceleratorTable,'DestroyAcceleratorTable',\
        DestroyCaret,'DestroyCaret',\
        DestroyCursor,'DestroyCursor',\
@@ -144,12 +148,13 @@ import user32,\
        DialogBoxIndirectParamW,'DialogBoxIndirectParamW',\
        DialogBoxParamA,'DialogBoxParamA',\
        DialogBoxParamW,'DialogBoxParamW',\
+       DisableProcessWindowsGhosting,'DisableProcessWindowsGhosting',\
        DispatchMessageA,'DispatchMessageA',\
        DispatchMessageW,'DispatchMessageW',\
        DlgDirListA,'DlgDirListA',\
-       DlgDirListW,'DlgDirListW',\
        DlgDirListComboBoxA,'DlgDirListComboBoxA',\
        DlgDirListComboBoxW,'DlgDirListComboBoxW',\
+       DlgDirListW,'DlgDirListW',\
        DlgDirSelectComboBoxExA,'DlgDirSelectComboBoxExA',\
        DlgDirSelectComboBoxExW,'DlgDirSelectComboBoxExW',\
        DlgDirSelectExA,'DlgDirSelectExA',\
@@ -168,12 +173,13 @@ import user32,\
        DrawStateA,'DrawStateA',\
        DrawStateW,'DrawStateW',\
        DrawTextA,'DrawTextA',\
-       DrawTextW,'DrawTextW',\
        DrawTextExA,'DrawTextExA',\
        DrawTextExW,'DrawTextExW',\
+       DrawTextW,'DrawTextW',\
        EditWndProc,'EditWndProc',\
        EmptyClipboard,'EmptyClipboard',\
        EnableMenuItem,'EnableMenuItem',\
+       EnableNonClientDpiScaling,'EnableNonClientDpiScaling',\
        EnableScrollBar,'EnableScrollBar',\
        EnableWindow,'EnableWindow',\
        EndDeferWindowPos,'EndDeferWindowPos',\
@@ -182,31 +188,34 @@ import user32,\
        EndPaint,'EndPaint',\
        EnumChildWindows,'EnumChildWindows',\
        EnumClipboardFormats,'EnumClipboardFormats',\
-       EnumDesktopWindows,'EnumDesktopWindows',\
        EnumDesktopsA,'EnumDesktopsA',\
        EnumDesktopsW,'EnumDesktopsW',\
+       EnumDesktopWindows,'EnumDesktopWindows',\
+       EnumDisplayDevicesA,'EnumDisplayDevicesA',\
+       EnumDisplayDevicesW,'EnumDisplayDevicesW',\
        EnumDisplayMonitors,'EnumDisplayMonitors',\
        EnumDisplaySettingsA,'EnumDisplaySettingsA',\
-       EnumDisplaySettingsW,'EnumDisplaySettingsW',\
        EnumDisplaySettingsExA,'EnumDisplaySettingsExA',\
        EnumDisplaySettingsExW,'EnumDisplaySettingsExW',\
+       EnumDisplaySettingsW,'EnumDisplaySettingsW',\
        EnumPropsA,'EnumPropsA',\
-       EnumPropsW,'EnumPropsW',\
        EnumPropsExA,'EnumPropsExA',\
        EnumPropsExW,'EnumPropsExW',\
+       EnumPropsW,'EnumPropsW',\
        EnumThreadWindows,'EnumThreadWindows',\
+       EnumWindows,'EnumWindows',\
        EnumWindowStationsA,'EnumWindowStationsA',\
        EnumWindowStationsW,'EnumWindowStationsW',\
-       EnumWindows,'EnumWindows',\
        EqualRect,'EqualRect',\
        ExcludeUpdateRgn,'ExcludeUpdateRgn',\
        ExitWindowsEx,'ExitWindowsEx',\
        FillRect,'FillRect',\
        FindWindowA,'FindWindowA',\
-       FindWindowW,'FindWindowW',\
        FindWindowExA,'FindWindowExA',\
        FindWindowExW,'FindWindowExW',\
+       FindWindowW,'FindWindowW',\
        FlashWindow,'FlashWindow',\
+       FlashWindowEx,'FlashWindowEx',\
        FrameRect,'FrameRect',\
        FreeDDElParam,'FreeDDElParam',\
        GetActiveWindow,'GetActiveWindow',\
@@ -214,26 +223,27 @@ import user32,\
        GetAltTabInfoW,'GetAltTabInfoW',\
        GetAncestor,'GetAncestor',\
        GetAsyncKeyState,'GetAsyncKeyState',\
+       GetAwarenessFromDpiAwarenessContext,'GetAwarenessFromDpiAwarenessContext',\
        GetCapture,'GetCapture',\
        GetCaretBlinkTime,'GetCaretBlinkTime',\
        GetCaretPos,'GetCaretPos',\
        GetClassInfoA,'GetClassInfoA',\
-       GetClassInfoW,'GetClassInfoW',\
        GetClassInfoExA,'GetClassInfoExA',\
        GetClassInfoExW,'GetClassInfoExW',\
+       GetClassInfoW,'GetClassInfoW',\
        GetClassLongA,'GetClassLongA',\
+       GetClassLongPtrA,'GetClassLongPtrA',\
+       GetClassLongPtrW,'GetClassLongPtrW',\
        GetClassLongW,'GetClassLongW',\
        GetClassNameA,'GetClassNameA',\
        GetClassNameW,'GetClassNameW',\
        GetClassWord,'GetClassWord',\
        GetClientRect,'GetClientRect',\
-       GetClipCursor,'GetClipCursor',\
        GetClipboardData,'GetClipboardData',\
        GetClipboardFormatNameA,'GetClipboardFormatNameA',\
        GetClipboardFormatNameW,'GetClipboardFormatNameW',\
-       GetClipboardSequenceNumberA,'GetClipboardSequenceNumberA',\
-       GetClipboardSequenceNumberW,'GetClipboardSequenceNumberW',\
        GetClipboardViewer,'GetClipboardViewer',\
+       GetClipCursor,'GetClipCursor',\
        GetComboBoxInfo,'GetComboBoxInfo',\
        GetCursor,'GetCursor',\
        GetCursorInfo,'GetCursorInfo',\
@@ -248,23 +258,27 @@ import user32,\
        GetDlgItemTextA,'GetDlgItemTextA',\
        GetDlgItemTextW,'GetDlgItemTextW',\
        GetDoubleClickTime,'GetDoubleClickTime',\
+       GetDpiAwarenessContextForProcess,'GetDpiAwarenessContextForProcess',\
+       GetDpiForSystem,'GetDpiForSystem',\
+       GetDpiForWindow,'GetDpiForWindow',\
+       GetDpiFromDpiAwarenessContext,'GetDpiFromDpiAwarenessContext',\
        GetFocus,'GetFocus',\
        GetForegroundWindow,'GetForegroundWindow',\
-       GetGUIThreadInfo,'GetGUIThreadInfo',\
        GetGuiResources,'GetGuiResources',\
+       GetGUIThreadInfo,'GetGUIThreadInfo',\
        GetIconInfo,'GetIconInfo',\
        GetInputDesktop,'GetInputDesktop',\
        GetInputState,'GetInputState',\
        GetKBCodePage,'GetKBCodePage',\
-       GetKeyNameTextA,'GetKeyNameTextA',\
-       GetKeyNameTextW,'GetKeyNameTextW',\
-       GetKeyState,'GetKeyState',\
        GetKeyboardLayout,'GetKeyboardLayout',\
        GetKeyboardLayoutList,'GetKeyboardLayoutList',\
        GetKeyboardLayoutNameA,'GetKeyboardLayoutNameA',\
        GetKeyboardLayoutNameW,'GetKeyboardLayoutNameW',\
        GetKeyboardState,'GetKeyboardState',\
        GetKeyboardType,'GetKeyboardType',\
+       GetKeyNameTextA,'GetKeyNameTextA',\
+       GetKeyNameTextW,'GetKeyNameTextW',\
+       GetKeyState,'GetKeyState',\
        GetLastActivePopup,'GetLastActivePopup',\
        GetLastInputInfo,'GetLastInputInfo',\
        GetLayeredWindowAttributes,'GetLayeredWindowAttributes',\
@@ -284,22 +298,32 @@ import user32,\
        GetMenuStringA,'GetMenuStringA',\
        GetMenuStringW,'GetMenuStringW',\
        GetMessageA,'GetMessageA',\
-       GetMessageW,'GetMessageW',\
        GetMessageExtraInfo,'GetMessageExtraInfo',\
        GetMessagePos,'GetMessagePos',\
        GetMessageTime,'GetMessageTime',\
+       GetMessageW,'GetMessageW',\
        GetMonitorInfoA,'GetMonitorInfoA',\
        GetMonitorInfoW,'GetMonitorInfoW',\
-       GetMouseMovePoints,'GetMouseMovePoints',\
+       GetMouseMovePointsEx,'GetMouseMovePointsEx',\
        GetNextDlgGroupItem,'GetNextDlgGroupItem',\
        GetNextDlgTabItem,'GetNextDlgTabItem',\
        GetOpenClipboardWindow,'GetOpenClipboardWindow',\
        GetParent,'GetParent',\
+       GetPointerInfo,'GetPointerInfo',\
+       GetPointerPenInfo,'GetPointerPenInfo',\
+       GetPointerTouchInfo,'GetPointerTouchInfo',\
+       GetPointerType,'GetPointerType',\
        GetPriorityClipboardFormat,'GetPriorityClipboardFormat',\
        GetProcessWindowStation,'GetProcessWindowStation',\
        GetPropA,'GetPropA',\
        GetPropW,'GetPropW',\
        GetQueueStatus,'GetQueueStatus',\
+       GetRawInputBuffer,'GetRawInputBuffer',\
+       GetRawInputData,'GetRawInputData',\
+       GetRawInputDeviceInfoA,'GetRawInputDeviceInfoA',\
+       GetRawInputDeviceInfoW,'GetRawInputDeviceInfoW',\
+       GetRawInputDeviceList,'GetRawInputDeviceList',\
+       GetRegisteredRawInputDevices,'GetRegisteredRawInputDevices',\
        GetScrollBarInfo,'GetScrollBarInfo',\
        GetScrollInfo,'GetScrollInfo',\
        GetScrollPos,'GetScrollPos',\
@@ -308,11 +332,14 @@ import user32,\
        GetSubMenu,'GetSubMenu',\
        GetSysColor,'GetSysColor',\
        GetSysColorBrush,'GetSysColorBrush',\
+       GetSystemDpiForProcess,'GetSystemDpiForProcess',\
        GetSystemMenu,'GetSystemMenu',\
        GetSystemMetrics,'GetSystemMetrics',\
+       GetSystemMetricsForDpi,'GetSystemMetricsForDpi',\
        GetTabbedTextExtentA,'GetTabbedTextExtentA',\
        GetTabbedTextExtentW,'GetTabbedTextExtentW',\
        GetThreadDesktop,'GetThreadDesktop',\
+       GetThreadDpiAwarenessContext,'GetThreadDpiAwarenessContext',\
        GetTitleBarInfo,'GetTitleBarInfo',\
        GetTopWindow,'GetTopWindow',\
        GetUpdateRect,'GetUpdateRect',\
@@ -323,48 +350,49 @@ import user32,\
        GetWindow,'GetWindow',\
        GetWindowContextHelpId,'GetWindowContextHelpId',\
        GetWindowDC,'GetWindowDC',\
+       GetWindowDpiAwarenessContext,'GetWindowDpiAwarenessContext',\
        GetWindowInfo,'GetWindowInfo',\
        GetWindowLongA,'GetWindowLongA',\
-       GetWindowLongW,'GetWindowLongW',\
        GetWindowLongPtrA,'GetWindowLongPtrA',\
        GetWindowLongPtrW,'GetWindowLongPtrW',\
+       GetWindowLongW,'GetWindowLongW',\
        GetWindowModuleFileNameA,'GetWindowModuleFileNameA',\
        GetWindowModuleFileNameW,'GetWindowModuleFileNameW',\
        GetWindowPlacement,'GetWindowPlacement',\
        GetWindowRect,'GetWindowRect',\
        GetWindowRgn,'GetWindowRgn',\
        GetWindowTextA,'GetWindowTextA',\
-       GetWindowTextW,'GetWindowTextW',\
        GetWindowTextLengthA,'GetWindowTextLengthA',\
        GetWindowTextLengthW,'GetWindowTextLengthW',\
+       GetWindowTextW,'GetWindowTextW',\
        GetWindowThreadProcessId,'GetWindowThreadProcessId',\
        GetWindowWord,'GetWindowWord',\
        GrayStringA,'GrayStringA',\
        GrayStringW,'GrayStringW',\
        HideCaret,'HideCaret',\
        HiliteMenuItem,'HiliteMenuItem',\
+       ImpersonateDdeClientWindow,'ImpersonateDdeClientWindow',\
        IMPGetIMEA,'IMPGetIMEA',\
        IMPGetIMEW,'IMPGetIMEW',\
        IMPQueryIMEA,'IMPQueryIMEA',\
        IMPQueryIMEW,'IMPQueryIMEW',\
        IMPSetIMEA,'IMPSetIMEA',\
        IMPSetIMEW,'IMPSetIMEW',\
-       ImpersonateDdeClientWindow,'ImpersonateDdeClientWindow',\
+       InflateRect,'InflateRect',\
        InSendMessage,'InSendMessage',\
        InSendMessageEx,'InSendMessageEx',\
-       InflateRect,'InflateRect',\
        InsertMenuA,'InsertMenuA',\
-       InsertMenuW,'InsertMenuW',\
        InsertMenuItemA,'InsertMenuItemA',\
        InsertMenuItemW,'InsertMenuItemW',\
+       InsertMenuW,'InsertMenuW',\
        IntersectRect,'IntersectRect',\
        InvalidateRect,'InvalidateRect',\
        InvalidateRgn,'InvalidateRgn',\
        InvertRect,'InvertRect',\
        IsCharAlphaA,'IsCharAlphaA',\
-       IsCharAlphaW,'IsCharAlphaW',\
        IsCharAlphaNumericA,'IsCharAlphaNumericA',\
        IsCharAlphaNumericW,'IsCharAlphaNumericW',\
+       IsCharAlphaW,'IsCharAlphaW',\
        IsCharLowerA,'IsCharLowerA',\
        IsCharLowerW,'IsCharLowerW',\
        IsCharUpperA,'IsCharUpperA',\
@@ -374,24 +402,29 @@ import user32,\
        IsDialogMessageA,'IsDialogMessageA',\
        IsDialogMessageW,'IsDialogMessageW',\
        IsDlgButtonChecked,'IsDlgButtonChecked',\
+       IsGUIThread,'IsGUIThread',\
+       IsHungAppWindow,'IsHungAppWindow',\
        IsIconic,'IsIconic',\
        IsMenu,'IsMenu',\
+       IsMouseInPointerEnabled,'IsMouseInPointerEnabled',\
+       IsProcessDPIAware,'IsProcessDPIAware',\
        IsRectEmpty,'IsRectEmpty',\
+       IsValidDpiAwarenessContext,'IsValidDpiAwarenessContext',\
        IsWindow,'IsWindow',\
        IsWindowEnabled,'IsWindowEnabled',\
        IsWindowUnicode,'IsWindowUnicode',\
        IsWindowVisible,'IsWindowVisible',\
        IsZoomed,'IsZoomed',\
-       KillSystemTimer,'KillSystemTimer',\
+       keybd_event,'keybd_event',\
        KillTimer,'KillTimer',\
        LoadAcceleratorsA,'LoadAcceleratorsA',\
        LoadAcceleratorsW,'LoadAcceleratorsW',\
        LoadBitmapA,'LoadBitmapA',\
        LoadBitmapW,'LoadBitmapW',\
        LoadCursorA,'LoadCursorA',\
-       LoadCursorW,'LoadCursorW',\
        LoadCursorFromFileA,'LoadCursorFromFileA',\
        LoadCursorFromFileW,'LoadCursorFromFileW',\
+       LoadCursorW,'LoadCursorW',\
        LoadIconA,'LoadIconA',\
        LoadIconW,'LoadIconW',\
        LoadImageA,'LoadImageA',\
@@ -399,43 +432,47 @@ import user32,\
        LoadKeyboardLayoutA,'LoadKeyboardLayoutA',\
        LoadKeyboardLayoutW,'LoadKeyboardLayoutW',\
        LoadMenuA,'LoadMenuA',\
-       LoadMenuW,'LoadMenuW',\
        LoadMenuIndirectA,'LoadMenuIndirectA',\
        LoadMenuIndirectW,'LoadMenuIndirectW',\
+       LoadMenuW,'LoadMenuW',\
        LoadStringA,'LoadStringA',\
        LoadStringW,'LoadStringW',\
+       LockSetForegroundWindow,'LockSetForegroundWindow',\
        LockWindowUpdate,'LockWindowUpdate',\
        LockWorkStation,'LockWorkStation',\
+       LogicalToPhysicalPoint,'LogicalToPhysicalPoint',\
+       LogicalToPhysicalPointForPerMonitorDPI,'LogicalToPhysicalPointForPerMonitorDPI',\
        LookupIconIdFromDirectory,'LookupIconIdFromDirectory',\
        LookupIconIdFromDirectoryEx,'LookupIconIdFromDirectoryEx',\
        MapDialogRect,'MapDialogRect',\
        MapVirtualKeyA,'MapVirtualKeyA',\
-       MapVirtualKeyW,'MapVirtualKeyW',\
        MapVirtualKeyExA,'MapVirtualKeyExA',\
        MapVirtualKeyExW,'MapVirtualKeyExW',\
+       MapVirtualKeyW,'MapVirtualKeyW',\
        MapWindowPoints,'MapWindowPoints',\
        MenuItemFromPoint,'MenuItemFromPoint',\
        MessageBeep,'MessageBeep',\
        MessageBoxA,'MessageBoxA',\
-       MessageBoxW,'MessageBoxW',\
        MessageBoxExA,'MessageBoxExA',\
        MessageBoxExW,'MessageBoxExW',\
        MessageBoxIndirectA,'MessageBoxIndirectA',\
        MessageBoxIndirectW,'MessageBoxIndirectW',\
+       MessageBoxW,'MessageBoxW',\
        ModifyMenuA,'ModifyMenuA',\
        ModifyMenuW,'ModifyMenuW',\
        MonitorFromPoint,'MonitorFromPoint',\
        MonitorFromRect,'MonitorFromRect',\
        MonitorFromWindow,'MonitorFromWindow',\
+       mouse_event,'mouse_event',\
        MoveWindow,'MoveWindow',\
        MsgWaitForMultipleObjects,'MsgWaitForMultipleObjects',\
        MsgWaitForMultipleObjectsEx,'MsgWaitForMultipleObjectsEx',\
        NotifyWinEvent,'NotifyWinEvent',\
        OemKeyScan,'OemKeyScan',\
        OemToCharA,'OemToCharA',\
-       OemToCharW,'OemToCharW',\
        OemToCharBuffA,'OemToCharBuffA',\
        OemToCharBuffW,'OemToCharBuffW',\
+       OemToCharW,'OemToCharW',\
        OffsetRect,'OffsetRect',\
        OpenClipboard,'OpenClipboard',\
        OpenDesktopA,'OpenDesktopA',\
@@ -448,25 +485,34 @@ import user32,\
        PaintDesktop,'PaintDesktop',\
        PeekMessageA,'PeekMessageA',\
        PeekMessageW,'PeekMessageW',\
+       PhysicalToLogicalPoint,'PhysicalToLogicalPoint',\
+       PhysicalToLogicalPointForPerMonitorDPI,'PhysicalToLogicalPointForPerMonitorDPI',\
        PostMessageA,'PostMessageA',\
        PostMessageW,'PostMessageW',\
        PostQuitMessage,'PostQuitMessage',\
        PostThreadMessageA,'PostThreadMessageA',\
        PostThreadMessageW,'PostThreadMessageW',\
+       PrintWindow,'PrintWindow',\
        PtInRect,'PtInRect',\
+       QueryDisplayConfig,'QueryDisplayConfig',\
        RealChildWindowFromPoint,'RealChildWindowFromPoint',\
        RealGetWindowClassA,'RealGetWindowClassA',\
        RealGetWindowClassW,'RealGetWindowClassW',\
        RedrawWindow,'RedrawWindow',\
        RegisterClassA,'RegisterClassA',\
-       RegisterClassW,'RegisterClassW',\
        RegisterClassExA,'RegisterClassExA',\
        RegisterClassExW,'RegisterClassExW',\
+       RegisterClassW,'RegisterClassW',\
        RegisterClipboardFormatA,'RegisterClipboardFormatA',\
        RegisterClipboardFormatW,'RegisterClipboardFormatW',\
        RegisterDeviceNotificationA,'RegisterDeviceNotificationA',\
        RegisterDeviceNotificationW,'RegisterDeviceNotificationW',\
        RegisterHotKey,'RegisterHotKey',\
+       RegisterPointerInputTarget,'RegisterPointerInputTarget',\
+       RegisterPowerSettingNotification,'RegisterPowerSettingNotification',\
+       RegisterRawInputDevices,'RegisterRawInputDevices',\
+       RegisterShellHookWindow,'RegisterShellHookWindow',\
+       RegisterSuspendResumeNotification,'RegisterSuspendResumeNotification',\
        RegisterWindowMessageA,'RegisterWindowMessageA',\
        RegisterWindowMessageW,'RegisterWindowMessageW',\
        ReleaseCapture,'ReleaseCapture',\
@@ -477,7 +523,6 @@ import user32,\
        ReplyMessage,'ReplyMessage',\
        ReuseDDElParam,'ReuseDDElParam',\
        ScreenToClient,'ScreenToClient',\
-       ScrollChildren,'ScrollChildren',\
        ScrollDC,'ScrollDC',\
        ScrollWindow,'ScrollWindow',\
        ScrollWindowEx,'ScrollWindowEx',\
@@ -487,11 +532,11 @@ import user32,\
        SendIMEMessageExW,'SendIMEMessageExW',\
        SendInput,'SendInput',\
        SendMessageA,'SendMessageA',\
-       SendMessageW,'SendMessageW',\
        SendMessageCallbackA,'SendMessageCallbackA',\
        SendMessageCallbackW,'SendMessageCallbackW',\
        SendMessageTimeoutA,'SendMessageTimeoutA',\
        SendMessageTimeoutW,'SendMessageTimeoutW',\
+       SendMessageW,'SendMessageW',\
        SendNotifyMessageA,'SendNotifyMessageA',\
        SendNotifyMessageW,'SendNotifyMessageW',\
        SetActiveWindow,'SetActiveWindow',\
@@ -499,6 +544,8 @@ import user32,\
        SetCaretBlinkTime,'SetCaretBlinkTime',\
        SetCaretPos,'SetCaretPos',\
        SetClassLongA,'SetClassLongA',\
+       SetClassLongPtrA,'SetClassLongPtrA',\
+       SetClassLongPtrW,'SetClassLongPtrW',\
        SetClassLongW,'SetClassLongW',\
        SetClassWord,'SetClassWord',\
        SetClipboardData,'SetClipboardData',\
@@ -526,6 +573,8 @@ import user32,\
        SetMessageExtraInfo,'SetMessageExtraInfo',\
        SetMessageQueue,'SetMessageQueue',\
        SetParent,'SetParent',\
+       SetProcessDPIAware,'SetProcessDPIAware',\
+       SetProcessDpiAwarenessContext,'SetProcessDpiAwarenessContext',\
        SetProcessWindowStation,'SetProcessWindowStation',\
        SetPropA,'SetPropA',\
        SetPropW,'SetPropW',\
@@ -537,37 +586,43 @@ import user32,\
        SetShellWindow,'SetShellWindow',\
        SetSysColors,'SetSysColors',\
        SetSystemCursor,'SetSystemCursor',\
-       SetSystemMenu,'SetSystemMenu',\
-       SetSystemTimer,'SetSystemTimer',\
        SetThreadDesktop,'SetThreadDesktop',\
+       SetThreadDpiAwarenessContext,'SetThreadDpiAwarenessContext',\
        SetTimer,'SetTimer',\
        SetUserObjectInformationA,'SetUserObjectInformationA',\
        SetUserObjectInformationW,'SetUserObjectInformationW',\
        SetUserObjectSecurity,'SetUserObjectSecurity',\
-       SetWinEventHook,'SetWinEventHook',\
        SetWindowContextHelpId,'SetWindowContextHelpId',\
+       SetWindowDisplayAffinity,'SetWindowDisplayAffinity',\
        SetWindowLongA,'SetWindowLongA',\
+       SetWindowLongPtrA,'SetWindowLongPtrA',\
+       SetWindowLongPtrW,'SetWindowLongPtrW',\
        SetWindowLongW,'SetWindowLongW',\
        SetWindowPlacement,'SetWindowPlacement',\
        SetWindowPos,'SetWindowPos',\
        SetWindowRgn,'SetWindowRgn',\
+       SetWindowsHookA,'SetWindowsHookA',\
+       SetWindowsHookExA,'SetWindowsHookExA',\
+       SetWindowsHookExW,'SetWindowsHookExW',\
+       SetWindowsHookW,'SetWindowsHookW',\
        SetWindowTextA,'SetWindowTextA',\
        SetWindowTextW,'SetWindowTextW',\
        SetWindowWord,'SetWindowWord',\
-       SetWindowsHookA,'SetWindowsHookA',\
-       SetWindowsHookW,'SetWindowsHookW',\
-       SetWindowsHookExA,'SetWindowsHookExA',\
-       SetWindowsHookExW,'SetWindowsHookExW',\
+       SetWinEventHook,'SetWinEventHook',\
        ShowCaret,'ShowCaret',\
        ShowCursor,'ShowCursor',\
        ShowOwnedPopups,'ShowOwnedPopups',\
        ShowScrollBar,'ShowScrollBar',\
        ShowWindow,'ShowWindow',\
        ShowWindowAsync,'ShowWindowAsync',\
+       ShutdownBlockReasonCreate,'ShutdownBlockReasonCreate',\
+       ShutdownBlockReasonDestroy,'ShutdownBlockReasonDestroy',\
+       ShutdownBlockReasonQuery,'ShutdownBlockReasonQuery',\
        SubtractRect,'SubtractRect',\
        SwapMouseButton,'SwapMouseButton',\
        SwitchDesktop,'SwitchDesktop',\
        SystemParametersInfoA,'SystemParametersInfoA',\
+       SystemParametersInfoForDpi,'SystemParametersInfoForDpi',\
        SystemParametersInfoW,'SystemParametersInfoW',\
        TabbedTextOutA,'TabbedTextOutA',\
        TabbedTextOutW,'TabbedTextOutW',\
@@ -580,13 +635,14 @@ import user32,\
        TrackMouseEvent,'TrackMouseEvent',\
        TrackPopupMenu,'TrackPopupMenu',\
        TrackPopupMenuEx,'TrackPopupMenuEx',\
+       TranslateAccelerator,'TranslateAccelerator',\
        TranslateAcceleratorA,'TranslateAcceleratorA',\
        TranslateAcceleratorW,'TranslateAcceleratorW',\
        TranslateMDISysAccel,'TranslateMDISysAccel',\
        TranslateMessage,'TranslateMessage',\
-       UnhookWinEvent,'UnhookWinEvent',\
        UnhookWindowsHook,'UnhookWindowsHook',\
        UnhookWindowsHookEx,'UnhookWindowsHookEx',\
+       UnhookWinEvent,'UnhookWinEvent',\
        UnionRect,'UnionRect',\
        UnloadKeyboardLayout,'UnloadKeyboardLayout',\
        UnpackDDElParam,'UnpackDDElParam',\
@@ -594,30 +650,32 @@ import user32,\
        UnregisterClassW,'UnregisterClassW',\
        UnregisterDeviceNotification,'UnregisterDeviceNotification',\
        UnregisterHotKey,'UnregisterHotKey',\
+       UnregisterPowerSettingNotification,'UnregisterPowerSettingNotification',\
+       UnregisterSuspendResumeNotification,'UnregisterSuspendResumeNotification',\
+       UpdateLayeredWindow,'UpdateLayeredWindow',\
+       UpdateLayeredWindowIndirect,'UpdateLayeredWindowIndirect',\
        UpdateWindow,'UpdateWindow',\
        UserHandleGrantAccess,'UserHandleGrantAccess',\
        ValidateRect,'ValidateRect',\
        ValidateRgn,'ValidateRgn',\
        VkKeyScanA,'VkKeyScanA',\
-       VkKeyScanW,'VkKeyScanW',\
        VkKeyScanExA,'VkKeyScanExA',\
        VkKeyScanExW,'VkKeyScanExW',\
+       VkKeyScanW,'VkKeyScanW',\
+       WaitForInputIdle,'WaitForInputIdle',\
+       WaitMessage,'WaitMessage',\
+       WindowFromDC,'WindowFromDC',\
+       WindowFromPoint,'WindowFromPoint',\
+       WinHelpA,'WinHelpA',\
+       WinHelpW,'WinHelpW',\
        WINNLSEnableIME,'WINNLSEnableIME',\
        WINNLSGetEnableStatus,'WINNLSGetEnableStatus',\
        WINNLSGetIMEHotkey,'WINNLSGetIMEHotkey',\
-       WaitForInputIdle,'WaitForInputIdle',\
-       WaitMessage,'WaitMessage',\
-       WinHelpA,'WinHelpA',\
-       WinHelpW,'WinHelpW',\
-       WindowFromDC,'WindowFromDC',\
-       WindowFromPoint,'WindowFromPoint',\
-       keybd_event,'keybd_event',\
-       mouse_event,'mouse_event',\
        wsprintfA,'wsprintfA',\
        wsprintfW,'wsprintfW',\
        wvsprintfA,'wvsprintfA',\
        wvsprintfW,'wvsprintfW'
-       
+
 api AppendMenu,\
     BroadcastSystemMessage,\
     CallMsgFilter,\
@@ -661,6 +719,7 @@ api AppendMenu,\
     DrawText,\
     DrawTextEx,\
     EnumDesktops,\
+    EnumDisplayDevices,\
     EnumDisplaySettings,\
     EnumDisplaySettingsEx,\
     EnumProps,\
@@ -672,7 +731,9 @@ api AppendMenu,\
     GetClassInfo,\
     GetClassInfoEx,\
     GetClassLong,\
+    GetClassLongPtr,\
     GetClassName,\
+    GetRawInputDeviceInfo,\
     GetClipboardFormatName,\
     GetClipboardSequenceNumber,\
     GetDlgItemText,\
@@ -737,11 +798,13 @@ api AppendMenu,\
     SendMessageTimeout,\
     SendNotifyMessage,\
     SetClassLong,\
+    SetClassLongPtr,\
     SetDlgItemText,\
     SetMenuItemInfo,\
     SetProp,\
     SetUserObjectInformation,\
     SetWindowLong,\
+    SetWindowLongPtr,\
     SetWindowText,\
     SetWindowsHook,\
     SetWindowsHookEx,\
