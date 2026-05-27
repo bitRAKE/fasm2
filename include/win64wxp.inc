@@ -9,6 +9,8 @@ include 'pcount/comctl32.inc'
 include 'pcount/comdlg32.inc'
 include 'pcount/shell32.inc'
 include 'pcount/wsock32.inc'
+include 'pcount/version.inc'
+include 'pcount/powrprof.inc'
 
 macro pcountcheck? proc*,count*
 	local pname,pcount

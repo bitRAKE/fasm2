@@ -44,7 +44,9 @@ macro _end label
 		comctl32,'COMCTL32.DLL',\
 		comdlg32,'COMDLG32.DLL',\
 		shell32,'SHELL32.DLL',\
-		wsock32,'WSOCK32.DLL'
+		wsock32,'WSOCK32.DLL',\
+		version,'VERSION.DLL',\
+		powrprof,'POWRPROF.DLL'
 
 	include! 'api/kernel32.inc'
 	include! 'api/user32.inc'
@@ -54,6 +56,8 @@ macro _end label
 	include! 'api/comdlg32.inc'
 	include! 'api/shell32.inc'
 	include! 'api/wsock32.inc'
+	include! 'api/version.inc'
+	include! 'api/powrprof.inc'
 
 end macro
 

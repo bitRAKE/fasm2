@@ -266,6 +266,7 @@ import kernel32,\
        GetLogicalDriveStringsA,'GetLogicalDriveStringsA',\
        GetLogicalDriveStringsW,'GetLogicalDriveStringsW',\
        GetLogicalDrives,'GetLogicalDrives',\
+       GetLogicalProcessorInformationEx,'GetLogicalProcessorInformationEx',\
        GetLongPathNameA,'GetLongPathNameA',\
        GetLongPathNameW,'GetLongPathNameW',\
        GetMailslotInfo,'GetMailslotInfo',\
@@ -330,6 +331,7 @@ import kernel32,\
        GetSystemTime,'GetSystemTime',\
        GetSystemTimeAdjustment,'GetSystemTimeAdjustment',\
        GetSystemTimeAsFileTime,'GetSystemTimeAsFileTime',\
+       GetSystemTimes,'GetSystemTimes',\
        GetTapeParameters,'GetTapeParameters',\
        GetTapePosition,'GetTapePosition',\
        GetTapeStatus,'GetTapeStatus',\
@@ -420,6 +422,7 @@ import kernel32,\
        IsProcessorFeaturePresent,'IsProcessorFeaturePresent',\
        IsValidCodePage,'IsValidCodePage',\
        IsValidLocale,'IsValidLocale',\
+       K32GetProcessMemoryInfo,'K32GetProcessMemoryInfo',\
        LCMapStringA,'LCMapStringA',\
        LCMapStringW,'LCMapStringW',\
        LeaveCriticalSection,'LeaveCriticalSection',\
@@ -479,11 +482,15 @@ import kernel32,\
        PostQueuedCompletionStatus,'PostQueuedCompletionStatus',\
        PrepareTape,'PrepareTape',\
        Process32First,'Process32First',\
+       Process32FirstW,'Process32FirstW',\
        Process32Next,'Process32Next',\
+       Process32NextW,'Process32NextW',\
        PulseEvent,'PulseEvent',\
        PurgeComm,'PurgeComm',\
        QueryDosDeviceA,'QueryDosDeviceA',\
        QueryDosDeviceW,'QueryDosDeviceW',\
+       QueryFullProcessImageNameA,'QueryFullProcessImageNameA',\
+       QueryFullProcessImageNameW,'QueryFullProcessImageNameW',\
        QueryInformationJobObject,'QueryInformationJobObject',\
        QueryPerformanceCounter,'QueryPerformanceCounter',\
        QueryPerformanceFrequency,'QueryPerformanceFrequency',\
@@ -844,6 +851,7 @@ api AddAtom,\
     OutputDebugString,\
     PeekConsoleInput,\
     QueryDosDevice,\
+    QueryFullProcessImageName,\
     ReadConsole,\
     ReadConsoleInput,\
     ReadConsoleInputEx,\

@@ -141,6 +141,8 @@ import advapi32,\
        EnumDependentServicesW,'EnumDependentServicesW',\
        EnumServicesStatusA,'EnumServicesStatusA',\
        EnumServicesStatusW,'EnumServicesStatusW',\
+       EnumServicesStatusExA,'EnumServicesStatusExA',\
+       EnumServicesStatusExW,'EnumServicesStatusExW',\
        EqualPrefixSid,'EqualPrefixSid',\
        EqualSid,'EqualSid',\
        FindFirstFreeAce,'FindFirstFreeAce',\
@@ -458,6 +460,7 @@ api AbortSystemShutdown,\
     EncryptFile,\
     EnumDependentServices,\
     EnumServicesStatus,\
+    EnumServicesStatusEx,\
     GetAccessPermissionsForObject,\
     GetAuditedPermissionsFromAcl,\
     GetCurrentHwProfile,\

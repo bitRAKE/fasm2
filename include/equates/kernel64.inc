@@ -53,6 +53,18 @@ struct MEMORYSTATUS
   dwAvailVirtual  dq ?
 ends
 
+struct MEMORYSTATUSEX
+  dwLength		  dd ?
+  dwMemoryLoad		  dd ?
+  ullTotalPhys 	  dq ?
+  ullAvailPhys 	  dq ?
+  ullTotalPageFile	  dq ?
+  ullAvailPageFile	  dq ?
+  ullTotalVirtual	  dq ?
+  ullAvailVirtual	  dq ?
+  ullAvailExtendedVirtual dq ?
+ends
+
 struct STARTUPINFO
   cb		  dd ?
 		  dd ?
@@ -82,6 +94,89 @@ struct SECURITY_ATTRIBUTES
   lpSecurityDescriptor	 dq ?
   bInheritHandle	 dd ?
 			 dd ?	; tail padding
+ends
+
+struct SID_AND_ATTRIBUTES
+  Sid	     dq ?
+  Attributes dd ?
+	     dd ?
+ends
+
+struct TOKEN_USER
+  User SID_AND_ATTRIBUTES
+ends
+
+struct SERVICE_STATUS_PROCESS
+  dwServiceType		    dd ?
+  dwCurrentState	    dd ?
+  dwControlsAccepted	    dd ?
+  dwWin32ExitCode	    dd ?
+  dwServiceSpecificExitCode dd ?
+  dwCheckPoint 	    dd ?
+  dwWaitHint		    dd ?
+  dwProcessId		    dd ?
+  dwServiceFlags	    dd ?
+ends
+
+struct ENUM_SERVICE_STATUS_PROCESS
+  lpServiceName       dq ?
+  lpDisplayName       dq ?
+  ServiceStatusProcess SERVICE_STATUS_PROCESS
+		       align 8
+ends
+
+struct ENUM_SERVICE_STATUS_PROCESSA
+  lpServiceName       dq ?
+  lpDisplayName       dq ?
+  ServiceStatusProcess SERVICE_STATUS_PROCESS
+		       align 8
+ends
+
+struct ENUM_SERVICE_STATUS_PROCESSW
+  lpServiceName       dq ?
+  lpDisplayName       dq ?
+  ServiceStatusProcess SERVICE_STATUS_PROCESS
+		       align 8
+ends
+
+struct GROUP_AFFINITY
+  Mask	   dq ?
+  Group    dw ?
+  Reserved dw 3 dup (?)
+ends
+
+struct PROCESSOR_RELATIONSHIP
+  Flags 	  db ?
+  EfficiencyClass db ?
+  Reserved	  db 20 dup (?)
+  GroupCount	  dw ?
+  GroupMask	  GROUP_AFFINITY
+ends
+
+struct CACHE_RELATIONSHIP
+  Level       db ?
+  Associativity db ?
+  LineSize    dw ?
+  CacheSize   dd ?
+  Type	      dd ?
+  Reserved    db 18 dup (?)
+  GroupCount  dw ?
+  GroupMask   GROUP_AFFINITY
+ends
+
+struct SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX
+  Relationship dd ?
+  Size	       dd ?
+  Processor    PROCESSOR_RELATIONSHIP
+ends
+
+struct PROCESSOR_POWER_INFORMATION
+  Number	   dd ?
+  MaxMhz	   dd ?
+  CurrentMhz	   dd ?
+  MhzLimit	   dd ?
+  MaxIdleState	   dd ?
+  CurrentIdleState dd ?
 ends
 
 struct LARGE_INTEGER
@@ -166,6 +261,78 @@ struct WIN32_FIND_DATAW
   cAlternateFileName du 14 dup (?)
 ends
 
+struct PROCESSENTRY32
+  dwSize                 dd ?
+  cntUsage               dd ?
+  th32ProcessID          dd ?
+                         db 4 dup (?)
+  th32DefaultHeapID      dq ?
+  th32ModuleID           dd ?
+  cntThreads             dd ?
+  th32ParentProcessID    dd ?
+  pcPriClassBase         dd ?
+  dwFlags                dd ?
+  szExeFile              TCHAR MAX_PATH dup (?)
+                         align 8
+ends
+
+struct PROCESSENTRY32A
+  dwSize                 dd ?
+  cntUsage               dd ?
+  th32ProcessID          dd ?
+                         db 4 dup (?)
+  th32DefaultHeapID      dq ?
+  th32ModuleID           dd ?
+  cntThreads             dd ?
+  th32ParentProcessID    dd ?
+  pcPriClassBase         dd ?
+  dwFlags                dd ?
+  szExeFile              db MAX_PATH dup (?)
+                         align 8
+ends
+
+struct PROCESSENTRY32W
+  dwSize                 dd ?
+  cntUsage               dd ?
+  th32ProcessID          dd ?
+                         db 4 dup (?)
+  th32DefaultHeapID      dq ?
+  th32ModuleID           dd ?
+  cntThreads             dd ?
+  th32ParentProcessID    dd ?
+  pcPriClassBase         dd ?
+  dwFlags                dd ?
+  szExeFile              du MAX_PATH dup (?)
+                         align 8
+ends
+
+struct PROCESS_MEMORY_COUNTERS
+  cb                         dd ?
+  PageFaultCount             dd ?
+  PeakWorkingSetSize         dq ?
+  WorkingSetSize             dq ?
+  QuotaPeakPagedPoolUsage    dq ?
+  QuotaPagedPoolUsage        dq ?
+  QuotaPeakNonPagedPoolUsage dq ?
+  QuotaNonPagedPoolUsage     dq ?
+  PagefileUsage              dq ?
+  PeakPagefileUsage          dq ?
+ends
+
+struct PROCESS_MEMORY_COUNTERS_EX
+  cb                         dd ?
+  PageFaultCount             dd ?
+  PeakWorkingSetSize         dq ?
+  WorkingSetSize             dq ?
+  QuotaPeakPagedPoolUsage    dq ?
+  QuotaPagedPoolUsage        dq ?
+  QuotaPeakNonPagedPoolUsage dq ?
+  QuotaNonPagedPoolUsage     dq ?
+  PagefileUsage              dq ?
+  PeakPagefileUsage          dq ?
+  PrivateUsage               dq ?
+ends
+
 ; General constants
 
 NULL  = 0
@@ -195,6 +362,7 @@ GENERIC_READ		  = 80000000h
 GENERIC_WRITE		  = 40000000h
 GENERIC_EXECUTE 	  = 20000000h
 GENERIC_ALL		  = 10000000h
+TOKEN_QUERY		  = 00000008h
 PROCESS_TERMINATE	  = 00000001h
 PROCESS_CREATE_THREAD	  = 00000002h
 PROCESS_VM_OPERATION	  = 00000008h
@@ -205,10 +373,80 @@ PROCESS_CREATE_PROCESS	  = 00000080h
 PROCESS_SET_QUOTA	  = 00000100h
 PROCESS_SET_INFORMATION   = 00000200h
 PROCESS_QUERY_INFORMATION = 00000400h
+PROCESS_QUERY_LIMITED_INFORMATION = 00001000h
 PROCESS_ALL_ACCESS	  = STANDARD_RIGHTS_REQUIRED or SYNCHRONIZE or 0FFFh
 FILE_SHARE_READ 	  = 00000001h
 FILE_SHARE_WRITE	  = 00000002h
 FILE_SHARE_DELETE	  = 00000004h
+
+; ToolHelp snapshot flags
+
+TH32CS_SNAPHEAPLIST = 00000001h
+TH32CS_SNAPPROCESS  = 00000002h
+TH32CS_SNAPTHREAD   = 00000004h
+TH32CS_SNAPMODULE   = 00000008h
+TH32CS_SNAPMODULE32 = 00000010h
+TH32CS_SNAPALL      = TH32CS_SNAPHEAPLIST or TH32CS_SNAPPROCESS or TH32CS_SNAPTHREAD or TH32CS_SNAPMODULE
+TH32CS_INHERIT      = 80000000h
+
+; TOKEN_INFORMATION_CLASS
+
+TokenUser = 1
+
+; Service Control Manager access and enumeration
+
+SC_MANAGER_ENUMERATE_SERVICE = 00000004h
+SC_ENUM_PROCESS_INFO = 0
+
+; Service types
+
+SERVICE_KERNEL_DRIVER	  = 00000001h
+SERVICE_FILE_SYSTEM_DRIVER = 00000002h
+SERVICE_ADAPTER 	  = 00000004h
+SERVICE_RECOGNIZER_DRIVER = 00000008h
+SERVICE_DRIVER 	  = SERVICE_KERNEL_DRIVER or SERVICE_FILE_SYSTEM_DRIVER or SERVICE_RECOGNIZER_DRIVER
+SERVICE_WIN32_OWN_PROCESS = 00000010h
+SERVICE_WIN32_SHARE_PROCESS = 00000020h
+SERVICE_WIN32		  = SERVICE_WIN32_OWN_PROCESS or SERVICE_WIN32_SHARE_PROCESS
+
+; Service states
+
+SERVICE_STOPPED 	  = 00000001h
+SERVICE_START_PENDING	  = 00000002h
+SERVICE_STOP_PENDING	  = 00000003h
+SERVICE_RUNNING 	  = 00000004h
+SERVICE_CONTINUE_PENDING  = 00000005h
+SERVICE_PAUSE_PENDING	  = 00000006h
+SERVICE_PAUSED		  = 00000007h
+SERVICE_ACTIVE 	  = 00000001h
+SERVICE_INACTIVE	  = 00000002h
+SERVICE_STATE_ALL	  = SERVICE_ACTIVE or SERVICE_INACTIVE
+
+; LOGICAL_PROCESSOR_RELATIONSHIP
+
+RelationProcessorCore	 = 0
+RelationNumaNode	 = 1
+RelationCache		 = 2
+RelationProcessorPackage = 3
+RelationGroup		 = 4
+RelationProcessorDie	 = 5
+RelationNumaNodeEx	 = 6
+RelationProcessorModule  = 7
+RelationAll		 = 0FFFFh
+
+; PROCESSOR_CACHE_TYPE
+
+CacheUnified	 = 0
+CacheInstruction = 1
+CacheData	 = 2
+CacheTrace	 = 3
+CacheUnknown	 = 4
+
+LTP_PC_SMT = 00000001h
+
+; POWER_INFORMATION_LEVEL
+
+ProcessorInformation = 11
 
 ; CreateFile actions
 
