@@ -33,7 +33,7 @@ The script calls the repository-local `..\..\fasm2.cmd`.
 
 ## Controls
 
-- `W`, `A`, `S`, `D`: turn the snake.
+- Arrow keys or `W`, `A`, `S`, `D`: turn the snake.
 - `Space`: activate the next queued bonus.
 - Any key: start from attract mode or game over.
 - `Esc`: exit.
@@ -68,9 +68,10 @@ size.
 
 The visual model is deliberately unusual for a teaching example:
 
-- `WM_ERASEBKGND` stretches the current off-screen board bitmap into the client
-  rectangle with `StretchBlt`.
-- `WM_PAINT` draws only overlay text.
+- `WM_ERASEBKGND` returns handled so Windows does not clear the client area
+  between frames.
+- `WM_PAINT` composes the current off-screen board bitmap plus overlay text into
+  a temporary frame buffer, then blits the finished frame to the window.
 
 Attract mode and game over draw a centered message without the score/lives
 overlay. Active play draws score, lives, board size, queued-bonus count, and
@@ -82,9 +83,10 @@ high-score table while the demo snake keeps playing. Game over starts on the
 high-score table, then uses the same 20-second alternation for a more
 arcade-like loop.
 
-This keeps the board renderer and overlay renderer independent. The simulation
-can redraw the memory bitmap whenever state changes, and window painting only
-has to compose the current board plus text.
+This keeps the board renderer and overlay renderer independent while avoiding
+visible erase/paint flicker. The simulation can redraw the board bitmap whenever
+state changes, and window painting only has to compose the current board plus
+text.
 
 ## Runtime State
 
@@ -160,8 +162,8 @@ WM_SIZING       snap unlocked resize rectangles to cell-size increments
 WM_NCHITTEST    provide borderless resize/move before play
 WM_KEYDOWN      start, steer, activate bonus, or exit
 WM_TIMER        advance simulation and invalidate
-WM_ERASEBKGND   stretch-blit board bitmap
-WM_PAINT        draw overlay text
+WM_ERASEBKGND   suppress background erase
+WM_PAINT        double-buffer board bitmap plus overlay text
 WM_COMMAND      handle high-score entry buttons in the score popup
 WM_DESTROY      release GDI objects and quit
 ```

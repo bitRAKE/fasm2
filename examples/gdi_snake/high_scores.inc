@@ -4,35 +4,18 @@ define __GLOBAL_DATA__ high_scores_data
 define __GLOBAL_BSS__ high_scores_bss
 
 macro high_scores_data
-	score_class_name du 'Fasm2GdiSnakeScoreEntry',0
-	score_entry_title du 'New High Score',0
-	score_entry_prompt du 'Enter initials',0
-	score_entry_ok du 'OK',0
-	score_entry_cancel du 'Skip',0
-	score_title_text du 'HIGH SCORES',0
-	score_line_format du '%u   %ls   %u',0
-	score_path_env du 'LOCALAPPDATA',0
-	score_dir_suffix du '\Fasm2Examples',0
-	score_file_suffix du '\gdi_snake.hsc',0
-	score_font_face du 'Consolas',0
-
 	default_score_values dd 50,30,20,10,5,2,1,0
 	default_score_names du 'CPU',0,'BOT',0,'ASM',0,'GDI',0
 			    du 'F2 ',0,'WIN',0,'PSK',0,'---',0
+
+	score_class_name GLOBWSTR 'Fasm2GdiSnakeScoreEntry',0
 
 	align 8
 	score_wc WNDCLASSEX cbSize: sizeof.WNDCLASSEX,\
 		style: CS_HREDRAW or CS_VREDRAW,\
 		lpfnWndProc: ScoreEntryProc,\
-		cbClsExtra: 0,\
-		cbWndExtra: 0,\
-		hInstance: 0,\
-		hIcon: 0,\
-		hCursor: 0,\
 		hbrBackground: COLOR_WINDOW + 1,\
-		lpszMenuName: 0,\
-		lpszClassName: score_class_name,\
-		hIconSm: 0
+		lpszClassName: score_class_name
 purge high_scores_data
 end macro
 
@@ -40,7 +23,6 @@ macro high_scores_bss
 	align 8
 	high_scores	rd HIGH_SCORE_COUNT
 	high_names	rw HIGH_SCORE_COUNT * HIGH_NAME_STRIDE
-	score_path	rw MAX_PATH
 	score_store	rb HIGH_SCORE_STORE_BYTES
 	score_io_done	dd ?
 	score_hash	dd ?
@@ -65,10 +47,9 @@ purge high_scores_bss
 end macro
 
 proc MixHash value
-	mov	eax,[score_hash]
-	xor	eax,ecx
-	imul	eax,01000193h
-	add	eax,9E3779B9h
+	xor	ecx,[score_hash]
+	imul	eax,ecx,0100_0193h
+	add	eax,9E37_79B9h
 	mov	[score_hash],eax
 	ret
 endp
@@ -115,13 +96,14 @@ proc InitDefaultHighScores uses rbx rsi rdi
 	ret
 endp
 
+define __GLOBAL_BSS__ score_path TCHAR MAX_PATH dup (?)
 proc BuildHighScorePath
-	invoke	GetEnvironmentVariableW,score_path_env,score_path,MAX_PATH
+	invoke	GetEnvironmentVariable,'LOCALAPPDATA',score_path,MAX_PATH
 	test	eax,eax
 	jz	.fail
-	invoke	lstrcatW,score_path,score_dir_suffix
-	invoke	CreateDirectoryW,score_path,0
-	invoke	lstrcatW,score_path,score_file_suffix
+	invoke	lstrcat,score_path,'\Fasm2Examples'
+	invoke	CreateDirectory,score_path,0
+	invoke	lstrcat,score_path,'\gdi_snake.hsc'
 	mov	eax,1
 	ret
   .fail:
@@ -130,10 +112,10 @@ proc BuildHighScorePath
 endp
 
 proc NextStoreKey keyp
-	mov	eax,ecx
-	rol	eax,5
-	add	eax,7F4A7C15h
-	xor	eax,0A53C9E21h
+	rol	ecx,5
+	mov	eax,0xA53C_9E21
+	add	ecx,0x7F4A_7C15
+	xor	eax,ecx
 	ret
 endp
 
@@ -379,7 +361,7 @@ proc CreateScoreFont height_value,weight_value
 	mov	[weight_value],rdx
 	invoke	CreateFontW,dword [height_value],0,0,0,dword [weight_value],\
 		0,0,0,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,\
-		DEFAULT_QUALITY,DEFAULT_PITCH,score_font_face
+		DEFAULT_QUALITY,DEFAULT_PITCH,'Consolas'
 	ret
 endp
 
@@ -590,8 +572,10 @@ proc ShowHighScoreEntry rank_value,score_value
 
 	invoke	EnableWindow,[hMain],0
 	invoke	CreateWindowEx,WS_EX_DLGMODALFRAME or WS_EX_CONTROLPARENT,\
-		score_class_name,score_entry_title,WS_POPUP or WS_CAPTION or WS_SYSMENU,\
-		dword [xpos],dword [ypos],SCORE_ENTRY_W,SCORE_ENTRY_H,[hMain],0,[hInstance],0
+		'Fasm2GdiSnakeScoreEntry','New High Score',\
+		WS_POPUP or WS_CAPTION or WS_SYSMENU,\
+		dword [xpos],dword [ypos],SCORE_ENTRY_W,SCORE_ENTRY_H,\
+		[hMain],0,[hInstance],0
 	mov	[hScoreDlg],rax
 	test	rax,rax
 	jnz	.show
@@ -697,7 +681,7 @@ proc DrawHighScores uses rbx, hdc
 	mov	[overlay_rect.top],eax
 	add	eax,52
 	mov	[overlay_rect.bottom],eax
-	invoke	DrawText,[hdc],score_title_text,-1,addr overlay_rect,\
+	invoke	DrawText,[hdc],'HIGH SCORES',-1,addr overlay_rect,\
 		DT_CENTER or DT_SINGLELINE or DT_NOPREFIX
 
 	mov	eax,[overlay_rect.bottom]
@@ -722,7 +706,8 @@ proc DrawHighScores uses rbx, hdc
 	mov	[namep],rax
 	mov	eax,ebx
 	inc	eax
-	invoke	wsprintf,score_line_buffer,score_line_format,eax,[namep],dword [high_scores+rbx*4]
+	invoke	wsprintf,score_line_buffer,'%u   %ls   %u',\
+		eax,[namep],dword [high_scores+rbx*4]
 	mov	eax,[client_rect.left]
 	add	eax,28
 	mov	[overlay_rect.left],eax
@@ -763,7 +748,7 @@ proc ScoreEntryProc hwnd,wmsg,wparam,lparam
 
   .wm_create:
 	mov	[hScoreDlg],rcx
-	invoke	CreateWindowEx,0,'STATIC',score_entry_prompt,\
+	invoke	CreateWindowEx,0,'STATIC','Enter initials',\
 		WS_CHILD or WS_VISIBLE or SS_CENTER,\
 		16,22,248,18,[hScoreDlg],0,[hInstance],0
 	invoke	CreateWindowEx,WS_EX_CLIENTEDGE,'EDIT','',\
@@ -771,11 +756,11 @@ proc ScoreEntryProc hwnd,wmsg,wparam,lparam
 		96,54,88,24,[hScoreDlg],IDC_SCORE_EDIT,[hInstance],0
 	mov	[hScoreEdit],rax
 	invoke	SendMessage,[hScoreEdit],EM_SETLIMITTEXT,HIGH_NAME_CHARS,0
-	invoke	CreateWindowEx,0,'BUTTON',score_entry_ok,\
+	invoke	CreateWindowEx,0,'BUTTON','OK',\
 		WS_CHILD or WS_VISIBLE or WS_TABSTOP or BS_DEFPUSHBUTTON,\
 		70,104,62,26,[hScoreDlg],IDOK,[hInstance],0
 	mov	[hScoreOk],rax
-	invoke	CreateWindowEx,0,'BUTTON',score_entry_cancel,\
+	invoke	CreateWindowEx,0,'BUTTON','Skip',\
 		WS_CHILD or WS_VISIBLE or WS_TABSTOP or BS_PUSHBUTTON,\
 		148,104,62,26,[hScoreDlg],IDCANCEL,[hInstance],0
 	mov	[hScoreCancel],rax

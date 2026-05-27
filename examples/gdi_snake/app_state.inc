@@ -8,9 +8,9 @@ macro app_state_data
 	class_name	du 'Fasm2GdiSnake',0
 
 	overlay_format	du 'Score: %u   Lives: %u   Level: %u   Board: %ux%u',13,10
-			du 'WASD move   Space bonus(%u)   Esc exit',0
+			du 'Arrows/WASD move   Space bonus(%u)   Esc exit',0
 	attract_text	du 'Resize the borderless window to choose difficulty.',13,10
-			du 'Any key starts. WASD turns. ESC exits.',0
+			du 'Any key starts. Arrows/WASD turn. ESC exits.',0
 	gameover_text	du 'Game over.',13,10
 			du 'Resize to change difficulty, then press any key.',0
 	no_bonus_text	du 'Bonus queue is empty.',0

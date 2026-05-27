@@ -1,4 +1,4 @@
-; board_gdi.inc - off-screen board rendering and WM_ERASEBKGND blitting.
+; board_gdi.inc - off-screen board rendering and stretch-blit helpers.
 
 proc CreateGameBrushes
 	iterate <name,	colorref>,\

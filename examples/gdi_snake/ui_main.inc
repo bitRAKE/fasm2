@@ -85,6 +85,61 @@ proc DrawOverlay hdc
 	ret
 endp
 
+proc PaintFrame hdc
+    locals
+	memdc dq ?
+	membmp dq ?
+	oldbmp dq ?
+	width dd ?
+	height dd ?
+    endl
+
+	mov	[hdc],rcx
+	invoke	GetClientRect,[hMain],addr client_rect
+	mov	eax,[client_rect.right]
+	sub	eax,[client_rect.left]
+	mov	[width],eax
+	mov	eax,[client_rect.bottom]
+	sub	eax,[client_rect.top]
+	mov	[height],eax
+	cmp	dword [width],0
+	jle	.direct
+	cmp	dword [height],0
+	jle	.direct
+
+	invoke	CreateCompatibleDC,[hdc]
+	mov	[memdc],rax
+	test	rax,rax
+	jz	.direct
+	invoke	CreateCompatibleBitmap,[hdc],dword [width],dword [height]
+	mov	[membmp],rax
+	test	rax,rax
+	jz	.cleanup_dc
+	invoke	SelectObject,[memdc],[membmp]
+	mov	[oldbmp],rax
+
+	fastcall StretchBoardToHdc,[memdc]
+	fastcall DrawOverlay,[memdc]
+	invoke	BitBlt,[hdc],0,0,dword [width],dword [height],\
+		[memdc],0,0,SRCCOPY
+
+	cmp	qword [oldbmp],0
+	je	.delete_bitmap
+	invoke	SelectObject,[memdc],[oldbmp]
+  .delete_bitmap:
+	invoke	DeleteObject,[membmp]
+  .cleanup_dc:
+	invoke	DeleteDC,[memdc]
+	xor	eax,eax
+	ret
+
+  .direct:
+	fastcall StretchBoardToHdc,[hdc]
+	fastcall DrawOverlay,[hdc]
+	xor	eax,eax
+	ret
+endp
+
 proc SnapPixelSpan pixel_value,min_cells,max_cells
 	mov	r9d,edx
 
@@ -280,6 +335,14 @@ proc HandleKeyDown vkey
   .playing:
 	cmp	eax,VK_SPACE
 	je	.bonus
+	cmp	eax,VK_UP
+	je	.up
+	cmp	eax,VK_LEFT
+	je	.left
+	cmp	eax,VK_DOWN
+	je	.down
+	cmp	eax,VK_RIGHT
+	je	.right
 	cmp	eax,VK_W
 	je	.up
 	cmp	eax,VK_A
@@ -351,7 +414,7 @@ proc WindowProc hwnd,wmsg,wparam,lparam
 	ret
 
   .wm_sizing:
-	fastcall SnapSizingRect,[wparam],[lparam]
+	fastcall SnapSizingRect,r8,r9
 	ret
 
   .wm_nchittest:
@@ -370,12 +433,12 @@ proc WindowProc hwnd,wmsg,wparam,lparam
 	jmp	.done_zero
 
   .wm_erasebkgnd:
-	fastcall StretchBoardToHdc,r8
+	mov	eax,1
 	ret
 
   .wm_paint:
 	invoke	BeginPaint,[hMain],addr ps
-	fastcall DrawOverlay,rax
+	fastcall PaintFrame,rax
 	invoke	EndPaint,[hMain],addr ps
 	xor	eax,eax
 	ret

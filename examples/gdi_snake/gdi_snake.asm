@@ -1,8 +1,8 @@
 ; gdi_snake.asm - borderless GDI snake game example.
 ;
-; The visible app is intentionally simple: WM_ERASEBKGND stretches the current
-; board bitmap, while WM_PAINT draws only overlay text. The hidden complexity is
-; divided into reusable modules for board rendering, simulation, and UI routing.
+; The visible app is intentionally simple: WM_PAINT composes the board bitmap
+; and overlay through a temporary frame buffer. The hidden complexity is divided
+; into reusable modules for board rendering, simulation, and UI routing.
 
 include 'windows.inc'
 

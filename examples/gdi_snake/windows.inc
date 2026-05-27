@@ -44,13 +44,13 @@ postpone
 		GLOBWSTR.here
 		GLOBSTR.here
 
-		align 16
 		irpv xdata,__GLOBAL_DATA__
+			align 16
 			xdata
 		end irpv
 
-		align 16
 		irpv xbss,__GLOBAL_BSS__
+			align 16
 			xbss
 		end irpv
 
