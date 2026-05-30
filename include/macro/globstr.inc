@@ -64,9 +64,10 @@ if defined GLOBSTR.reuse & GLOBSTR.reuse
 				end if
 			end while
 			if found >= 0
-				label . at $$+found
+				label .:size at $$+found
 			else
-				. db data
+				label .:size
+				db data
 			end if
 		end virtual
 	end struc
@@ -74,8 +75,11 @@ if defined GLOBSTR.reuse & GLOBSTR.reuse
 else
 
 	struc GLOBSTR data&
+		local size
 		virtual GLOBSTR.buffer
-			. db data
+			label .:size
+			db data
+			size := $ - .
 		end virtual
 	end struc
 

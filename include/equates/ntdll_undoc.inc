@@ -1,6 +1,6 @@
 
 ; NTDLL.DLL PHNT structures and constants
-; Standalone PHNT-derived native surface from C:\git\systeminformer\phnt\include.
+; Standalone PHNT-derived native surface from systeminformer\phnt\include.
 ; Do not include this together with equates/ntdll.inc; overlapping names are
 ; repeated here so this file can be used as its own source model.
 

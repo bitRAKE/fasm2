@@ -53,9 +53,10 @@ if defined GLOBWSTR.reuse & GLOBWSTR.reuse
 				p = p + 2
 			end while
 			if found >= 0
-				label . at $$+found
+				label .:size shr 1 at $$+found
 			else
-				. du data
+				label .:size shr 1
+				du data
 			end if
 		end virtual
 	end struc
@@ -63,8 +64,11 @@ if defined GLOBWSTR.reuse & GLOBWSTR.reuse
 else
 
 	struc GLOBWSTR data&
+		local size
 		virtual GLOBWSTR.buffer
-			. du data
+			label .:size
+			du data
+			size := ($ - .) shr 1
 		end virtual
 	end struc
 
