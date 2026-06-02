@@ -22,10 +22,10 @@ ends
 ; Richedit.h uses #pragma pack(4) on x64, so pfnCallback sits at offset 0Ch
 ; (immediately after dwCookie+dwError with no 8-byte alignment gap)
 
-struct EDITSTREAM
+struct EDITSTREAM, packed
   dwCookie    dq ?      ; offset 0
   dwError     dd ?      ; offset 8
-  pfnCallback dd ?,?    ; offset 0Ch — 8-byte pointer stored at 4-byte boundary
+  pfnCallback dq ?      ; offset 0Ch — 8-byte pointer stored at 4-byte boundary
 ends
 
 ; Text range structures
@@ -98,7 +98,8 @@ EM_SETRECT	      = 0B3h
 EM_SETRECTNP	      = 0B4h
 EM_SCROLL	      = 0B5h
 EM_LINESCROLL	      = 0B6h
-EM_SCROLLCARET	      = 0B7h
+; Richedit.h guarded fallback, normally inactive after WinUser.h:
+; EM_SCROLLCARET      = WM_USER + 49
 EM_GETMODIFY	      = 0B8h
 EM_SETMODIFY	      = 0B9h
 EM_GETLINECOUNT       = 0BAh
@@ -125,9 +126,10 @@ EM_GETPASSWORDCHAR    = 0D2h
 EM_SETMARGINS	      = 0D3h
 EM_GETMARGINS	      = 0D4h
 EM_SETLIMITTEXT       = EM_LIMITTEXT
-EM_GETLIMITTEXT       = 0D5h
-EM_POSFROMCHAR	      = 0D6h
-EM_CHARFROMPOS	      = 0D7h
+; Richedit.h guarded fallbacks, normally inactive after WinUser.h:
+; EM_GETLIMITTEXT     = WM_USER + 37
+; EM_POSFROMCHAR      = WM_USER + 38
+; EM_CHARFROMPOS      = WM_USER + 39
 EM_SETIMESTATUS       = 0D8h
 EM_GETIMESTATUS       = 0D9h
 

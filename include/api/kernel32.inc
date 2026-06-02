@@ -522,6 +522,8 @@ import kernel32,\
        ReleaseSemaphore,'ReleaseSemaphore',\
        RemoveDirectoryA,'RemoveDirectoryA',\
        RemoveDirectoryW,'RemoveDirectoryW',\
+       ReplaceFileA,'ReplaceFileA',\
+       ReplaceFileW,'ReplaceFileW',\
        RequestWakeupLatency,'RequestWakeupLatency',\
        ResetEvent,'ResetEvent',\
        ResumeThread,'ResumeThread',\
@@ -858,6 +860,7 @@ api AddAtom,\
     ReadConsoleOutput,\
     ReadConsoleOutputCharacter,\
     RemoveDirectory,\
+    ReplaceFile,\
     ScrollConsoleScreenBuffer,\
     SearchPath,\
     SetComputerName,\

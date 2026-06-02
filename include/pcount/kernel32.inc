@@ -391,6 +391,7 @@ RegisterWowExec% =  1
 ReleaseMutex% =  1
 ReleaseSemaphore% =  3
 RemoveDirectory% =  1
+ReplaceFile% =  6
 RequestWakeupLatency% =  1
 ResetEvent% =  1
 ResumeThread% =  1
