@@ -2,6 +2,7 @@
 ; NTDLL API calls
 ; Windows SDK 10.0.26100.0 declarations verified against x86/x64 ntdll.lib.
 ; Some SDK declarations are x64-only; imports are emitted only for used labels.
+; Use this as the SDK surface; use ntdll_undoc.inc instead for PHNT-native code.
 
 import ntdll,\
        NtClose,'NtClose',\

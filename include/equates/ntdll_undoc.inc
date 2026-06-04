@@ -1,6 +1,7 @@
 
 ; NTDLL.DLL PHNT structures and constants
 ; Standalone PHNT-derived native surface from systeminformer\phnt\include.
+; This is an either/or PHNT source model, not an additive delta over ntdll.inc.
 ; Do not include this together with equates/ntdll.inc; overlapping names are
 ; repeated here so this file can be used as its own source model.
 

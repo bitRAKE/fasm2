@@ -3,6 +3,7 @@
 ; Standalone PHNT-derived surface from C:\git\systeminformer\phnt\include.
 ; Verified against Windows SDK 10.0.26100.0 x86/x64 ntdll.lib.
 ; Some names are architecture/version-specific; imports are emitted only for used labels.
+; This is an either/or PHNT source model, not an additive delta over ntdll.inc.
 
 import ntdll,\
        AlpcAdjustCompletionListConcurrencyCount,'AlpcAdjustCompletionListConcurrencyCount',\

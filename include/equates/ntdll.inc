@@ -2,6 +2,7 @@
 ; NTDLL.DLL structures and constants
 ; Windows SDK 10.0.26100.0 user-mode surface:
 ;   winternl.h, rtlsupportapi.h, ip2string.h/mstcpip.h, sysinfoapi.h, winnt.h.
+; Use this as the SDK surface; use ntdll_undoc.inc instead for PHNT-native code.
 
 iterate <PTR,PTRWORD,PTRBYTES>,\
     dd,dword,4,\
