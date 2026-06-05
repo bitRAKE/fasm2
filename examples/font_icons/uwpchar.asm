@@ -2,6 +2,7 @@
 
 include 'windows.inc'
 include 'resource.h'
+include 'clear_edit.inc'
 include 'font_icons.inc'
 include 'uwpchar_data.inc'
 
@@ -51,7 +52,9 @@ struct UWP_USER_GROUP
 	   align 8
 ends
 
+define __GLOBAL_DATA__ clear_edit_data
 define __GLOBAL_DATA__ uwpchar_data
+define __GLOBAL_BSS__ clear_edit_bss
 define __GLOBAL_BSS__ uwpchar_bss
 
 macro uwpchar_data
@@ -159,6 +162,7 @@ macro uwpchar_bss
 	scroll_y	dd ?
 	show_merged_pairs dd ?
 	show_legacy	dd ?
+	filter_has_text dd ?
 	mode_tab	dd ?
 	complex_count	dd ?
 	complex_selected dd ?
@@ -2335,6 +2339,7 @@ proc InitDialogControls hwnd
 	mov	dword [font_size],24
 	mov	dword [show_merged_pairs],1
 	mov	dword [show_legacy],0
+	mov	dword [filter_has_text],0
 	mov	dword [current_group],0
 	mov	dword [color_fore],UWP_TEXT
 	mov	dword [color_back],UWP_VIEW_BG
@@ -2373,6 +2378,7 @@ proc InitDialogControls hwnd
 	invoke	GetDlgItem,[hwnd],ID_FILTER_EDIT
 	mov	[hFilter],rax
 	invoke	SendMessageW,[hFilter],EM_SETLIMITTEXT,127,0
+	fastcall ClearEdit_Attach,[hFilter],dword [filter_has_text]
 	invoke	GetDlgItem,[hwnd],ID_MODE_TAB
 	mov	[hModeTab],rax
 	invoke	GetDlgItem,[hwnd],ID_EXPORT_EDIT
@@ -2893,8 +2899,17 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	fastcall PickColor,addr color_pair
 	jmp	.done_one
   .filter_cmd:
+	invoke	GetWindowTextLengthW,[hFilter]
+	test	eax,eax
+	jz	.filter_empty
+	mov	dword [filter_has_text],1
+	jmp	.filter_state_ready
+  .filter_empty:
+	mov	dword [filter_has_text],0
+  .filter_state_ready:
 	mov	dword [scroll_y],0
 	fastcall UpdateAll
+	fastcall ClearEdit_TextChanged,[hFilter],dword [filter_has_text]
 	jmp	.done_one
   .merged_cmd:
 	invoke	SendMessageW,[hCheckMerged],BM_GETCHECK,0,0
@@ -3017,7 +3032,14 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
   .wm_ctlcoloredit:
 	mov	rax,[lparam]
 	cmp	rax,[hEdit]
+	je	.output_edit_color
+	cmp	rax,[hFilter]
 	jne	.done_zero
+	invoke	SetTextColor,[wparam],0
+	invoke	SetBkColor,[wparam],00FFFFFFh
+	invoke	GetSysColorBrush,COLOR_WINDOW
+	ret
+  .output_edit_color:
 	invoke	SetTextColor,[wparam],dword [color_fore]
 	invoke	SetBkColor,[wparam],dword [color_back]
 	mov	rax,[hViewBrush]
@@ -3061,6 +3083,9 @@ proc start
 	mov	[complex_view_wc.hInstance],rax
 
 	invoke	InitCommonControlsEx,addr icc
+	fastcall ClearEdit_Register,[hInstance]
+	test	eax,eax
+	jz	.fatal
 
 	invoke	LoadCursorW,0,IDC_ARROW
 	mov	[view_wc.hCursor],rax
