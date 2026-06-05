@@ -1,6 +1,7 @@
 format PE64 NX GUI 6.0
 
 include 'win64wx.inc'
+include 'encoding/utf8.inc'
 include 'macro/globwstr.inc'
 include 'macro/globstr.inc'
 

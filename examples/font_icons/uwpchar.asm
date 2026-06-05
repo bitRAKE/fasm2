@@ -41,7 +41,7 @@ macro uwpchar_data
 	font_mdl2_ns	GLOBWSTR 'SegoeMDL2',0
 	font_fluent_ns	GLOBWSTR 'SegoeFluent',0
 	tab_output_text GLOBWSTR 'Output',0
-	tab_complex_text GLOBWSTR 'Complex',0
+	tab_complex_text GLOBWSTR 'Layering',0
 	menu_append_text GLOBWSTR 'Append to output',0
 	menu_color_text GLOBWSTR 'Layer color',0
 	menu_move_up_text GLOBWSTR 'Move layer up',0
@@ -53,9 +53,9 @@ macro uwpchar_data
 	insert_single_fmt GLOBWSTR 13,10,'namespace %s',13,10,9,'%s := 0%04Xh',13,10,'end namespace',0
 	insert_pair_fmt GLOBWSTR 13,10,'namespace %s',13,10,9,'%s := 0%04Xh',13,10,\
 		9,'%s := 0%04Xh ; layered pair',13,10,'end namespace',0
-	complex_export_begin GLOBWSTR 13,10,'icon_layers:',13,10,0
+	complex_export_begin GLOBWSTR 13,10,'label icon_layers:icon_layers.bytes/sizeof.FONTICON_LAYER',13,10,0
 	complex_export_layer_fmt GLOBWSTR 9,'FONTICON_LAYER glyph: 0%04Xh, color: %08Xh ; %s',13,10,0
-	complex_export_end GLOBWSTR 'icon_layer_count = ($ - icon_layers) / sizeof.FONTICON_LAYER',13,10,0
+	complex_export_end GLOBWSTR '.bytes = $ - icon_layers',13,10,0
 	edit_seed	GLOBWSTR '; Click glyphs to append fasm namespace constants.',13,10,\
 		'; MDL2 Fill/Solid companions export as two-layer pairs.',0
 
@@ -2288,7 +2288,12 @@ proc ComplexViewProc hwnd,wmsg,wparam,lparam
 	mov	eax,1
 	ret
   .wm_lbuttonup:
-	fastcall AppendComplexExport
+	movsx	eax,word [lparam]
+	mov	dword [pt.x],eax
+	movsx	eax,word [lparam+2]
+	mov	dword [pt.y],eax
+	invoke	ClientToScreen,[hwnd],addr pt
+	fastcall ComplexShowContextMenu,dword [pt.x],dword [pt.y]
 	xor	eax,eax
 	ret
   .wm_contextmenu:

@@ -75,20 +75,28 @@ Two things to fold in. The font already does part of this: Segoe MDL2 Assets shi
 
 UI direction: `uwpchar` now uses a resource-backed growable dialog as its main
 window. The left-side output area is tabbed. `Output` owns the export edit;
-`Complex` owns a square-ish preview above a layer list and an append path for
+`Layering` owns a square-ish preview above a layer list and an append path for
 `FONTICON_LAYER {glyph,color}` arrays. The first mock-up is the heart stack:
 `HeartFill` in red, then `Heart` in white, rendered by
 `FontIcon_DrawLayeredGlyphArray`.
 
-The `Complex` tab is intentionally buttonless. The preview is the command
-surface: left-click appends, right-click opens a context menu. The list handles
+The `Layering` tab is intentionally buttonless. The preview is the command
+surface: left-click and right-click both open a context menu. The list handles
 editing from the keyboard: `Ctrl+Up`/`Ctrl+Down` and `+`/`-` reorder,
 `Enter`/`Space` changes color, and `Delete`/`Backspace` removes.
 
-Next growth for `Complex`: decide if list order should display bottom-to-top or
+Next growth for `Layering`: decide if list order should display bottom-to-top or
 top-to-bottom stack semantics more explicitly, add named array labels so
 repeated appends do not reuse `icon_layers`, and consider a drag/drop ordering
 path after the keyboard model feels right. Longer term, the tab should move from
 raw `COLORREF` records to role-based layers so themes and interaction states can
 be resolved at draw time.
+
+Pasting a layer block belongs with a larger layered glyph-set feature rather than
+being bolted onto `Layering` alone. `glyphset.asm` is the first standalone
+viewer for this: it loads multiple named configurations from
+`glyphset_layers.inc` and previews/navigates them as a collection. A future
+`Glyph-set` tab should bring that model back into `uwpchar`, support paste/import
+of emitted layer blocks, and let the user navigate configurations into
+`Layering` for editing.
 
