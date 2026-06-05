@@ -75,8 +75,7 @@ examples\font_icons\glyphset.exe
   surface;
 - a glyph-backed cursor selected by `WM_SETCURSOR`.
 
-`uwpchar.exe` is an assembly port of the local `C:\git\!bitRAKE\tools\uwpchar.c`
-browser. Its primary window is a growable dialog from `font_icons.rc`; the custom
+`uwpchar.exe` has a primary growable dialog window from `font_icons.rc`; the custom
 glyph grid remains a registered child window class. It enumerates real glyphs
 with `GetGlyphIndicesW`, renders a scrollable grid for `Segoe MDL2 Assets` or
 `Segoe Fluent Icons`, and appends fasm constants when cells are clicked. The
