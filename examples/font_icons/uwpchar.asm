@@ -2255,14 +2255,41 @@ proc SetModeTab mode
 	invoke	ShowWindow,[hEdit],SW_SHOW
 	invoke	ShowWindow,[hComplexView],SW_HIDE
 	invoke	ShowWindow,[hComplexList],SW_HIDE
+	invoke	SetWindowPos,[hEdit],HWND_TOP,0,0,0,0,SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE
+	fastcall RedrawActivePage
 	ret
   .complex:
 	mov	dword [mode_tab],UWP_TAB_COMPLEX
 	invoke	ShowWindow,[hEdit],SW_HIDE
 	invoke	ShowWindow,[hComplexView],SW_SHOW
 	invoke	ShowWindow,[hComplexList],SW_SHOW
+	invoke	SetWindowPos,[hComplexView],HWND_TOP,0,0,0,0,SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE
+	invoke	SetWindowPos,[hComplexList],HWND_TOP,0,0,0,0,SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE
 	fastcall ComplexUpdateSelectionState
-	invoke	InvalidateRect,[hComplexView],0,1
+	fastcall RedrawActivePage
+	ret
+endp
+
+proc RedrawActivePage
+	cmp	qword [hModeTab],0
+	je	.page
+	invoke	RedrawWindow,[hModeTab],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME
+  .page:
+	cmp	dword [mode_tab],UWP_TAB_COMPLEX
+	je	.complex
+	cmp	qword [hEdit],0
+	je	.done
+	invoke	RedrawWindow,[hEdit],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW
+	ret
+  .complex:
+	cmp	qword [hComplexView],0
+	je	.no_view
+	invoke	RedrawWindow,[hComplexView],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW
+  .no_view:
+	cmp	qword [hComplexList],0
+	je	.done
+	invoke	RedrawWindow,[hComplexList],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW
+  .done:
 	ret
 endp
 
@@ -2501,6 +2528,7 @@ proc Layout hwnd
 	mov	eax,160
   .view_h_ready:
 	invoke	MoveWindow,[hView],dword [view_x],8,dword [view_w],eax,1
+	fastcall RedrawActivePage
 	ret
 endp
 
@@ -2766,6 +2794,8 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	je	.wm_notify
 	cmp	edx,WM_VKEYTOITEM
 	je	.wm_vkeytoitem
+	cmp	edx,WM_WINDOWPOSCHANGING
+	je	.wm_windowposchanging
 	cmp	edx,WM_SIZE
 	je	.wm_size
 	cmp	edx,WM_GETMINMAXINFO
@@ -2950,6 +2980,12 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	mov	eax,UWP_VKEY_DEFAULT
 	ret
 
+  .wm_windowposchanging:
+	mov	rbx,[lparam]
+	or	dword [rbx+WINDOWPOS.flags],SWP_NOCOPYBITS
+	xor	eax,eax
+	ret
+
   .wm_notify:
 	mov	rbx,[lparam]
 	cmp	qword [rbx+NMHDR.idFrom],ID_MODE_TAB
@@ -2967,6 +3003,7 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	fastcall UpdateViewScroll,[hView]
 	invoke	InvalidateRect,[hView],0,1
 	invoke	InvalidateRect,[hComplexView],0,1
+	fastcall RedrawActivePage
 	mov	eax,1
 	ret
 
