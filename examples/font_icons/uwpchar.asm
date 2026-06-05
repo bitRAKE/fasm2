@@ -21,6 +21,13 @@ UWP_SCAN_MAX		= 0F8CCh
 UWP_TAB_OUTPUT		= 0
 UWP_TAB_COMPLEX		= 1
 UWP_COMPLEX_MAX_LAYERS	= 32
+UWP_USER_MAX_PAIRS	= 256
+UWP_USER_MAX_GROUPS	= 32
+UWP_USER_MAX_GROUP_CODES = 4096
+UWP_USER_SECTION_BYTES	= 32768
+UWP_USER_FONT_MDL2	= 1
+UWP_USER_FONT_FLUENT	= 2
+UWP_USER_FONT_ALL	= UWP_USER_FONT_MDL2 or UWP_USER_FONT_FLUENT
 UWP_HEART		= 0EB51h
 UWP_HEART_FILL		= 0EB52h
 UWP_HEART_RED		= 0000DCh
@@ -28,6 +35,21 @@ VK_OEM_PLUS		= 0BBh
 VK_OEM_MINUS		= 0BDh
 UWP_VKEY_HANDLED	= -2
 UWP_VKEY_DEFAULT	= -1
+
+struct UWP_USER_PAIR
+  base     dd ?
+  fill     dd ?
+  fontmask dd ?
+	   align 8
+ends
+
+struct UWP_USER_GROUP
+  namep    dq ?
+  first    dd ?
+  count    dd ?
+  fontmask dd ?
+	   align 8
+ends
 
 define __GLOBAL_DATA__ uwpchar_data
 define __GLOBAL_BSS__ uwpchar_bss
@@ -40,6 +62,10 @@ macro uwpchar_data
 	font_fluent	GLOBWSTR 'Segoe Fluent Icons',0
 	font_mdl2_ns	GLOBWSTR 'SegoeMDL2',0
 	font_fluent_ns	GLOBWSTR 'SegoeFluent',0
+	group_all_text GLOBWSTR 'All',0
+	user_file_leaf GLOBSTR 'uwpchar.user.txt',0
+	user_pairs_section_name GLOBSTR 'pairs',0
+	user_groups_section_name GLOBSTR 'groups',0
 	tab_output_text GLOBWSTR 'Output',0
 	tab_complex_text GLOBWSTR 'Layering',0
 	menu_append_text GLOBWSTR 'Append to output',0
@@ -57,7 +83,7 @@ macro uwpchar_data
 	complex_export_layer_fmt GLOBWSTR 9,'FONTICON_LAYER glyph: 0%04Xh, color: %08Xh ; %s',13,10,0
 	complex_export_end GLOBWSTR '.bytes = $ - icon_layers',13,10,0
 	edit_seed	GLOBWSTR '; Click glyphs to append fasm namespace constants.',13,10,\
-		'; MDL2 Fill/Solid companions export as two-layer pairs.',0
+		'; uwpchar.user.txt pairs export as two-layer pairs.',0
 
 	align 8
 	size_values	dd 16,20,24,32,40,48,64
@@ -111,6 +137,8 @@ macro uwpchar_bss
 	hButtonPair	dq ?
 	hCheckMerged	dq ?
 	hCheckLegacy	dq ?
+	hLabelGroup	dq ?
+	hComboGroup	dq ?
 	hLabelFilter	dq ?
 	hFilter		dq ?
 	hModeTab	dq ?
@@ -134,12 +162,22 @@ macro uwpchar_bss
 	mode_tab	dd ?
 	complex_count	dd ?
 	complex_selected dd ?
+	current_group	dd ?
 	pair_count dd ?
+	user_pair_count dd ?
+	user_group_count dd ?
+	user_group_code_count dd ?
 	color_fore	dd ?
 	color_back	dd ?
 	color_pair	dd ?
 	custom_colors	dd 16 dup ?
 	complex_layers rb sizeof.FONTICON_LAYER * UWP_COMPLEX_MAX_LAYERS
+	user_pairs rb sizeof.UWP_USER_PAIR * UWP_USER_MAX_PAIRS
+	user_groups rb sizeof.UWP_USER_GROUP * UWP_USER_MAX_GROUPS
+	user_group_codes dd UWP_USER_MAX_GROUP_CODES dup ?
+	user_file_path rb MAX_PATH
+	user_pairs_section rb UWP_USER_SECTION_BYTES
+	user_groups_section rb UWP_USER_SECTION_BYTES
 purge uwpchar_bss
 end macro
 
@@ -307,81 +345,6 @@ proc NameContainsFilter uses rbx rsi rdi, namep,filterp,filter_len
 	ret
 endp
 
-proc AsciiEndsWith uses rsi rdi, namep,suffixp
-    locals
-	name_len dd ?
-	suffix_len dd ?
-	root_len dd ?
-    endl
-
-	mov	[namep],rcx
-	mov	[suffixp],rdx
-	fastcall AsciiLen,[namep]
-	mov	dword [name_len],eax
-	fastcall AsciiLen,[suffixp]
-	mov	dword [suffix_len],eax
-	cmp	dword [name_len],eax
-	jb	.no
-	mov	ecx,dword [name_len]
-	sub	ecx,dword [suffix_len]
-	mov	dword [root_len],ecx
-	mov	rsi,[namep]
-	add	rsi,rcx
-	mov	rdi,[suffixp]
-	mov	ecx,dword [suffix_len]
-  .compare:
-	test	ecx,ecx
-	jz	.yes
-	mov	al,byte [rsi]
-	cmp	al,byte [rdi]
-	jne	.no
-	inc	rsi
-	inc	rdi
-	dec	ecx
-	jmp	.compare
-  .yes:
-	mov	eax,dword [root_len]
-	ret
-  .no:
-	mov	eax,-1
-	ret
-endp
-
-proc BuildAsciiCandidate uses rsi rdi, destp,srcp,prefix_len,suffixp
-	mov	[destp],rcx
-	mov	[srcp],rdx
-	mov	dword [prefix_len],r8d
-	mov	[suffixp],r9
-	mov	rdi,[destp]
-	mov	rsi,[srcp]
-	mov	ecx,dword [prefix_len]
-  .copy_prefix:
-	test	ecx,ecx
-	jz	.copy_suffix_ready
-	mov	al,byte [rsi]
-	mov	byte [rdi],al
-	inc	rsi
-	inc	rdi
-	dec	ecx
-	jmp	.copy_prefix
-  .copy_suffix_ready:
-	mov	rsi,[suffixp]
-	test	rsi,rsi
-	jz	.terminate
-  .copy_suffix:
-	mov	al,byte [rsi]
-	test	al,al
-	jz	.terminate
-	mov	byte [rdi],al
-	inc	rsi
-	inc	rdi
-	jmp	.copy_suffix
-  .terminate:
-	mov	byte [rdi],0
-	mov	rax,[destp]
-	ret
-endp
-
 proc FindName code
 	mov	dword [code],ecx
 	mov	eax,dword [code]
@@ -411,239 +374,708 @@ proc FindName code
 	ret
 endp
 
-proc FindCodeByName uses rbx, namep
+proc AsciiEndsWithInsensitive uses rsi rdi, namep,suffixp
     locals
-	low	dd ?
-	high	dd ?
-	mid	dd ?
-	table_namep dq ?
+	name_len dd ?
+	suffix_len dd ?
     endl
 
 	mov	[namep],rcx
-	mov	dword [low],0
-	mov	dword [high],uwpchar_name_count
-	lea	rbx,[uwpchar_name_index]
-  .loop:
-	mov	eax,dword [low]
-	cmp	eax,dword [high]
-	jae	.not_found
-	add	eax,dword [high]
-	shr	eax,1
-	mov	dword [mid],eax
-	movzx	edx,word [rbx+rax*2]
-	lea	rax,[uwpchar_name_strings]
-	add	rax,rdx
-	lea	rdx,[rax+uwpchar_name_text_offset]
-	mov	[table_namep],rdx
-	fastcall AsciiCompare,[namep],[table_namep]
-	test	eax,eax
-	jz	.found
-	jl	.before_mid
-	mov	eax,dword [mid]
-	inc	eax
-	mov	dword [low],eax
-	jmp	.loop
-  .before_mid:
-	mov	eax,dword [mid]
-	mov	dword [high],eax
-	jmp	.loop
+	mov	[suffixp],rdx
+	fastcall AsciiLen,[namep]
+	mov	dword [name_len],eax
+	fastcall AsciiLen,[suffixp]
+	mov	dword [suffix_len],eax
+	cmp	dword [name_len],eax
+	jb	.no
+	mov	ecx,dword [name_len]
+	sub	ecx,dword [suffix_len]
+	mov	rsi,[namep]
+	add	rsi,rcx
+	mov	rdi,[suffixp]
+	mov	ecx,dword [suffix_len]
+  .compare:
+	test	ecx,ecx
+	jz	.yes
+	movzx	eax,byte [rsi]
+	cmp	eax,'A'
+	jb	.left_ready
+	cmp	eax,'Z'
+	ja	.left_ready
+	add	eax,20h
+  .left_ready:
+	movzx	edx,byte [rdi]
+	cmp	edx,'A'
+	jb	.right_ready
+	cmp	edx,'Z'
+	ja	.right_ready
+	add	edx,20h
+  .right_ready:
+	cmp	eax,edx
+	jne	.no
+	inc	rsi
+	inc	rdi
+	dec	ecx
+	jmp	.compare
+  .yes:
+	mov	eax,1
+	ret
+  .no:
+	xor	eax,eax
+	ret
+endp
+
+proc FindAsciiChar strp,ch
+	mov	[strp],rcx
+	mov	dword [ch],edx
+	mov	rdx,[strp]
+  .scan:
+	mov	al,byte [rdx]
+	test	al,al
+	jz	.not_found
+	cmp	al,byte [ch]
+	je	.found
+	inc	rdx
+	jmp	.scan
   .found:
-	mov	eax,dword [mid]
-	movzx	edx,word [rbx+rax*2]
-	lea	rax,[uwpchar_name_strings]
-	add	rax,rdx
-	movzx	eax,word [rax]
+	mov	rax,rdx
 	ret
   .not_found:
 	xor	eax,eax
 	ret
 endp
 
-proc FindMdl2PairFill uses rbx, code,namep,base_codep,base_namepp
-    locals
-	root_len dd ?
-	base_code dd ?
-	candidate rb 256
-    endl
-
-	mov	dword [code],ecx
-	mov	[namep],rdx
-	mov	[base_codep],r8
-	mov	[base_namepp],r9
-
-	fastcall AsciiEndsWith,[namep],<A,'Fill'>
-	cmp	eax,-1
-	jne	.try_root
-	fastcall AsciiEndsWith,[namep],<A,'Filled'>
-	cmp	eax,-1
-	jne	.try_root
-	fastcall AsciiEndsWith,[namep],<A,'Solid'>
-	cmp	eax,-1
-	je	.fail
-
-  .try_root:
-	test	eax,eax
-	jle	.fail
-	mov	dword [root_len],eax
-	fastcall BuildAsciiCandidate,addr candidate,[namep],dword [root_len],0
-	fastcall FindCodeByName,addr candidate
-	test	eax,eax
-	jnz	.found_base
-	fastcall BuildAsciiCandidate,addr candidate,[namep],dword [root_len],<A,'Outline'>
-	fastcall FindCodeByName,addr candidate
-	test	eax,eax
-	jz	.fail
-
-  .found_base:
-	mov	dword [base_code],eax
-	mov	rbx,[base_codep]
-	mov	dword [rbx],eax
-	fastcall FindName,dword [base_code]
-	mov	rbx,[base_namepp]
-	mov	[rbx],rax
-	mov	eax,1
-	ret
-
-  .fail:
-	xor	eax,eax
-	ret
-endp
-
-proc FindMdl2FillForRoot uses rbx, rootp,root_len,fill_codep,fill_namepp
-    locals
-	fill_code dd ?
-	candidate rb 256
-    endl
-
-	mov	[rootp],rcx
-	mov	dword [root_len],edx
-	mov	[fill_codep],r8
-	mov	[fill_namepp],r9
-
-	fastcall BuildAsciiCandidate,addr candidate,[rootp],dword [root_len],<A,'Fill'>
-	fastcall FindCodeByName,addr candidate
-	test	eax,eax
-	jnz	.found_fill
-	fastcall BuildAsciiCandidate,addr candidate,[rootp],dword [root_len],<A,'Filled'>
-	fastcall FindCodeByName,addr candidate
-	test	eax,eax
-	jnz	.found_fill
-	fastcall BuildAsciiCandidate,addr candidate,[rootp],dword [root_len],<A,'Solid'>
-	fastcall FindCodeByName,addr candidate
-	test	eax,eax
-	jz	.fail
-
-  .found_fill:
-	mov	dword [fill_code],eax
-	mov	rbx,[fill_codep]
-	mov	dword [rbx],eax
-	fastcall FindName,dword [fill_code]
-	mov	rbx,[fill_namepp]
-	mov	[rbx],rax
-	mov	eax,1
-	ret
-
-  .fail:
-	xor	eax,eax
-	ret
-endp
-
-proc FindMdl2Pair uses rbx, code,namep,base_codep,fill_codep,base_namepp,fill_namepp
-    locals
-	base_namep dq ?
-	fill_namep dq ?
-	base_code dd ?
-	fill_code dd ?
-	root_len dd ?
-    endl
-
-	mov	dword [code],ecx
-	mov	[namep],rdx
-	mov	[base_codep],r8
-	mov	[fill_codep],r9
-
-	fastcall FindMdl2PairFill,dword [code],[namep],addr base_code,addr base_namep
-	test	eax,eax
-	jz	.try_base
-	mov	eax,dword [code]
-	mov	dword [fill_code],eax
-	mov	rax,[namep]
-	mov	[fill_namep],rax
-	jmp	.store_pair
-
-  .try_base:
-	fastcall AsciiEndsWith,[namep],<A,'Outline'>
-	cmp	eax,-1
-	je	.try_name
-	mov	dword [root_len],eax
-	fastcall FindMdl2FillForRoot,[namep],dword [root_len],addr fill_code,addr fill_namep
-	test	eax,eax
-	jnz	.base_found
-
-  .try_name:
-	fastcall AsciiLen,[namep]
-	mov	dword [root_len],eax
-	fastcall FindMdl2FillForRoot,[namep],dword [root_len],addr fill_code,addr fill_namep
-	test	eax,eax
-	jz	.fail
-
-  .base_found:
-	mov	eax,dword [code]
-	mov	dword [base_code],eax
-	mov	rax,[namep]
-	mov	[base_namep],rax
-
-  .store_pair:
-	mov	rbx,[base_codep]
-	mov	eax,dword [base_code]
-	mov	dword [rbx],eax
-	mov	rbx,[fill_codep]
-	mov	eax,dword [fill_code]
-	mov	dword [rbx],eax
-	mov	rbx,[base_namepp]
-	mov	rax,[base_namep]
-	mov	[rbx],rax
-	mov	rbx,[fill_namepp]
-	mov	rax,[fill_namep]
-	mov	[rbx],rax
-	mov	eax,1
-	ret
-
-  .fail:
-	xor	eax,eax
-	ret
-endp
-
-proc CountNamePairs uses rbx rsi
-    locals
-	base_code dd ?
-	base_namep dq ?
-	namep dq ?
-	pairs dd ?
-    endl
-
-	lea	rsi,[uwpchar_name_index]
-	mov	ebx,uwpchar_name_count
-	mov	dword [pairs],0
-  .loop:
-	test	ebx,ebx
+proc NormalizeProfileKey uses rbx rsi, keyp
+	mov	[keyp],rcx
+	mov	rsi,[keyp]
+  .skip_left:
+	mov	al,byte [rsi]
+	cmp	al,' '
+	je	.trim_next
+	cmp	al,9
+	jne	.left_ready
+  .trim_next:
+	inc	rsi
+	jmp	.skip_left
+  .left_ready:
+	cmp	byte [rsi],'"'
+	jne	.unquoted
+	inc	rsi
+	mov	rbx,rsi
+  .quote_scan:
+	mov	al,byte [rbx]
+	test	al,al
 	jz	.done
-	movzx	eax,word [rsi]
-	lea	rdx,[uwpchar_name_strings]
-	add	rdx,rax
-	movzx	ecx,word [rdx]
-	add	rdx,uwpchar_name_text_offset
-	mov	[namep],rdx
-	fastcall FindMdl2PairFill,ecx,[namep],addr base_code,addr base_namep
+	cmp	al,'"'
+	je	.close_quote
+	inc	rbx
+	jmp	.quote_scan
+  .close_quote:
+	mov	byte [rbx],0
+	jmp	.done
+
+  .unquoted:
+	mov	rbx,rsi
+  .end_scan:
+	mov	al,byte [rbx]
+	test	al,al
+	jz	.trim_right
+	inc	rbx
+	jmp	.end_scan
+  .trim_right:
+	cmp	rbx,rsi
+	je	.done
+	dec	rbx
+  .right_loop:
+	cmp	byte [rbx],' '
+	je	.erase_right
+	cmp	byte [rbx],9
+	jne	.done
+  .erase_right:
+	mov	byte [rbx],0
+	cmp	rbx,rsi
+	je	.done
+	dec	rbx
+	jmp	.right_loop
+  .done:
+	mov	rax,rsi
+	ret
+endp
+
+proc EntryFontMask labelp
+	mov	[labelp],rcx
+	fastcall AsciiEndsWithInsensitive,[labelp],<A,'(Fluent)'>
 	test	eax,eax
-	jz	.next
-	inc	dword [pairs]
-  .next:
+	jz	.try_mdl2
+	mov	eax,UWP_USER_FONT_FLUENT
+	ret
+  .try_mdl2:
+	fastcall AsciiEndsWithInsensitive,[labelp],<A,'(MDL2)'>
+	test	eax,eax
+	jz	.all
+	mov	eax,UWP_USER_FONT_MDL2
+	ret
+  .all:
+	mov	eax,UWP_USER_FONT_ALL
+	ret
+endp
+
+proc BuildUserFilePath uses rsi rdi
+	invoke	GetModuleFileNameA,0,addr user_file_path,MAX_PATH
+	lea	rdi,[user_file_path]
+	test	eax,eax
+	jz	.copy_leaf
+	lea	rsi,[user_file_path]
+  .scan:
+	mov	al,byte [rsi]
+	test	al,al
+	jz	.copy_leaf
+	inc	rsi
+	cmp	al,'\'
+	je	.mark_after
+	cmp	al,'/'
+	jne	.scan
+  .mark_after:
+	mov	rdi,rsi
+	jmp	.scan
+  .copy_leaf:
+	lea	rsi,[user_file_leaf]
+  .copy:
+	mov	al,byte [rsi]
+	mov	byte [rdi],al
+	inc	rsi
+	inc	rdi
+	test	al,al
+	jnz	.copy
+	lea	rax,[user_file_path]
+	ret
+endp
+
+proc ParseCodeAt uses rsi rbx, textp,nextpp
+    locals
+	digits dd ?
+    endl
+
+	mov	[textp],rcx
+	mov	[nextpp],rdx
+	mov	rsi,[textp]
+  .skip:
+	mov	al,byte [rsi]
+	cmp	al,0
+	je	.fail
+	cmp	al,' '
+	je	.skip_one
+	cmp	al,9
+	je	.skip_one
+	cmp	al,','
+	jne	.prefix
+  .skip_one:
+	inc	rsi
+	jmp	.skip
+
+  .prefix:
+	mov	al,byte [rsi]
+	cmp	al,'U'
+	je	.check_u
+	cmp	al,'u'
+	jne	.check_0x
+  .check_u:
+	cmp	byte [rsi+1],'+'
+	jne	.check_0x
 	add	rsi,2
-	dec	ebx
+	jmp	.parse
+  .check_0x:
+	cmp	byte [rsi],'0'
+	jne	.parse
+	mov	al,byte [rsi+1]
+	cmp	al,'x'
+	je	.skip_0x
+	cmp	al,'X'
+	jne	.parse
+  .skip_0x:
+	add	rsi,2
+
+  .parse:
+	xor	ebx,ebx
+	mov	dword [digits],0
+  .digit:
+	movzx	eax,byte [rsi]
+	cmp	eax,'0'
+	jb	.done_digits
+	cmp	eax,'9'
+	jbe	.decimal
+	cmp	eax,'A'
+	jb	.check_lower
+	cmp	eax,'F'
+	jbe	.upper
+  .check_lower:
+	cmp	eax,'a'
+	jb	.done_digits
+	cmp	eax,'f'
+	ja	.done_digits
+	sub	eax,'a' - 10
+	jmp	.add_digit
+  .upper:
+	sub	eax,'A' - 10
+	jmp	.add_digit
+  .decimal:
+	sub	eax,'0'
+  .add_digit:
+	shl	ebx,4
+	add	ebx,eax
+	inc	rsi
+	inc	dword [digits]
+	jmp	.digit
+
+  .done_digits:
+	cmp	dword [digits],0
+	je	.fail
+	cmp	byte [rsi],'h'
+	je	.skip_h
+	cmp	byte [rsi],'H'
+	jne	.store
+  .skip_h:
+	inc	rsi
+  .store:
+	cmp	ebx,UWP_SCAN_MIN
+	jb	.fail
+	cmp	ebx,UWP_SCAN_MAX
+	ja	.fail
+	mov	rdx,[nextpp]
+	mov	[rdx],rsi
+	mov	eax,ebx
+	ret
+
+  .fail:
+	mov	rdx,[nextpp]
+	mov	[rdx],rsi
+	xor	eax,eax
+	ret
+endp
+
+proc ParseUserPairEntry uses rbx rsi, entryp
+    locals
+	labelp dq ?
+	valuep dq ?
+	nextp dq ?
+	base dd ?
+	fill dd ?
+	fontmask dd ?
+    endl
+
+	mov	[entryp],rcx
+	fastcall FindAsciiChar,[entryp],03Dh
+	test	rax,rax
+	jz	.done
+	mov	byte [rax],0
+	lea	rsi,[rax+1]
+	mov	[valuep],rsi
+	fastcall NormalizeProfileKey,[entryp]
+	mov	[labelp],rax
+	fastcall EntryFontMask,[labelp]
+	mov	dword [fontmask],eax
+	fastcall ParseCodeAt,[valuep],addr nextp
+	test	eax,eax
+	jz	.done
+	mov	dword [base],eax
+	fastcall ParseCodeAt,[nextp],addr nextp
+	test	eax,eax
+	jz	.done
+	mov	dword [fill],eax
+	mov	eax,dword [user_pair_count]
+	cmp	eax,UWP_USER_MAX_PAIRS
+	jae	.done
+	imul	eax,sizeof.UWP_USER_PAIR
+	lea	rbx,[user_pairs]
+	add	rbx,rax
+	mov	eax,dword [base]
+	mov	dword [rbx+UWP_USER_PAIR.base],eax
+	mov	eax,dword [fill]
+	mov	dword [rbx+UWP_USER_PAIR.fill],eax
+	mov	eax,dword [fontmask]
+	mov	dword [rbx+UWP_USER_PAIR.fontmask],eax
+	inc	dword [user_pair_count]
+  .done:
+	ret
+endp
+
+proc ParseUserGroupEntry uses rbx rsi rdi, entryp
+    locals
+	labelp dq ?
+	valuep dq ?
+	nextp dq ?
+	first dd ?
+	count dd ?
+	fontmask dd ?
+    endl
+
+	mov	[entryp],rcx
+	fastcall FindAsciiChar,[entryp],03Dh
+	test	rax,rax
+	jz	.done
+	mov	byte [rax],0
+	lea	rsi,[rax+1]
+	mov	[valuep],rsi
+	fastcall NormalizeProfileKey,[entryp]
+	mov	[labelp],rax
+	cmp	byte [rax],0
+	je	.done
+	fastcall EntryFontMask,[labelp]
+	mov	dword [fontmask],eax
+	mov	eax,dword [user_group_count]
+	cmp	eax,UWP_USER_MAX_GROUPS
+	jae	.done
+	mov	eax,dword [user_group_code_count]
+	mov	dword [first],eax
+	mov	dword [count],0
+	mov	rsi,[valuep]
+  .code_loop:
+	mov	eax,dword [user_group_code_count]
+	cmp	eax,UWP_USER_MAX_GROUP_CODES
+	jae	.finish_codes
+	fastcall ParseCodeAt,rsi,addr nextp
+	test	eax,eax
+	jz	.check_tail
+	mov	ecx,dword [user_group_code_count]
+	mov	dword [user_group_codes+rcx*4],eax
+	inc	dword [user_group_code_count]
+	inc	dword [count]
+	mov	rsi,[nextp]
+	jmp	.code_loop
+
+  .check_tail:
+	mov	rdi,rsi
+  .tail_loop:
+	mov	al,byte [rdi]
+	cmp	al,' '
+	je	.tail_next
+	cmp	al,9
+	je	.tail_next
+	cmp	al,','
+	jne	.tail_ready
+  .tail_next:
+	inc	rdi
+	jmp	.tail_loop
+  .tail_ready:
+	test	al,al
+	jz	.finish_codes
+	mov	eax,dword [first]
+	mov	dword [user_group_code_count],eax
+	jmp	.done
+
+  .finish_codes:
+	cmp	dword [count],0
+	je	.done
+	mov	eax,dword [user_group_count]
+	imul	eax,sizeof.UWP_USER_GROUP
+	lea	rbx,[user_groups]
+	add	rbx,rax
+	mov	rax,[labelp]
+	mov	[rbx+UWP_USER_GROUP.namep],rax
+	mov	eax,dword [first]
+	mov	dword [rbx+UWP_USER_GROUP.first],eax
+	mov	eax,dword [count]
+	mov	dword [rbx+UWP_USER_GROUP.count],eax
+	mov	eax,dword [fontmask]
+	mov	dword [rbx+UWP_USER_GROUP.fontmask],eax
+	inc	dword [user_group_count]
+  .done:
+	ret
+endp
+
+proc ParseUserSection uses rbx rsi, sectionp,mode
+	mov	[sectionp],rcx
+	mov	dword [mode],edx
+	mov	rsi,[sectionp]
+  .loop:
+	cmp	byte [rsi],0
+	je	.done
+	mov	rbx,rsi
+  .find_next:
+	cmp	byte [rbx],0
+	je	.have_next
+	inc	rbx
+	jmp	.find_next
+  .have_next:
+	inc	rbx
+	cmp	dword [mode],1
+	je	.parse_pair
+	fastcall ParseUserGroupEntry,rsi
+	jmp	.next
+  .parse_pair:
+	fastcall ParseUserPairEntry,rsi
+  .next:
+	mov	rsi,rbx
 	jmp	.loop
   .done:
-	mov	eax,dword [pairs]
+	ret
+endp
+
+proc LoadUserData
+	mov	dword [user_pair_count],0
+	mov	dword [user_group_count],0
+	mov	dword [user_group_code_count],0
+	fastcall BuildUserFilePath
+	invoke	GetPrivateProfileSectionA,addr user_pairs_section_name,addr user_pairs_section,UWP_USER_SECTION_BYTES,addr user_file_path
+	test	eax,eax
+	jz	.no_pairs
+	fastcall ParseUserSection,addr user_pairs_section,1
+  .no_pairs:
+	invoke	GetPrivateProfileSectionA,addr user_groups_section_name,addr user_groups_section,UWP_USER_SECTION_BYTES,addr user_file_path
+	test	eax,eax
+	jz	.done
+	fastcall ParseUserSection,addr user_groups_section,2
+  .done:
+	mov	eax,dword [user_pair_count]
+	mov	dword [pair_count],eax
+	ret
+endp
+
+proc CurrentFontMask
+	cmp	dword [current_font],UWPCHAR_FONT_FLUENT
+	je	.fluent
+	mov	eax,UWP_USER_FONT_MDL2
+	ret
+  .fluent:
+	mov	eax,UWP_USER_FONT_FLUENT
+	ret
+endp
+
+proc FindUserPairFill uses rbx rsi, code,base_codep,base_namepp
+    locals
+	mask dd ?
+    endl
+
+	mov	dword [code],ecx
+	mov	[base_codep],rdx
+	mov	[base_namepp],r8
+	fastcall CurrentFontMask
+	mov	dword [mask],eax
+	lea	rsi,[user_pairs]
+	mov	ebx,dword [user_pair_count]
+  .loop:
+	test	ebx,ebx
+	jz	.not_found
+	mov	eax,dword [rsi+UWP_USER_PAIR.fontmask]
+	test	eax,dword [mask]
+	jz	.next
+	mov	eax,dword [rsi+UWP_USER_PAIR.fill]
+	cmp	eax,dword [code]
+	je	.found
+  .next:
+	add	rsi,sizeof.UWP_USER_PAIR
+	dec	ebx
+	jmp	.loop
+  .found:
+	mov	rbx,[base_codep]
+	mov	eax,dword [rsi+UWP_USER_PAIR.base]
+	mov	dword [rbx],eax
+	fastcall FindName,eax
+	mov	rbx,[base_namepp]
+	mov	[rbx],rax
+	mov	eax,1
+	ret
+  .not_found:
+	xor	eax,eax
+	ret
+endp
+
+proc FindUserPair uses rbx rsi, code,base_codep,fill_codep,base_namepp,fill_namepp
+    locals
+	mask dd ?
+    endl
+
+	mov	dword [code],ecx
+	mov	[base_codep],rdx
+	mov	[fill_codep],r8
+	mov	[base_namepp],r9
+	fastcall CurrentFontMask
+	mov	dword [mask],eax
+	lea	rsi,[user_pairs]
+	mov	ebx,dword [user_pair_count]
+  .loop:
+	test	ebx,ebx
+	jz	.not_found
+	mov	eax,dword [rsi+UWP_USER_PAIR.fontmask]
+	test	eax,dword [mask]
+	jz	.next
+	mov	eax,dword [rsi+UWP_USER_PAIR.base]
+	cmp	eax,dword [code]
+	je	.found
+	mov	eax,dword [rsi+UWP_USER_PAIR.fill]
+	cmp	eax,dword [code]
+	je	.found
+  .next:
+	add	rsi,sizeof.UWP_USER_PAIR
+	dec	ebx
+	jmp	.loop
+  .found:
+	mov	rbx,[base_codep]
+	mov	eax,dword [rsi+UWP_USER_PAIR.base]
+	mov	dword [rbx],eax
+	mov	rbx,[fill_codep]
+	mov	eax,dword [rsi+UWP_USER_PAIR.fill]
+	mov	dword [rbx],eax
+	mov	eax,dword [rsi+UWP_USER_PAIR.base]
+	fastcall FindName,eax
+	mov	rbx,[base_namepp]
+	mov	[rbx],rax
+	mov	eax,dword [rsi+UWP_USER_PAIR.fill]
+	fastcall FindName,eax
+	mov	rbx,[fill_namepp]
+	mov	[rbx],rax
+	mov	eax,1
+	ret
+  .not_found:
+	xor	eax,eax
+	ret
+endp
+
+proc GroupContainsCode uses rbx rsi, groupp,code
+	mov	[groupp],rcx
+	mov	dword [code],edx
+	mov	rbx,[groupp]
+	mov	ecx,dword [rbx+UWP_USER_GROUP.count]
+	mov	edx,dword [rbx+UWP_USER_GROUP.first]
+	lea	rsi,[user_group_codes+rdx*4]
+  .loop:
+	test	ecx,ecx
+	jz	.no
+	mov	eax,dword [rsi]
+	cmp	eax,dword [code]
+	je	.yes
+	add	rsi,4
+	dec	ecx
+	jmp	.loop
+  .yes:
+	mov	eax,1
+	ret
+  .no:
+	xor	eax,eax
+	ret
+endp
+
+proc CurrentGroupAllowsCode uses rbx, code
+    locals
+	group_id dd ?
+	base_code dd ?
+	fill_code dd ?
+	base_namep dq ?
+	fill_namep dq ?
+    endl
+
+	mov	dword [code],ecx
+	mov	eax,dword [current_group]
+	test	eax,eax
+	jz	.yes
+	dec	eax
+	cmp	eax,dword [user_group_count]
+	jae	.yes
+	mov	dword [group_id],eax
+	imul	eax,sizeof.UWP_USER_GROUP
+	lea	rbx,[user_groups]
+	add	rbx,rax
+	fastcall GroupContainsCode,rbx,dword [code]
+	test	eax,eax
+	jnz	.yes
+	cmp	dword [show_merged_pairs],0
+	je	.no
+	fastcall FindUserPair,dword [code],addr base_code,addr fill_code,addr base_namep,addr fill_namep
+	test	eax,eax
+	jz	.no
+	fastcall GroupContainsCode,rbx,dword [base_code]
+	test	eax,eax
+	jnz	.yes
+	fastcall GroupContainsCode,rbx,dword [fill_code]
+	test	eax,eax
+	jnz	.yes
+  .no:
+	xor	eax,eax
+	ret
+  .yes:
+	mov	eax,1
+	ret
+endp
+
+proc PopulateGroupCombo uses rbx rsi
+    locals
+	mask dd ?
+	item dd ?
+	group_id dd ?
+	selected dd ?
+	name_w rw 128
+    endl
+
+	cmp	qword [hComboGroup],0
+	je	.done
+	fastcall CurrentFontMask
+	mov	dword [mask],eax
+	mov	eax,dword [current_group]
+	mov	dword [selected],eax
+	invoke	SendMessageW,[hComboGroup],CB_RESETCONTENT,0,0
+	invoke	SendMessageW,[hComboGroup],CB_ADDSTRING,0,addr group_all_text
+	invoke	SendMessageW,[hComboGroup],CB_SETITEMDATA,0,0
+	xor	ebx,ebx
+	lea	rsi,[user_groups]
+  .loop:
+	cmp	ebx,dword [user_group_count]
+	jae	.select
+	mov	eax,dword [rsi+UWP_USER_GROUP.fontmask]
+	test	eax,dword [mask]
+	jz	.next
+	fastcall CopyAsciiToWide,addr name_w,[rsi+UWP_USER_GROUP.namep],128
+	invoke	SendMessageW,[hComboGroup],CB_ADDSTRING,0,addr name_w
+	cmp	eax,CB_ERR
+	je	.next
+	mov	dword [item],eax
+	mov	eax,ebx
+	inc	eax
+	mov	dword [group_id],eax
+	invoke	SendMessageW,[hComboGroup],CB_SETITEMDATA,dword [item],dword [group_id]
+  .next:
+	add	rsi,sizeof.UWP_USER_GROUP
+	inc	ebx
+	jmp	.loop
+
+  .select:
+	invoke	SendMessageW,[hComboGroup],CB_SETCURSEL,0,0
+	cmp	dword [selected],0
+	je	.done
+	invoke	SendMessageW,[hComboGroup],CB_GETCOUNT,0,0
+	mov	ebx,eax
+	mov	dword [item],1
+  .select_loop:
+	mov	eax,dword [item]
+	cmp	eax,ebx
+	jae	.reset_group
+	invoke	SendMessageW,[hComboGroup],CB_GETITEMDATA,dword [item],0
+	cmp	eax,dword [selected]
+	je	.select_item
+	inc	dword [item]
+	jmp	.select_loop
+  .select_item:
+	invoke	SendMessageW,[hComboGroup],CB_SETCURSEL,dword [item],0
+	jmp	.done
+  .reset_group:
+	mov	dword [current_group],0
+  .done:
+	ret
+endp
+
+proc OnGroupComboChange
+	invoke	SendMessageW,[hComboGroup],CB_GETCURSEL,0,0
+	cmp	eax,CB_ERR
+	je	.all
+	invoke	SendMessageW,[hComboGroup],CB_GETITEMDATA,eax,0
+	cmp	eax,CB_ERR
+	je	.all
+	mov	dword [current_group],eax
+	jmp	.update
+  .all:
+	mov	dword [current_group],0
+  .update:
+	mov	dword [scroll_y],0
+	fastcall UpdateAll
 	ret
 endp
 
@@ -1047,16 +1479,12 @@ proc AddSelectionToComplex uses rbx, code
 	mov	dword [code],ecx
 	fastcall FindName,dword [code]
 	mov	[namep],rax
-	test	rax,rax
-	jz	.single
-	cmp	dword [current_font],UWPCHAR_FONT_MDL2
-	jne	.single
 	cmp	dword [show_merged_pairs],0
 	je	.single
 	mov	eax,dword [complex_count]
 	cmp	eax,UWP_COMPLEX_MAX_LAYERS - 1
 	jae	.single
-	fastcall FindMdl2Pair,dword [code],[namep],addr base_code,addr fill_code,addr base_namep,addr fill_namep
+	fastcall FindUserPair,dword [code],addr base_code,addr fill_code,addr base_namep,addr fill_namep
 	test	eax,eax
 	jz	.single
 	fastcall ComplexLayer_Add,dword [fill_code],dword [color_pair]
@@ -1284,17 +1712,17 @@ proc BuildGlyphList uses rbx rsi rdi
 	cmp	eax,0E5FFh
 	jbe	.next_glyph
   .legacy_ready:
-	cmp	dword [current_font],UWPCHAR_FONT_MDL2
-	jne	.filter_check
 	fastcall FindName,dword [candidate]
 	mov	[namep],rax
-	test	rax,rax
-	jz	.filter_check
 	cmp	dword [show_merged_pairs],0
-	je	.filter_check
-	fastcall FindMdl2PairFill,dword [candidate],[namep],addr base_code,addr base_namep
+	je	.group_check
+	fastcall FindUserPairFill,dword [candidate],addr base_code,addr base_namep
 	test	eax,eax
 	jnz	.next_glyph
+  .group_check:
+	fastcall CurrentGroupAllowsCode,dword [candidate]
+	test	eax,eax
+	jz	.next_glyph
   .filter_check:
 	cmp	dword [filter_len],0
 	je	.push_candidate
@@ -1305,11 +1733,9 @@ proc BuildGlyphList uses rbx rsi rdi
   .have_name:
 	cmp	qword [namep],0
 	je	.next_glyph
-	cmp	dword [current_font],UWPCHAR_FONT_MDL2
-	jne	.match_single
 	cmp	dword [show_merged_pairs],0
 	je	.match_single
-	fastcall FindMdl2Pair,dword [candidate],[namep],addr base_code,addr fill_code,addr base_namep,addr fill_namep
+	fastcall FindUserPair,dword [candidate],addr base_code,addr fill_code,addr base_namep,addr fill_namep
 	test	eax,eax
 	jz	.match_single
 	fastcall NameContainsFilter,[base_namep],addr filter_text,dword [filter_len]
@@ -1342,7 +1768,8 @@ proc UpdateStatus
 	text rw 160
     endl
 
-	invoke	wsprintfW,addr text,'Glyphs: %u | Names: %u | Pairs: %u',dword [glyph_count],uwpchar_name_count,dword [pair_count]
+	invoke	wsprintfW,addr text,'Glyphs: %u | Names: %u | Pairs: %u | Groups: %u',\
+		dword [glyph_count],uwpchar_name_count,dword [pair_count],dword [user_group_count]
 	invoke	SetWindowTextW,[hStatus],addr text
 	ret
 endp
@@ -1465,13 +1892,9 @@ proc DrawOneCell uses rbx rsi, hdc,code,rectp
 	mov	[rectp],r8
 	fastcall FindName,dword [code]
 	mov	[namep],rax
-	test	rax,rax
-	jz	.single
-	cmp	dword [current_font],UWPCHAR_FONT_MDL2
-	jne	.single
 	cmp	dword [show_merged_pairs],0
 	je	.single
-	fastcall FindMdl2Pair,dword [code],[namep],addr base_code,addr fill_code,addr base_namep,addr fill_namep
+	fastcall FindUserPair,dword [code],addr base_code,addr fill_code,addr base_namep,addr fill_namep
 	test	eax,eax
 	jz	.single
 	fastcall FontIcon_DrawLayeredGlyph,[hdc],dword [base_code],dword [fill_code],\
@@ -1724,11 +2147,9 @@ proc InsertSelection uses rbx rsi, code
 	fastcall CopyAsciiToWide,addr name_w,rax,256
 	mov	[namep],rax
 	mov	qword [pair_namep],0
-	cmp	dword [current_font],UWPCHAR_FONT_MDL2
-	jne	.single
 	cmp	dword [show_merged_pairs],0
 	je	.single
-	fastcall FindMdl2Pair,dword [code],[name_ascii],addr base_code,addr fill_code,addr base_name_ascii,addr fill_name_ascii
+	fastcall FindUserPair,dword [code],addr base_code,addr fill_code,addr base_name_ascii,addr fill_name_ascii
 	test	eax,eax
 	jz	.single
 	fastcall CopyAsciiToWide,addr name_w,[base_name_ascii],256
@@ -1871,6 +2292,8 @@ proc ApplyFonts
 	invoke	SendMessageW,[hButtonPair],WM_SETFONT,[hUIFont],1
 	invoke	SendMessageW,[hCheckMerged],WM_SETFONT,[hUIFont],1
 	invoke	SendMessageW,[hCheckLegacy],WM_SETFONT,[hUIFont],1
+	invoke	SendMessageW,[hLabelGroup],WM_SETFONT,[hUIFont],1
+	invoke	SendMessageW,[hComboGroup],WM_SETFONT,[hUIFont],1
 	invoke	SendMessageW,[hLabelFilter],WM_SETFONT,[hUIFont],1
 	invoke	SendMessageW,[hFilter],WM_SETFONT,[hUIFont],1
 	invoke	SendMessageW,[hModeTab],WM_SETFONT,[hUIFont],1
@@ -1885,11 +2308,10 @@ proc InitDialogControls hwnd
 	mov	dword [font_size],24
 	mov	dword [show_merged_pairs],1
 	mov	dword [show_legacy],0
+	mov	dword [current_group],0
 	mov	dword [color_fore],UWP_TEXT
 	mov	dword [color_back],UWP_VIEW_BG
 	mov	dword [color_pair],UWP_PAIR_FILL
-	fastcall CountNamePairs
-	mov	dword [pair_count],eax
 	fastcall UpdateCellMetrics
 
 	invoke	GetDlgItem,[hwnd],IDC_FONT_LABEL
@@ -1915,6 +2337,10 @@ proc InitDialogControls hwnd
 	invoke	SendMessageW,[hCheckMerged],BM_SETCHECK,BST_CHECKED,0
 	invoke	GetDlgItem,[hwnd],ID_LEGACY_CHECK
 	mov	[hCheckLegacy],rax
+	invoke	GetDlgItem,[hwnd],IDC_GROUP_LABEL
+	mov	[hLabelGroup],rax
+	invoke	GetDlgItem,[hwnd],ID_GROUP_COMBO
+	mov	[hComboGroup],rax
 	invoke	GetDlgItem,[hwnd],IDC_FILTER_LABEL
 	mov	[hLabelFilter],rax
 	invoke	GetDlgItem,[hwnd],ID_FILTER_EDIT
@@ -1935,6 +2361,7 @@ proc InitDialogControls hwnd
 
 	fastcall InitModeTabs
 	fastcall ComplexSeedHeart
+	fastcall LoadUserData
 
 	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe MDL2 Assets'
 	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe Fluent Icons'
@@ -1948,6 +2375,7 @@ proc InitDialogControls hwnd
 	invoke	SendMessageW,[hComboSize],CB_ADDSTRING,0,'48'
 	invoke	SendMessageW,[hComboSize],CB_ADDSTRING,0,'64'
 	invoke	SendMessageW,[hComboSize],CB_SETCURSEL,2,0
+	fastcall PopulateGroupCombo
 	fastcall RebuildColorBrush
 	fastcall ApplyFonts
 	fastcall SetModeTab,UWP_TAB_OUTPUT
@@ -1988,13 +2416,15 @@ proc Layout hwnd
 	invoke	MoveWindow,[hComboSize],64,44,82,180,1
 	invoke	MoveWindow,[hCheckMerged],160,44,116,24,1
 	invoke	MoveWindow,[hCheckLegacy],280,44,104,24,1
-	invoke	MoveWindow,[hLabelFilter],8,80,48,22,1
-	invoke	MoveWindow,[hFilter],64,76,320,24,1
+	invoke	MoveWindow,[hLabelGroup],8,80,48,22,1
+	invoke	MoveWindow,[hComboGroup],64,76,128,180,1
+	invoke	MoveWindow,[hLabelFilter],208,80,48,22,1
+	invoke	MoveWindow,[hFilter],250,76,134,24,1
 	invoke	MoveWindow,[hButtonFore],8,112,64,28,1
 	invoke	MoveWindow,[hButtonBack],80,112,64,28,1
 	invoke	MoveWindow,[hButtonPair],152,112,64,28,1
 	invoke	MoveWindow,[hButtonCopy],232,112,76,28,1
-	invoke	MoveWindow,[hStatus],8,148,360,22,1
+	invoke	MoveWindow,[hStatus],8,148,376,22,1
 
 	mov	dword [tab_y],176
 	mov	eax,dword [height]
@@ -2084,6 +2514,7 @@ proc OnFontComboChange
 	mov	dword [current_font],UWPCHAR_FONT_FLUENT
   .update:
 	mov	dword [scroll_y],0
+	fastcall PopulateGroupCombo
 	fastcall UpdateAll
 	ret
 endp
@@ -2370,6 +2801,8 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	je	.font_cmd
 	cmp	ecx,ID_SIZE_COMBO
 	je	.size_cmd
+	cmp	ecx,ID_GROUP_COMBO
+	je	.group_cmd
 	cmp	ecx,ID_COPY_BUTTON
 	je	.copy_cmd
 	cmp	ecx,ID_COLOR_FORE
@@ -2411,6 +2844,11 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	cmp	eax,CBN_SELCHANGE
 	jne	.done_one
 	fastcall OnSizeComboChange
+	jmp	.done_one
+  .group_cmd:
+	cmp	eax,CBN_SELCHANGE
+	jne	.done_one
+	fastcall OnGroupComboChange
 	jmp	.done_one
   .copy_cmd:
 	fastcall CopyExportText

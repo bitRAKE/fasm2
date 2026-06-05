@@ -11,7 +11,7 @@
 ; uwpchar_names stores word offsets to name records, or 0FFFFh.
 ; Each name record stores a word codepoint followed by an ASCII string.
 ; uwpchar_name_index stores name-record offsets sorted by ASCII name.
-; Pairing is derived from names at runtime.
+; Pair/group behavior is loaded by uwpchar.exe from uwpchar.user.txt.
 
 UWPCHAR_FONT_MDL2 = 0
 UWPCHAR_FONT_FLUENT = 1

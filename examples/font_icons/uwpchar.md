@@ -25,10 +25,25 @@ use the matching namespace throughout.
 
 ## Companion Pairs
 
-Leave `Merged pairs` enabled when exploring Segoe MDL2 companion glyphs. Pair
-cells draw the fill glyph and outline glyph in one rectangle with separate
-colors, but exported names stay unchanged. This keeps the generated code tied to
-the published codepoint names instead of inventing role aliases.
+Leave `Merged pairs` enabled when exploring companion glyphs. Pair cells are
+loaded from `uwpchar.user.txt`, draw the fill glyph and outline/base glyph in
+one rectangle with separate colors, and keep exported names unchanged. This
+keeps the generated code tied to the published codepoint names instead of
+inventing role aliases.
+
+Pair entries use this strict form:
+
+```ini
+[pairs]
+"Action Center (Fluent)" = U+EE7A,U+EE79
+"FavoriteStar" = U+E734,U+E735
+```
+
+The first codepoint is the base/foreground layer. The second is the fill layer
+drawn behind it. `(MDL2)` and `(Fluent)` make an entry font-specific; leaving
+the suffix off applies the pair to both font selections. The seed file leaves
+pairs untagged so their MDL2 and Fluent appearances can be vetted before any
+font limit is applied.
 
 Use the color buttons before exporting if you want the preview to match the
 target palette:
@@ -102,6 +117,21 @@ end macro
 
 The explicit `align 8` keeps each `GLYPHSET_ITEM` row aligned without adding a
 visible zero-valued padding field.
+
+## Groups
+
+`uwpchar.user.txt` also owns the `Group` dropdown:
+
+```ini
+[groups]
+Battery = U+E850,U+E851,U+E852
+Navigation = U+E72A,U+E72B,U+E74A
+```
+
+Groups filter before the text filter. A group can also be marked `(MDL2)` or
+`(Fluent)` when a curated list only makes sense for one face. Editing the file
+and restarting `uwpchar.exe` is enough to persist custom groups and pairs across
+sessions.
 
 ## Using Other Software
 

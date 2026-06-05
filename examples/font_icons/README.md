@@ -80,12 +80,14 @@ examples\font_icons\glyphset.exe
 glyph grid remains a registered child window class. It enumerates real glyphs
 with `GetGlyphIndicesW`, renders a scrollable grid for `Segoe MDL2 Assets` or
 `Segoe Fluent Icons`, and appends fasm constants when cells are clicked. The
-`Merged pairs` checkbox collapses
-MDL2 fill companions into one two-color cell; clearing it shows the raw font
-glyph list. `Show legacy` adds deprecated `E000`-`E5FF` glyphs back into the
-grid; they are hidden by default. The filter edit narrows the grid by generated
-ASCII name, and merged pairs match either layer name. The default palette is dark
-so layered glyph colors are visible without changing settings first.
+`Merged pairs` collapses explicit companion entries from `uwpchar.user.txt` into
+one two-color cell; clearing it shows the raw font glyph list. `Show legacy`
+adds deprecated `E000`-`E5FF` glyphs back into the grid; they are hidden by
+default. The `Group` dropdown filters the glyph list from user-defined
+codepoint groups before the text filter runs. The filter edit narrows the grid
+by generated ASCII name, and merged pairs match either layer name. The default
+palette is dark so layered glyph colors are visible without changing settings
+first.
 
 See `uwpchar.md` for the authoring workflows around exporting constants,
 building layered `FONTICON_LAYER` arrays, and moving those stacks into
@@ -97,11 +99,13 @@ single glyphs and pair outlines, `Back` colors the grid/editor background, and
 the fore/outline layer is drawn over it. The editor uses the same fore/back roles
 so exported constants are previewed against the selected theme.
 
-`uwpchar.exe` derives companion pairs at runtime from the canonical generated
-names, such as `FavoriteStar`/`FavoriteStarFill` and
-`InkingColorOutline`/`InkingColorFill`. Pair cells are previewed by drawing both
-glyphs into one rect in two colors. Clicking a merged pair exports both original
-source names; the code does not rename them to outline/fill aliases.
+`uwpchar.exe` loads companion pairs and groups from `uwpchar.user.txt`. The seed
+file was generated from the old MDL2 suffix heuristic, but the pairs are not
+font-limited until visual vetting proves a specific pair should be tagged
+`(MDL2)` or `(Fluent)`. Pair entries use `U+base,U+fill`; the fill layer is drawn
+first with the pair color and the base/outline layer is drawn over it with the
+fore color. Clicking a merged pair exports both original source names; the code
+does not rename them to outline/fill aliases.
 
 The left output area is tabbed. `Output` is the existing multiline export edit.
 `Layering` is the first composition surface: a square dark preview above a list
@@ -167,10 +171,10 @@ the word codepoint next to its ASCII string. `uwpchar_name_index` is an
 offset-only reverse index sorted by ASCII name. Fluent names are preferred for
 same-codepoint conflicts except the vetted MDL2 `StockDown` and `StockUp` choices
 at `EB0F` and `EB11`. The include does not store font-specific
-name tables, flags, pair records, wide strings, or 64-bit name pointers. Pair
-discovery is a runtime interpretation of exact `Fill`, `Filled`, or `Solid` name
-companions, with an `Outline` fallback for base names. Verify individual
-compositions visually before treating them as product icons.
+name tables, flags, pair records, wide strings, or 64-bit name pointers.
+Font-specific pair and group choices live in `uwpchar.user.txt` instead of being
+derived from names at runtime. Verify individual compositions visually before
+treating them as product icons.
 
 The `microsoft/fluentui-system-icons` repository has richer per-icon metadata,
 but its generated font JSON uses codepoints for that project's packaged fonts,
