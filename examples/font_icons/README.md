@@ -34,10 +34,11 @@ Build from a Visual Studio developer prompt:
 examples\font_icons\_build.cmd
 ```
 
-The build script compiles `font_icons.rc` to `font_icons.res` with `rc.exe`,
-then the assembly samples include that resource section through `windows.inc`.
-`resource.h` is the shared ID file used by the resource compiler and the fasm2
-sources.
+The build script compiles each source-local resource script, such as
+`uwpchar.asm.rc`, to the matching `uwpchar.asm.res` with `rc.exe`. The assembly
+samples include only their own resource section through `windows.inc` by using
+the current `__SOURCE__` name. `resource.h` is the shared ID file used by the
+resource compiler and the fasm2 sources.
 
 Refresh `uwpchar_data.inc` from Microsoft Docs and then build all samples:
 
@@ -75,7 +76,7 @@ examples\font_icons\glyphset.exe
   surface;
 - a glyph-backed cursor selected by `WM_SETCURSOR`.
 
-`uwpchar.exe` has a primary growable dialog window from `font_icons.rc`; the custom
+`uwpchar.exe` has a primary growable dialog window from `uwpchar.asm.rc`; the custom
 glyph grid remains a registered child window class. It enumerates real glyphs
 with `GetGlyphIndicesW`, renders a scrollable grid for `Segoe MDL2 Assets` or
 `Segoe Fluent Icons`, and appends fasm constants when cells are clicked. The
@@ -85,6 +86,10 @@ glyph list. `Show legacy` adds deprecated `E000`-`E5FF` glyphs back into the
 grid; they are hidden by default. The filter edit narrows the grid by generated
 ASCII name, and merged pairs match either layer name. The default palette is dark
 so layered glyph colors are visible without changing settings first.
+
+See `uwpchar.md` for the authoring workflows around exporting constants,
+building layered `FONTICON_LAYER` arrays, and moving those stacks into
+`glyphset_layers.inc` or another font-icon renderer.
 
 The `Fore`, `Back`, and `Pair` buttons open Win32 color pickers. `Fore` colors
 single glyphs and pair outlines, `Back` colors the grid/editor background, and
@@ -141,9 +146,9 @@ and mouse wheel navigation.
 To add work from `uwpchar`, paste the emitted `label icon_layers:...` block into
 a namespace in `glyphset_layers.inc`, add a title string, then add one raw item
 row pointing at `namespace_name.icon_layers`. The sample rows use
-`namespace_name.icon_layers.bytes / sizeof.FONTICON_LAYER` for their layer count,
-which keeps the table independent of any `sizeof.<qualified-label>` parser
-limitations.
+`sizeof namespace_name.icon_layers` for their layer count and an `align 8` after
+each row so the item table stays naturally aligned without an explicit padding
+field.
 
 ## Notes
 

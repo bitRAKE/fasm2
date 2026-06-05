@@ -30,22 +30,22 @@ for /f "delims=" %%I in ('dir /b /ad /o-n "%ProgramFiles(x86)%\Windows Kits\10\I
 set "SDKINC="
 if defined SDKVER set "SDKINC=/I "%ProgramFiles(x86)%\Windows Kits\10\Include\%SDKVER%\shared" /I "%ProgramFiles(x86)%\Windows Kits\10\Include\%SDKVER%\um" /I "%ProgramFiles(x86)%\Windows Kits\10\Include\%SDKVER%\ucrt""
 
-"%RC_EXE%" /nologo %SDKINC% /fo font_icons.res font_icons.rc
-if errorlevel 1 (
-	set "BUILD_RC=1"
-	goto done
+for %%S in (font_icon_demo.asm uwpchar.asm glyphset.asm) do (
+	"%RC_EXE%" /nologo %SDKINC% /fo "%%S.res" "%%S.rc"
+	if errorlevel 1 (
+		set "BUILD_RC=1"
+		goto done
+	)
 )
 
-call "..\..\fasm2.cmd" -e 5 font_icon_demo.asm
-set "BUILD_RC=%ERRORLEVEL%"
-if not "%BUILD_RC%"=="0" goto done
-
-call "..\..\fasm2.cmd" -e 5 uwpchar.asm
-set "BUILD_RC=%ERRORLEVEL%"
-if not "%BUILD_RC%"=="0" goto done
-
-call "..\..\fasm2.cmd" -e 5 glyphset.asm
-set "BUILD_RC=%ERRORLEVEL%"
+for %%S in (font_icon_demo.asm uwpchar.asm glyphset.asm) do (
+	call "..\..\fasm2.cmd" -e 5 %%S
+	if errorlevel 1 (
+		set "BUILD_RC=1"
+		goto done
+	)
+)
+set "BUILD_RC=0"
 
 :done
 popd

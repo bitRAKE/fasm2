@@ -55,7 +55,8 @@ postpone
 			xbss
 		end irpv
 
-	section '.rsrc' resource from 'font_icons.res' data readable
+	_source_resource := __SOURCE__ bappend '.res'
+	section '.rsrc' resource from _source_resource data readable
 
 	.end start
 end postpone

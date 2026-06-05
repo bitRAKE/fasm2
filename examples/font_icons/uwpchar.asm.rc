@@ -47,7 +47,7 @@ BEGIN
             VALUE "CompanyName", "fasm2 examples\0"
             VALUE "FileDescription", "Font icon helper samples - fasm2 example\0"
             VALUE "FileVersion", "0.1.0\0"
-            VALUE "InternalName", "font_icons\0"
+            VALUE "InternalName", "uwpchar\0"
             VALUE "ProductName", "Font icon helper samples\0"
             VALUE "ProductVersion", "0.1.0\0"
         END
