@@ -41,38 +41,20 @@ end macro
 
 postpone
 	section '.data' data readable writeable
-		GLOBWSTR.here
-		GLOBSTR.here
-
 		align 16
 		irpv xdata,__GLOBAL_DATA__
 			xdata
 		end irpv
+
+		GLOBWSTR.here
+		GLOBSTR.here
 
 		align 16
 		irpv xbss,__GLOBAL_BSS__
 			xbss
 		end irpv
 
-	section '.rsrc' resource data readable
-		directory RT_MANIFEST, manifests
-		resource manifests,\
-			1,LANG_ENGLISH+SUBLANG_DEFAULT,manifest
-
-		manifest dd RVA manifest_data,manifest_size,0,0
-		manifest_data:
-			db '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',13,10
-			db '<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">',13,10
-			db '  <assemblyIdentity version="1.0.0.0" processorArchitecture="amd64" name="fasm2.examples.font_icons" type="win32"/>',13,10
-			db '  <description>fasm2 font icon samples</description>',13,10
-			db '  <dependency>',13,10
-			db '    <dependentAssembly>',13,10
-			db '      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="amd64" publicKeyToken="6595b64144ccf1df" language="*"/>',13,10
-			db '    </dependentAssembly>',13,10
-			db '  </dependency>',13,10
-			db '</assembly>',13,10
-		manifest_size = $ - manifest_data
-		align 4
+	section '.rsrc' resource from 'font_icons.res' data readable
 
 	.end start
 end postpone

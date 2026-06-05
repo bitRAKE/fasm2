@@ -71,3 +71,24 @@ Here is where the cheap path strains, and it's worth knowing before you write th
 
 Two things to fold in. The font already does part of this: Segoe MDL2 Assets ships companion-codepoint pairs designed to layer — a background/outline glyph and a fill glyph registered to the same em box, meant to be drawn at one rect in two colors. uwpchar shows them as unrelated cells today; an authoring tool should surface the pairing, because "the two-layer status badge" is one decision, not two. And to keep the elegant version fast: hold the *authoring* form as vector, but cache the *composited* result into a DIB keyed by (stack, size, state, theme-generation), and bump a generation counter on theme edit or `WM_DPICHANGED` so the whole cache invalidates at once — no per-icon bookkeeping, instant reskin, cheap repaint.
 
+---
+
+UI direction: `uwpchar` now uses a resource-backed growable dialog as its main
+window. The left-side output area is tabbed. `Output` owns the export edit;
+`Complex` owns a square-ish preview above a layer list and an append path for
+`FONTICON_LAYER {glyph,color}` arrays. The first mock-up is the heart stack:
+`HeartFill` in red, then `Heart` in white, rendered by
+`FontIcon_DrawLayeredGlyphArray`.
+
+The `Complex` tab is intentionally buttonless. The preview is the command
+surface: left-click appends, right-click opens a context menu. The list handles
+editing from the keyboard: `Ctrl+Up`/`Ctrl+Down` and `+`/`-` reorder,
+`Enter`/`Space` changes color, and `Delete`/`Backspace` removes.
+
+Next growth for `Complex`: decide if list order should display bottom-to-top or
+top-to-bottom stack semantics more explicitly, add named array labels so
+repeated appends do not reuse `icon_layers`, and consider a drag/drop ordering
+path after the keyboard model feels right. Longer term, the tab should move from
+raw `COLORREF` records to role-based layers so themes and interaction states can
+be resolved at draw time.
+

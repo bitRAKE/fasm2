@@ -11,6 +11,11 @@ FONTICON_CDIS_DISABLED		= 0004h
 FONTICON_CDIS_CHECKED		= 0008h
 FONTICON_CDIS_HOT		= 0040h
 
+struct FONTICON_LAYER
+  glyph dd ?
+  color dd ?
+ends
+
 struct FONTICON_BITMAPINFO32
   bmiHeader BITMAPINFOHEADER
   bmiColors dd ?
@@ -132,6 +137,27 @@ proc FontIcon_DrawLayeredGlyph hdc,baseGlyph,fillGlyph,rectp,hfont,baseColor,fil
 	mov	[rectp],r9
 	fastcall FontIcon_DrawGlyph,[hdc],dword [fillGlyph],[rectp],[hfont],dword [fillColor]
 	fastcall FontIcon_DrawGlyph,[hdc],dword [baseGlyph],[rectp],[hfont],dword [baseColor]
+	xor	eax,eax
+	ret
+endp
+
+proc FontIcon_DrawLayeredGlyphArray uses rbx rsi, hdc,layerp,count,rectp,hfont
+	mov	[hdc],rcx
+	mov	[layerp],rdx
+	mov	dword [count],r8d
+	mov	[rectp],r9
+	mov	rsi,[layerp]
+	mov	ebx,dword [count]
+	test	ebx,ebx
+	jz	.done
+  .draw:
+	fastcall FontIcon_DrawGlyph,[hdc],\
+		dword [rsi+FONTICON_LAYER.glyph],[rectp],[hfont],\
+		dword [rsi+FONTICON_LAYER.color]
+	add	rsi,sizeof.FONTICON_LAYER
+	dec	ebx
+	jnz	.draw
+  .done:
 	xor	eax,eax
 	ret
 endp

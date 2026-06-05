@@ -1,13 +1,8 @@
 ; font_icon_demo.asm - font-icon helper routines and use cases.
 
 include 'windows.inc'
+include 'resource.h'
 include 'font_icons.inc'
-
-ID_TOOL_ADD	= 1001
-ID_TOOL_SAVE	= 1002
-ID_TOOL_SEARCH	= 1003
-ID_TOOL_REFRESH	= 1004
-ID_STATIC_ICON	= 2001
 
 WM_DPICHANGED	= 02E0h
 
@@ -36,10 +31,7 @@ define __GLOBAL_DATA__ demo_data
 define __GLOBAL_BSS__ demo_bss
 
 macro demo_data
-	app_name	du 'Font Icon Helpers',0
-	class_name	du 'Fasm2FontIconDemo',0
-	static_class	du 'STATIC',0
-	fluent_face	du 'Segoe Fluent Icons',0
+	class_name	GLOBWSTR 'Fasm2FontIconDemo',0
 	toolbar_strings	dw ICON_ADD,0,ICON_SAVE,0,ICON_SEARCH,0,ICON_REFRESH,0,0
 
 	align 8
@@ -125,9 +117,9 @@ proc RebuildIconResources
 	mov	qword [hCursorGlyph],0
   .no_cursor:
 
-	fastcall FontIcon_CreateFontForWindow,[hMain],28,fluent_face
+	fastcall FontIcon_CreateFontForWindow,[hMain],28,'Segoe Fluent Icons'
 	mov	[hIconFont],rax
-	fastcall FontIcon_CreateFontForWindow,[hMain],64,fluent_face
+	fastcall FontIcon_CreateFontForWindow,[hMain],64,'Segoe Fluent Icons'
 	mov	[hStaticFont],rax
 	invoke	GetSystemMetrics,SM_CXCURSOR
 	test	eax,eax
@@ -135,7 +127,7 @@ proc RebuildIconResources
 	mov	eax,32
   .have_cursor_size:
 	mov	dword [cursor_pixels],eax
-	fastcall FontIcon_CreateGlyphCursor,ICON_POINTER,dword [cursor_pixels],4,4,ROLE_ACCENT,fluent_face
+	fastcall FontIcon_CreateGlyphCursor,ICON_POINTER,dword [cursor_pixels],4,4,ROLE_ACCENT,'Segoe Fluent Icons'
 	mov	[hCursorGlyph],rax
 
 	cmp	qword [hStaticIcon],0
@@ -183,7 +175,7 @@ proc CreateDemoControls
 
 	fastcall DemoCreateToolbar
 
-	invoke	CreateWindowExW,0,static_class,0,\
+	invoke	CreateWindowExW,0,'STATIC',0,\
 		WS_CHILD or WS_VISIBLE or SS_CENTER or SS_CENTERIMAGE,\
 		28,128,104,104,[hMain],ID_STATIC_ICON,[hInstance],0
 	mov	[hStaticIcon],rax
@@ -355,7 +347,7 @@ proc start
 	test	rax,rax
 	jz	.fatal
 
-	invoke	CreateWindowExW,0,class_name,app_name,\
+	invoke	CreateWindowExW,0,class_name,'Font Icon Helpers',\
 		WS_OVERLAPPEDWINDOW,\
 		CW_USEDEFAULT,CW_USEDEFAULT,640,360,\
 		0,0,[hInstance],0
@@ -378,6 +370,6 @@ proc start
 	invoke	ExitProcess,[msg.wParam]
 
   .fatal:
-	invoke	MessageBoxW,0,'Font icon demo failed to start.',app_name,MB_ICONERROR
+	invoke	MessageBoxW,0,'Font icon demo failed to start.','Font Icon Helpers',MB_ICONERROR
 	invoke	ExitProcess,1
 endp
