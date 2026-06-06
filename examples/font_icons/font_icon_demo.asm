@@ -41,40 +41,28 @@ macro demo_data
 	wc WNDCLASSEX cbSize: sizeof.WNDCLASSEX,\
 		style: CS_HREDRAW or CS_VREDRAW,\
 		lpfnWndProc: WindowProc,\
-		cbClsExtra: 0,\
-		cbWndExtra: 0,\
-		hInstance: 0,\
-		hIcon: 0,\
-		hCursor: 0,\
 		hbrBackground: COLOR_WINDOW + 1,\
-		lpszMenuName: 0,\
-		lpszClassName: class_name,\
-		hIconSm: 0
+		lpszClassName: class_name
 
 	tb_add TBBUTTON iBitmap: FONTICON_I_IMAGENONE,\
 		idCommand: ID_TOOL_ADD,\
 		fsState: TBSTATE_ENABLED,\
 		fsStyle: TBSTYLE_BUTTON,\
-		dwData: ICON_ADD,\
-		iString: 0
+		dwData: ICON_ADD
 	tb_save TBBUTTON iBitmap: FONTICON_I_IMAGENONE,\
 		idCommand: ID_TOOL_SAVE,\
-		fsState: 0,\
 		fsStyle: TBSTYLE_BUTTON,\
-		dwData: ICON_SAVE,\
-		iString: 0
+		dwData: ICON_SAVE
 	tb_search TBBUTTON iBitmap: FONTICON_I_IMAGENONE,\
 		idCommand: ID_TOOL_SEARCH,\
 		fsState: TBSTATE_ENABLED,\
 		fsStyle: TBSTYLE_BUTTON,\
-		dwData: ICON_SEARCH,\
-		iString: 0
+		dwData: ICON_SEARCH
 	tb_refresh TBBUTTON iBitmap: FONTICON_I_IMAGENONE,\
 		idCommand: ID_TOOL_REFRESH,\
 		fsState: TBSTATE_ENABLED or TBSTATE_CHECKED,\
 		fsStyle: TBSTYLE_CHECK,\
-		dwData: ICON_REFRESH,\
-		iString: 0
+		dwData: ICON_REFRESH
 purge demo_data
 end macro
 
@@ -101,20 +89,20 @@ proc RebuildIconResources
 	cursor_pixels dd ?
     endl
 
-	cmp	qword [hIconFont],0
-	je	.no_icon_font
-	invoke	DeleteObject,[hIconFont]
-	mov	qword [hIconFont],0
+	mov	rcx,[hIconFont]
+	jrcxz	.no_icon_font
+	invoke	DeleteObject,rcx
+	mov	[hIconFont],0
   .no_icon_font:
-	cmp	qword [hStaticFont],0
-	je	.no_static_font
-	invoke	DeleteObject,[hStaticFont]
-	mov	qword [hStaticFont],0
+	mov	rcx,[hStaticFont]
+	jrcxz	.no_static_font
+	invoke	DeleteObject,rcx
+	mov	[hStaticFont],0
   .no_static_font:
-	cmp	qword [hCursorGlyph],0
-	je	.no_cursor
-	invoke	DestroyCursor,[hCursorGlyph]
-	mov	qword [hCursorGlyph],0
+	mov	rcx,[hCursorGlyph]
+	jrcxz	.no_cursor
+	invoke	DestroyCursor,rcx
+	mov	[hCursorGlyph],0
   .no_cursor:
 
 	fastcall FontIcon_CreateFontForWindow,[hMain],28,'Segoe Fluent Icons'
@@ -126,13 +114,13 @@ proc RebuildIconResources
 	jg	.have_cursor_size
 	mov	eax,32
   .have_cursor_size:
-	mov	dword [cursor_pixels],eax
-	fastcall FontIcon_CreateGlyphCursor,ICON_POINTER,dword [cursor_pixels],4,4,ROLE_ACCENT,'Segoe Fluent Icons'
+	mov	[cursor_pixels],eax
+	fastcall FontIcon_CreateGlyphCursor,ICON_POINTER,[cursor_pixels],4,4,ROLE_ACCENT,'Segoe Fluent Icons'
 	mov	[hCursorGlyph],rax
 
-	cmp	qword [hStaticIcon],0
-	je	.done
-	fastcall FontIcon_SetStaticGlyph,[hStaticIcon],ICON_SETTINGS,[hStaticFont]
+	mov	rcx,[hStaticIcon]
+	jrcxz	.done
+	fastcall FontIcon_SetStaticGlyph,rcx,ICON_SETTINGS,[hStaticFont]
   .done:
 	ret
 endp
@@ -184,44 +172,44 @@ proc CreateDemoControls
 endp
 
 proc ResizeDemo
-	cmp	qword [hToolbar],0
+	cmp	[hToolbar],0
 	je	.no_toolbar
 	invoke	SendMessageW,[hToolbar],TB_AUTOSIZE,0,0
   .no_toolbar:
-	cmp	qword [hStaticIcon],0
+	cmp	[hStaticIcon],0
 	je	.done
 	invoke	MoveWindow,[hStaticIcon],28,128,104,104,1
   .done:
 	ret
 endp
 
-proc PaintLayeredGlyphs hdc
-	mov	[hdc],rcx
+proc PaintLayeredGlyphs uses rbx, hdc
+	mov	rbx,rcx
 
-	mov	dword [panel_rect.left],168
-	mov	dword [panel_rect.top],128
-	mov	dword [panel_rect.right],500
-	mov	dword [panel_rect.bottom],232
-	invoke	FillRect,[hdc],addr panel_rect,[hBgBrush]
+	mov	[panel_rect.left],168
+	mov	[panel_rect.top],128
+	mov	[panel_rect.right],500
+	mov	[panel_rect.bottom],232
+	invoke	FillRect,rbx,addr panel_rect,[hBgBrush]
 
-	mov	dword [glyph_rect.left],190
-	mov	dword [glyph_rect.top],146
-	mov	dword [glyph_rect.right],266
-	mov	dword [glyph_rect.bottom],216
-	fastcall FontIcon_DrawGlyph,[hdc],ICON_RING,addr glyph_rect,[hStaticFont],ROLE_MUTED
-	fastcall FontIcon_DrawGlyph,[hdc],ICON_BADGE,addr glyph_rect,[hStaticFont],ROLE_ACCENT
+	mov	[glyph_rect.left],190
+	mov	[glyph_rect.top],146
+	mov	[glyph_rect.right],266
+	mov	[glyph_rect.bottom],216
+	fastcall FontIcon_DrawGlyph,rbx,ICON_RING,addr glyph_rect,[hStaticFont],ROLE_MUTED
+	fastcall FontIcon_DrawGlyph,rbx,ICON_BADGE,addr glyph_rect,[hStaticFont],ROLE_ACCENT
 
-	mov	dword [glyph_rect.left],286
-	mov	dword [glyph_rect.top],146
-	mov	dword [glyph_rect.right],362
-	mov	dword [glyph_rect.bottom],216
-	fastcall FontIcon_DrawGlyph,[hdc],ICON_REFRESH,addr glyph_rect,[hStaticFont],ROLE_ACTIVE
+	mov	[glyph_rect.left],286
+	mov	[glyph_rect.top],146
+	mov	[glyph_rect.right],362
+	mov	[glyph_rect.bottom],216
+	fastcall FontIcon_DrawGlyph,rbx,ICON_REFRESH,addr glyph_rect,[hStaticFont],ROLE_ACTIVE
 
-	mov	dword [glyph_rect.left],382
-	mov	dword [glyph_rect.top],146
-	mov	dword [glyph_rect.right],458
-	mov	dword [glyph_rect.bottom],216
-	fastcall FontIcon_DrawGlyph,[hdc],ICON_SEARCH,addr glyph_rect,[hStaticFont],ROLE_TEXT
+	mov	[glyph_rect.left],382
+	mov	[glyph_rect.top],146
+	mov	[glyph_rect.right],458
+	mov	[glyph_rect.bottom],216
+	fastcall FontIcon_DrawGlyph,rbx,ICON_SEARCH,addr glyph_rect,[hStaticFont],ROLE_TEXT
 	ret
 endp
 
@@ -231,24 +219,20 @@ proc WindowProc uses rbx, hwnd,wmsg,wparam,lparam
 	mov	[wparam],r8
 	mov	[lparam],r9
 
-	cmp	edx,WM_CREATE
-	je	.wm_create
-	cmp	edx,WM_SIZE
-	je	.wm_size
-	cmp	edx,WM_DPICHANGED
-	je	.wm_dpichanged
-	cmp	edx,WM_NOTIFY
-	je	.wm_notify
-	cmp	edx,WM_CTLCOLORSTATIC
-	je	.wm_ctlcolorstatic
-	cmp	edx,WM_SETCURSOR
-	je	.wm_setcursor
-	cmp	edx,WM_PAINT
-	je	.wm_paint
-	cmp	edx,WM_COMMAND
-	je	.wm_command
-	cmp	edx,WM_DESTROY
-	je	.wm_destroy
+	iterate <message,branch>,\
+		WM_CREATE,		.wm_create,\
+		WM_SIZE,		.wm_size,\
+		WM_DPICHANGED,		.wm_dpichanged,\
+		WM_NOTIFY,		.wm_notify,\
+		WM_CTLCOLORSTATIC,	.wm_ctlcolorstatic,\
+		WM_SETCURSOR,		.wm_setcursor,\
+		WM_PAINT,		.wm_paint,\
+		WM_COMMAND,		.wm_command,\
+		WM_DESTROY,		.wm_destroy
+
+		cmp	edx,message
+		je	branch
+	end iterate
 
 	invoke	DefWindowProcW,[hwnd],dword [wmsg],[wparam],[lparam]
 	ret
@@ -273,7 +257,7 @@ proc WindowProc uses rbx, hwnd,wmsg,wparam,lparam
 
   .wm_notify:
 	mov	rbx,[lparam]
-	cmp	dword [rbx+NMHDR.code],NM_CUSTOMDRAW
+	cmp	[rbx+NMHDR.code],NM_CUSTOMDRAW
 	jne	.done_zero
 	fastcall FontIcon_ToolbarGlyphCustomDraw,rbx,[hIconFont],\
 		ROLE_TEXT,ROLE_ACCENT,ROLE_ON_ACCENT,ROLE_DISABLED,\
@@ -285,9 +269,10 @@ proc WindowProc uses rbx, hwnd,wmsg,wparam,lparam
 	ret
 
   .wm_setcursor:
-	cmp	qword [hCursorGlyph],0
-	je	.default
-	invoke	SetCursor,[hCursorGlyph]
+	mov	rcx,[hCursorGlyph]
+	test	rcx,rcx
+	jz	.default
+	invoke	SetCursor,rcx
 	mov	eax,1
 	ret
 
@@ -304,21 +289,21 @@ proc WindowProc uses rbx, hwnd,wmsg,wparam,lparam
 	ret
 
   .wm_destroy:
-	cmp	qword [hCursorGlyph],0
-	je	.no_cursor
-	invoke	DestroyCursor,[hCursorGlyph]
+	mov	rcx,[hCursorGlyph]
+	jrcxz	.no_cursor
+	invoke	DestroyCursor,rcx
   .no_cursor:
-	cmp	qword [hStaticFont],0
-	je	.no_static_font
-	invoke	DeleteObject,[hStaticFont]
+	mov	rcx,[hStaticFont]
+	jrcxz	.no_static_font
+	invoke	DeleteObject,rcx
   .no_static_font:
-	cmp	qword [hIconFont],0
-	je	.no_icon_font
-	invoke	DeleteObject,[hIconFont]
+	mov	rcx,[hIconFont]
+	jrcxz	.no_icon_font
+	invoke	DeleteObject,rcx
   .no_icon_font:
-	cmp	qword [hBgBrush],0
-	je	.no_brush
-	invoke	DeleteObject,[hBgBrush]
+	mov	rcx,[hBgBrush]
+	jrcxz	.no_brush
+	invoke	DeleteObject,rcx
   .no_brush:
 	invoke	PostQuitMessage,0
   .done_zero:

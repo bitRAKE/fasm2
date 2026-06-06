@@ -13,8 +13,9 @@
 ; uwpchar_name_index stores name-record offsets sorted by ASCII name.
 ; Pair/group behavior is loaded by uwpchar.exe from uwpchar.user.txt.
 
-UWPCHAR_FONT_MDL2 = 0
-UWPCHAR_FONT_FLUENT = 1
+UWPCHAR_FONT_FLUENT = 0
+UWPCHAR_FONT_MDL2 = 1
+UWPCHAR_FONT_SYMBOL = 2
 uwpchar_name_missing = 0FFFFh
 uwpchar_name_count = 1537
 uwpchar_code_min = 0E700h

@@ -52,9 +52,7 @@ struct UWP_USER_GROUP
 	   align 8
 ends
 
-define __GLOBAL_DATA__ clear_edit_data
 define __GLOBAL_DATA__ uwpchar_data
-define __GLOBAL_BSS__ clear_edit_bss
 define __GLOBAL_BSS__ uwpchar_bss
 
 macro uwpchar_data
@@ -63,8 +61,10 @@ macro uwpchar_data
 
 	font_mdl2	GLOBWSTR 'Segoe MDL2 Assets',0
 	font_fluent	GLOBWSTR 'Segoe Fluent Icons',0
+	font_symbol	GLOBWSTR 'Segoe UI Symbol',0
 	font_mdl2_ns	GLOBWSTR 'SegoeMDL2',0
 	font_fluent_ns	GLOBWSTR 'SegoeFluent',0
+	font_symbol_ns	GLOBWSTR 'SegoeUISymbol',0
 	group_all_text GLOBWSTR 'All',0
 	user_file_leaf GLOBSTR 'uwpchar.user.txt',0
 	user_pairs_section_name GLOBSTR 'pairs',0
@@ -96,28 +96,14 @@ macro uwpchar_data
 	view_wc WNDCLASSEX cbSize: sizeof.WNDCLASSEX,\
 		style: CS_HREDRAW or CS_VREDRAW,\
 		lpfnWndProc: ViewProc,\
-		cbClsExtra: 0,\
-		cbWndExtra: 0,\
-		hInstance: 0,\
-		hIcon: 0,\
-		hCursor: 0,\
 		hbrBackground: COLOR_WINDOW + 1,\
-		lpszMenuName: 0,\
-		lpszClassName: view_class,\
-		hIconSm: 0
+		lpszClassName: view_class
 
 	complex_view_wc WNDCLASSEX cbSize: sizeof.WNDCLASSEX,\
 		style: CS_HREDRAW or CS_VREDRAW,\
 		lpfnWndProc: ComplexViewProc,\
-		cbClsExtra: 0,\
-		cbWndExtra: 0,\
-		hInstance: 0,\
-		hIcon: 0,\
-		hCursor: 0,\
 		hbrBackground: COLOR_WINDOW + 1,\
-		lpszMenuName: 0,\
-		lpszClassName: complex_view_class,\
-		hIconSm: 0
+		lpszClassName: complex_view_class
 
 	uwpchar_name_data
 purge uwpchar_data
@@ -188,20 +174,30 @@ end macro
 proc CurrentFace
 	cmp	dword [current_font],UWPCHAR_FONT_FLUENT
 	je	.fluent
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.symbol
 	lea	rax,[font_mdl2]
 	ret
   .fluent:
 	lea	rax,[font_fluent]
+	ret
+  .symbol:
+	lea	rax,[font_symbol]
 	ret
 endp
 
 proc CurrentNamespace
 	cmp	dword [current_font],UWPCHAR_FONT_FLUENT
 	je	.fluent
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.symbol
 	lea	rax,[font_mdl2_ns]
 	ret
   .fluent:
 	lea	rax,[font_fluent_ns]
+	ret
+  .symbol:
+	lea	rax,[font_symbol_ns]
 	ret
 endp
 
@@ -838,10 +834,137 @@ endp
 proc CurrentFontMask
 	cmp	dword [current_font],UWPCHAR_FONT_FLUENT
 	je	.fluent
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.none
 	mov	eax,UWP_USER_FONT_MDL2
 	ret
   .fluent:
 	mov	eax,UWP_USER_FONT_FLUENT
+	ret
+  .none:
+	xor	eax,eax
+	ret
+endp
+
+proc EffectiveShowLegacy
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.yes
+	mov	eax,dword [show_legacy]
+	ret
+  .yes:
+	mov	eax,1
+	ret
+endp
+
+proc SyncFontOptionControls
+	cmp	qword [hCheckLegacy],0
+	je	.no_legacy
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.symbol
+	invoke	EnableWindow,[hCheckLegacy],1
+	cmp	dword [show_legacy],0
+	je	.legacy_unchecked
+	invoke	SendMessageW,[hCheckLegacy],BM_SETCHECK,BST_CHECKED,0
+	jmp	.no_legacy
+  .legacy_unchecked:
+	invoke	SendMessageW,[hCheckLegacy],BM_SETCHECK,BST_UNCHECKED,0
+	jmp	.no_legacy
+  .symbol:
+	invoke	SendMessageW,[hCheckLegacy],BM_SETCHECK,BST_CHECKED,0
+	invoke	EnableWindow,[hCheckLegacy],0
+  .no_legacy:
+	cmp	qword [hCheckMerged],0
+	je	.no_merged
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.symbol_merged
+	invoke	EnableWindow,[hCheckMerged],1
+	cmp	dword [show_merged_pairs],0
+	je	.merged_unchecked
+	invoke	SendMessageW,[hCheckMerged],BM_SETCHECK,BST_CHECKED,0
+	jmp	.no_merged
+  .merged_unchecked:
+	invoke	SendMessageW,[hCheckMerged],BM_SETCHECK,BST_UNCHECKED,0
+	jmp	.no_merged
+  .symbol_merged:
+	invoke	SendMessageW,[hCheckMerged],BM_SETCHECK,BST_UNCHECKED,0
+	invoke	EnableWindow,[hCheckMerged],0
+  .no_merged:
+	cmp	qword [hComboGroup],0
+	je	.no_group
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.disable_group
+	invoke	EnableWindow,[hComboGroup],1
+	jmp	.group_ready
+  .disable_group:
+	invoke	EnableWindow,[hComboGroup],0
+  .group_ready:
+	cmp	qword [hButtonPair],0
+	je	.no_group
+	cmp	dword [current_font],UWPCHAR_FONT_SYMBOL
+	je	.disable_pair_button
+	invoke	EnableWindow,[hButtonPair],1
+	jmp	.no_group
+  .disable_pair_button:
+	invoke	EnableWindow,[hButtonPair],0
+  .no_group:
+	ret
+endp
+
+proc CountVisiblePairs uses rsi
+    locals
+	mask dd ?
+	count dd ?
+    endl
+
+	fastcall CurrentFontMask
+	mov	dword [mask],eax
+	mov	dword [count],0
+	test	eax,eax
+	jz	.done
+	lea	rsi,[user_pairs]
+	mov	ecx,dword [user_pair_count]
+  .loop:
+	test	ecx,ecx
+	jz	.done
+	mov	eax,dword [rsi+UWP_USER_PAIR.fontmask]
+	test	eax,dword [mask]
+	jz	.next
+	inc	dword [count]
+  .next:
+	add	rsi,sizeof.UWP_USER_PAIR
+	dec	ecx
+	jmp	.loop
+  .done:
+	mov	eax,dword [count]
+	ret
+endp
+
+proc CountVisibleGroups uses rsi
+    locals
+	mask dd ?
+	count dd ?
+    endl
+
+	fastcall CurrentFontMask
+	mov	dword [mask],eax
+	mov	dword [count],0
+	test	eax,eax
+	jz	.done
+	lea	rsi,[user_groups]
+	mov	ecx,dword [user_group_count]
+  .loop:
+	test	ecx,ecx
+	jz	.done
+	mov	eax,dword [rsi+UWP_USER_GROUP.fontmask]
+	test	eax,dword [mask]
+	jz	.next
+	inc	dword [count]
+  .next:
+	add	rsi,sizeof.UWP_USER_GROUP
+	dec	ecx
+	jmp	.loop
+  .done:
+	mov	eax,dword [count]
 	ret
 endp
 
@@ -1646,6 +1769,7 @@ proc BuildGlyphList uses rbx rsi rdi
 	filter_hwnd dq ?
 	count	dd ?
 	filter_len dd ?
+	effective_legacy dd ?
 	filter_text rw 128
 	chars	rw 512
 	glyphs	rw 512
@@ -1662,6 +1786,8 @@ proc BuildGlyphList uses rbx rsi rdi
 	invoke	GetWindowTextW,[filter_hwnd],addr filter_text,128
 	mov	dword [filter_len],eax
   .filter_ready:
+	fastcall EffectiveShowLegacy
+	mov	dword [effective_legacy],eax
 
 	invoke	GetDC,0
 	mov	[hdc],rax
@@ -1708,7 +1834,7 @@ proc BuildGlyphList uses rbx rsi rdi
 	movzx	ecx,word [chars+rdi*2]
 	mov	dword [candidate],ecx
 	mov	qword [namep],0
-	cmp	dword [show_legacy],0
+	cmp	dword [effective_legacy],0
 	jne	.legacy_ready
 	mov	eax,dword [candidate]
 	cmp	eax,0E000h
@@ -1770,10 +1896,16 @@ endp
 proc UpdateStatus
     locals
 	text rw 160
+	visible_pairs dd ?
+	visible_groups dd ?
     endl
 
+	fastcall CountVisiblePairs
+	mov	dword [visible_pairs],eax
+	fastcall CountVisibleGroups
+	mov	dword [visible_groups],eax
 	invoke	wsprintfW,addr text,'Glyphs: %u | Names: %u | Pairs: %u | Groups: %u',\
-		dword [glyph_count],uwpchar_name_count,dword [pair_count],dword [user_group_count]
+		dword [glyph_count],uwpchar_name_count,dword [visible_pairs],dword [visible_groups]
 	invoke	SetWindowTextW,[hStatus],addr text
 	ret
 endp
@@ -2335,7 +2467,7 @@ endp
 
 proc InitDialogControls hwnd
 	mov	[hwnd],rcx
-	mov	dword [current_font],UWPCHAR_FONT_MDL2
+	mov	dword [current_font],UWPCHAR_FONT_FLUENT
 	mov	dword [font_size],24
 	mov	dword [show_merged_pairs],1
 	mov	dword [show_legacy],0
@@ -2396,8 +2528,9 @@ proc InitDialogControls hwnd
 	fastcall ComplexSeedHeart
 	fastcall LoadUserData
 
-	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe MDL2 Assets'
 	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe Fluent Icons'
+	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe MDL2 Assets'
+	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe UI Symbol'
 	invoke	SendMessageW,[hComboFont],CB_SETCURSEL,0,0
 
 	invoke	SendMessageW,[hComboSize],CB_ADDSTRING,0,'16'
@@ -2408,6 +2541,7 @@ proc InitDialogControls hwnd
 	invoke	SendMessageW,[hComboSize],CB_ADDSTRING,0,'48'
 	invoke	SendMessageW,[hComboSize],CB_ADDSTRING,0,'64'
 	invoke	SendMessageW,[hComboSize],CB_SETCURSEL,2,0
+	fastcall SyncFontOptionControls
 	fastcall PopulateGroupCombo
 	fastcall RebuildColorBrush
 	fastcall ApplyFonts
@@ -2540,14 +2674,20 @@ endp
 
 proc OnFontComboChange
 	invoke	SendMessageW,[hComboFont],CB_GETCURSEL,0,0
-	cmp	eax,1
+	cmp	eax,UWPCHAR_FONT_FLUENT
 	je	.fluent
+	cmp	eax,UWPCHAR_FONT_SYMBOL
+	je	.symbol
 	mov	dword [current_font],UWPCHAR_FONT_MDL2
 	jmp	.update
   .fluent:
 	mov	dword [current_font],UWPCHAR_FONT_FLUENT
+	jmp	.update
+  .symbol:
+	mov	dword [current_font],UWPCHAR_FONT_SYMBOL
   .update:
 	mov	dword [scroll_y],0
+	fastcall SyncFontOptionControls
 	fastcall PopulateGroupCombo
 	fastcall UpdateAll
 	ret
@@ -2909,7 +3049,7 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
   .filter_state_ready:
 	mov	dword [scroll_y],0
 	fastcall UpdateAll
-	fastcall ClearEdit_TextChanged,[hFilter],dword [filter_has_text]
+	invoke	SendMessageW,[hFilter],ECM_TEXTCHANGED,dword [filter_has_text],0
 	jmp	.done_one
   .merged_cmd:
 	invoke	SendMessageW,[hCheckMerged],BM_GETCHECK,0,0
@@ -3083,7 +3223,7 @@ proc start
 	mov	[complex_view_wc.hInstance],rax
 
 	invoke	InitCommonControlsEx,addr icc
-	fastcall ClearEdit_Register,[hInstance]
+	fastcall ClearEdit_Register
 	test	eax,eax
 	jz	.fatal
 

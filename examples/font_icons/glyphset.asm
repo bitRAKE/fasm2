@@ -14,8 +14,9 @@ GSET_TEXT		= 0F7F2EEh
 GSET_MUTED		= 0B2A49Ah
 GSET_MIN_WINDOW_W	= 620
 GSET_MIN_WINDOW_H	= 360
-GSET_FONT_MDL2		= 0
-GSET_FONT_FLUENT	= 1
+GSET_FONT_FLUENT	= 0
+GSET_FONT_MDL2		= 1
+GSET_FONT_SYMBOL	= 2
 
 struct GLYPHSET_ITEM
   title  dq ?
@@ -34,6 +35,7 @@ macro glyphset_data
 	view_class GLOBWSTR 'Fasm2GlyphSetView',0
 	font_mdl2 GLOBWSTR 'Segoe MDL2 Assets',0
 	font_fluent GLOBWSTR 'Segoe Fluent Icons',0
+	font_symbol GLOBWSTR 'Segoe UI Symbol',0
 
 	glyphset_user_strings
 
@@ -92,10 +94,15 @@ endp
 proc CurrentFace
 	cmp	dword [current_font],GSET_FONT_FLUENT
 	je	.fluent
+	cmp	dword [current_font],GSET_FONT_SYMBOL
+	je	.symbol
 	lea	rax,[font_mdl2]
 	ret
   .fluent:
 	lea	rax,[font_fluent]
+	ret
+  .symbol:
+	lea	rax,[font_symbol]
 	ret
 endp
 
@@ -172,7 +179,7 @@ proc PopulateList uses rbx rsi
 endp
 
 proc ApplyFonts
-	cmp	qword [hUIFont],0
+	cmp	[hUIFont],0
 	jne	.have_ui
 	invoke	CreateFontW,-13,0,0,0,FW_NORMAL,0,0,0,\
 		DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,\
@@ -196,8 +203,9 @@ proc CreateControls hwnd
 		WS_CHILD or WS_VISIBLE or WS_TABSTOP or WS_VSCROLL or CBS_DROPDOWNLIST,\
 		0,0,0,0,[hwnd],ID_GLYPHSET_FONT_COMBO,[hInstance],0
 	mov	[hComboFont],rax
-	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe MDL2 Assets'
 	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe Fluent Icons'
+	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe MDL2 Assets'
+	invoke	SendMessageW,[hComboFont],CB_ADDSTRING,0,'Segoe UI Symbol'
 	invoke	SendMessageW,[hComboFont],CB_SETCURSEL,0,0
 	invoke	CreateWindowExW,WS_EX_CLIENTEDGE,'LISTBOX',0,\
 		WS_CHILD or WS_VISIBLE or WS_TABSTOP or WS_VSCROLL or LBS_NOTIFY or LBS_NOINTEGRALHEIGHT,\
@@ -280,29 +288,34 @@ proc OnFontComboChange
 	invoke	SendMessageW,[hComboFont],CB_GETCURSEL,0,0
 	cmp	eax,GSET_FONT_FLUENT
 	je	.fluent
+	cmp	eax,GSET_FONT_SYMBOL
+	je	.symbol
 	mov	dword [current_font],GSET_FONT_MDL2
 	jmp	.update
   .fluent:
 	mov	dword [current_font],GSET_FONT_FLUENT
+	jmp	.update
+  .symbol:
+	mov	dword [current_font],GSET_FONT_SYMBOL
   .update:
 	invoke	InvalidateRect,[hView],0,1
 	ret
 endp
 
-proc DrawEmptyMessage hdc,rectp
+proc DrawEmptyMessage uses rbx rsi, hdc,rectp
     locals
 	old_font dq ?
     endl
 
-	mov	[hdc],rcx
-	mov	[rectp],rdx
-	invoke	SetBkMode,[hdc],TRANSPARENT
-	invoke	SetTextColor,[hdc],GSET_MUTED
-	invoke	SelectObject,[hdc],[hUIFont]
+	mov	rbx,rcx
+	mov	rsi,rdx
+	invoke	SetBkMode,rbx,TRANSPARENT
+	invoke	SetTextColor,rbx,GSET_MUTED
+	invoke	SelectObject,rbx,[hUIFont]
 	mov	[old_font],rax
-	invoke	DrawTextW,[hdc],'Drop layered glyph blocks into glyphset_layers.inc.',-1,[rectp],\
+	invoke	DrawTextW,rbx,'Drop layered glyph blocks into glyphset_layers.inc.',-1,rsi,\
 		DT_CENTER or DT_VCENTER or DT_SINGLELINE
-	invoke	SelectObject,[hdc],[old_font]
+	invoke	SelectObject,rbx,[old_font]
 	ret
 endp
 
@@ -384,41 +397,36 @@ proc ViewOnPaint uses rbx rdi, hwnd
 endp
 
 proc NavigateKey key
-	mov	dword [key],ecx
-	cmp	dword [key],VK_LEFT
-	je	.prev
-	cmp	dword [key],VK_UP
-	je	.prev
-	cmp	dword [key],VK_RIGHT
-	je	.next
-	cmp	dword [key],VK_DOWN
-	je	.next
-	cmp	dword [key],VK_SPACE
-	je	.next
-	cmp	dword [key],VK_HOME
-	je	.first
-	cmp	dword [key],VK_END
-	je	.last
+	iterate <vk_,		branch>,\
+		VK_LEFT,	prev,\
+		VK_UP,		prev,\
+		VK_RIGHT,	next,\
+		VK_DOWN,	next,\
+		VK_SPACE,	next,\
+		VK_HOME,	first,\
+		VK_END,		last
+
+		cmp ecx, vk_
+		jz branch
+	end iterate
 	xor	eax,eax
 	ret
-  .prev:
+  prev:
 	fastcall SelectDelta,-1
-	mov	eax,1
-	ret
-  .next:
+	jmp 	handled
+  next:
 	fastcall SelectDelta,1
-	mov	eax,1
-	ret
-  .first:
-	fastcall SelectIndex,0
-	mov	eax,1
-	ret
-  .last:
-	mov	eax,glyphset_item_count
-	test	eax,eax
-	jz	.handled
-	fastcall SelectIndex,glyphset_item_count - 1
-  .handled:
+	jmp 	handled
+  first:
+	xor	ecx, ecx
+	jmp	select
+  last:
+	mov	ecx,glyphset_item_count
+	jrcxz	handled
+	dec	ecx
+  select:
+	fastcall SelectIndex,ecx
+  handled:
 	mov	eax,1
 	ret
 endp
@@ -429,16 +437,16 @@ proc ViewProc hwnd,wmsg,wparam,lparam
 	mov	[wparam],r8
 	mov	[lparam],r9
 
-	cmp	edx,WM_PAINT
-	je	.wm_paint
-	cmp	edx,WM_ERASEBKGND
-	je	.wm_erasebkgnd
-	cmp	edx,WM_LBUTTONDOWN
-	je	.wm_lbuttondown
-	cmp	edx,WM_KEYDOWN
-	je	.wm_keydown
-	cmp	edx,WM_MOUSEWHEEL
-	je	.wm_mousewheel
+	iterate <message,branch>,\
+		WM_PAINT,	.wm_paint,\
+		WM_ERASEBKGND,	.wm_erasebkgnd,\
+		WM_LBUTTONDOWN,	.wm_lbuttondown,\
+		WM_KEYDOWN,	.wm_keydown,\
+		WM_MOUSEWHEEL,	.wm_mousewheel
+
+		cmp	edx,message
+		je	branch
+	end iterate
 	invoke	DefWindowProcW,[hwnd],dword [wmsg],[wparam],[lparam]
 	ret
   .wm_paint:
@@ -477,23 +485,22 @@ proc WindowProc uses rbx, hwnd,wmsg,wparam,lparam
 	mov	[wparam],r8
 	mov	[lparam],r9
 
-	cmp	edx,WM_CREATE
-	je	.wm_create
-	cmp	edx,WM_SIZE
-	je	.wm_size
-	cmp	edx,WM_COMMAND
-	je	.wm_command
-	cmp	edx,WM_KEYDOWN
-	je	.wm_keydown
-	cmp	edx,WM_GETMINMAXINFO
-	je	.wm_getminmaxinfo
-	cmp	edx,WM_DESTROY
-	je	.wm_destroy
+	iterate <message,branch>,\
+		WM_CREATE,		.wm_create,\
+		WM_SIZE,		.wm_size,\
+		WM_COMMAND,		.wm_command,\
+		WM_KEYDOWN,		.wm_keydown,\
+		WM_GETMINMAXINFO,	.wm_getminmaxinfo,\
+		WM_DESTROY,		.wm_destroy
+
+		cmp	edx,message
+		je	branch
+	end iterate
 	invoke	DefWindowProcW,[hwnd],dword [wmsg],[wparam],[lparam]
 	ret
 
   .wm_create:
-	mov	dword [current_font],GSET_FONT_MDL2
+	mov	dword [current_font],GSET_FONT_FLUENT
 	invoke	CreateSolidBrush,GSET_BG
 	mov	[hBackBrush],rax
 	fastcall CreateControls,[hwnd]
@@ -546,13 +553,13 @@ proc WindowProc uses rbx, hwnd,wmsg,wparam,lparam
 	ret
 
   .wm_destroy:
-	cmp	qword [hUIFont],0
-	je	.no_font
-	invoke	DeleteObject,[hUIFont]
+	mov	rcx,[hUIFont]
+	jrcxz	.no_font
+	invoke	DeleteObject,rcx
   .no_font:
-	cmp	qword [hBackBrush],0
-	je	.no_brush
-	invoke	DeleteObject,[hBackBrush]
+	mov	rcx,[hBackBrush]
+	jrcxz	.no_brush
+	invoke	DeleteObject,rcx
   .no_brush:
 	invoke	PostQuitMessage,0
 	xor	eax,eax

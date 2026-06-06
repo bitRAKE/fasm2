@@ -10,7 +10,9 @@ the layered glyph-set viewer.
 ## Single Glyph Constants
 
 Use `Output` when an application only needs symbolic codepoints. Select a font,
-filter by name, and click cells in the glyph grid. Each click appends a
+filter by name, and click cells in the glyph grid. The dropdown is ordered
+newest to oldest: `Segoe Fluent Icons`, `Segoe MDL2 Assets`, then
+`Segoe UI Symbol`. Each click appends a
 namespaced constant block such as:
 
 ```asm
@@ -41,9 +43,10 @@ Pair entries use this strict form:
 
 The first codepoint is the base/foreground layer. The second is the fill layer
 drawn behind it. `(MDL2)` and `(Fluent)` make an entry font-specific; leaving
-the suffix off applies the pair to both font selections. The seed file leaves
-pairs untagged so their MDL2 and Fluent appearances can be vetted before any
-font limit is applied.
+the suffix off applies the pair to Fluent and MDL2. `Segoe UI Symbol` disables
+pairs entirely because the Symbol-era face is treated as a raw legacy glyph
+font. The seed file leaves pairs untagged so appearances can be vetted before
+any font limit is applied.
 
 Use the color buttons before exporting if you want the preview to match the
 target palette:
@@ -129,9 +132,10 @@ Navigation = U+E72A,U+E72B,U+E74A
 ```
 
 Groups filter before the text filter. A group can also be marked `(MDL2)` or
-`(Fluent)` when a curated list only makes sense for one face. Editing the file
-and restarting `uwpchar.exe` is enough to persist custom groups and pairs across
-sessions.
+`(Fluent)` when a curated list only makes sense for one face. Groups are
+disabled for `Segoe UI Symbol`; select that face to inspect its raw legacy glyph
+coverage instead. Editing the file and restarting `uwpchar.exe` is enough to
+persist custom groups and pairs across sessions.
 
 ## Using Other Software
 

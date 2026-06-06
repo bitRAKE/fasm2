@@ -7,13 +7,16 @@
 
 [pairs]
 "Accident" = U+E81F,U+EA8E
-"Action Center" = U+EE79,U+EE7A
+"Action Center" = U+E91C,U+E7E7
+"Action Center Quiet" = U+EE79,U+EE7A
 "AddNewLine" = U+F7B7,U+F7B8
 "Airplane" = U+E709,U+EB4C
+"Battery A5" = U+E408,U+E40D
+"Battery A10" = U+E408,U+E412
 "Bus" = U+E806,U+EB47
 "Calendar" = U+E787,U+EA89
 "Checkbox" = U+E739,U+E73B
-"Click" = U+E8B0,U+F8AF
+"Click (Fluent)" = U+E8B0,U+F8AF
 "Color" = U+E790,U+F354
 "Completed" = U+E930,U+EC61
 "Construction" = U+E822,U+EA8D
@@ -24,7 +27,7 @@
 "Draw" = U+EC87,U+EC88
 "EndPoint" = U+E81B,U+EB4B
 "EraseTool" = U+E75C,U+E82B
-"FavoriteStar" = U+E734,U+E735
+"Favorite Star" = U+E734,U+E735
 "Ferry" = U+E7E3,U+EB48
 "Folder" = U+E8B7,U+E8D5
 "Heart" = U+EB51,U+EB52
@@ -35,6 +38,7 @@
 "InkingTool" = U+E76D,U+E88F
 "InstertWords" = U+F7B1,U+F7B2
 "JoinWords" = U+F7B3,U+F7B4
+"Legacy Favorite Star" = U+E1CE,U+E1CF
 "Like (Fluent)" = U+E8E1,U+F3BF
 "Mail" = U+E715,U+E8A8
 "MobNotificationBell" = U+F2A3,U+F2A5
@@ -47,7 +51,9 @@
 "Pinned" = U+E840,U+E842
 "Play" = U+E768,U+F5B0
 "Reminder" = U+EB50,U+EB4F
+"Repeat One (MDL2)" = U+E8EE,U+E8ED
 "Send (MDL2)" = U+E724,U+E725
+"Send Mirrored (MDL2)" = U+EA63,U+EA64
 "Set" = U+F5ED,U+F5EE
 "Settings" = U+E713,U+F8B0
 "StartPoint" = U+E819,U+EB49
