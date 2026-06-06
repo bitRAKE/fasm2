@@ -127,6 +127,14 @@ struct MONITORINFO
   dwFlags   dd ?
 ends
 
+struct TRACKMOUSEEVENT
+  cbSize      dd ?
+  dwFlags     dd ?
+  hwndTrack   dq ?
+  dwHoverTime dd ?
+	      dd ?
+ends
+
 struct MONITORINFOEXA
   cbSize    dd ?
   rcMonitor RECT
@@ -341,6 +349,7 @@ CS_BYTEALIGNWINDOW = 02000h
 CS_PUBLICCLASS	   = 04000h
 CS_GLOBALCLASS	   = CS_PUBLICCLASS
 CS_IME		   = 10000h
+CS_DROPSHADOW	   = 20000h
 
 ; Windows styles
 
@@ -655,6 +664,7 @@ WM_IME_KEYDOWN		  = 0290h
 WM_IME_KEYUP		  = 0291h
 WM_MOUSEHOVER		  = 02A1h
 WM_MOUSELEAVE		  = 02A3h
+WM_DPICHANGED		  = 02E0h
 WM_CUT			  = 0300h
 WM_COPY 		  = 0301h
 WM_PASTE		  = 0302h
@@ -686,6 +696,46 @@ WM_COALESCE_FIRST	  = 0390h
 WM_COALESCE_LAST	  = 039Fh
 WM_USER 		  = 0400h
 WM_APP			  = 8000h
+
+; WM_NCHITTEST return codes
+
+HTERROR       = -2
+HTTRANSPARENT = -1
+HTNOWHERE     = 0
+HTCLIENT      = 1
+HTCAPTION     = 2
+HTSYSMENU     = 3
+HTGROWBOX     = 4
+HTSIZE        = HTGROWBOX
+HTMENU        = 5
+HTHSCROLL     = 6
+HTVSCROLL     = 7
+HTMINBUTTON   = 8
+HTMAXBUTTON   = 9
+HTLEFT        = 10
+HTRIGHT       = 11
+HTTOP         = 12
+HTTOPLEFT     = 13
+HTTOPRIGHT    = 14
+HTBOTTOM      = 15
+HTBOTTOMLEFT  = 16
+HTBOTTOMRIGHT = 17
+HTBORDER      = 18
+HTREDUCE      = HTMINBUTTON
+HTZOOM        = HTMAXBUTTON
+HTSIZEFIRST   = HTLEFT
+HTSIZELAST    = HTBOTTOMRIGHT
+HTOBJECT      = 19
+HTCLOSE       = 20
+HTHELP        = 21
+
+; TrackMouseEvent flags
+
+TME_HOVER     = 00000001h
+TME_LEAVE     = 00000002h
+TME_NONCLIENT = 00000010h
+TME_QUERY     = 40000000h
+TME_CANCEL    = 80000000h
 
 ; WM_SIZE commands
 
