@@ -4,8 +4,6 @@ include 'windows.inc'
 include 'resource.h'
 include 'font_icons.inc'
 
-WM_DPICHANGED	= 02E0h
-
 ICON_ADD	= 0E710h
 ICON_SETTINGS	= 0E713h
 ICON_SEARCH	= 0E721h

@@ -2,7 +2,7 @@
 
 include 'windows.inc'
 include 'resource.h'
-include 'clear_edit.inc'
+include 'subclass/clear_edit.inc'
 include 'font_icons.inc'
 include 'uwpchar_data.inc'
 
@@ -3049,7 +3049,7 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
   .filter_state_ready:
 	mov	dword [scroll_y],0
 	fastcall UpdateAll
-	invoke	SendMessageW,[hFilter],ECM_TEXTCHANGED,dword [filter_has_text],0
+	invoke	SendMessageW,[hFilter],CLEAR_EDIT_STATUSCHANGED,dword [filter_has_text],0
 	jmp	.done_one
   .merged_cmd:
 	invoke	SendMessageW,[hCheckMerged],BM_GETCHECK,0,0

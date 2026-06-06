@@ -3,39 +3,18 @@
 ; Host requirements:
 ;   call ClearEdit_Register during startup
 ;   call ClearEdit_Attach for each single-line EDIT
-;   send ECM_TEXTCHANGED to the edit with wParam = text-present flag
-
-ECM_TEXTCHANGED		= WM_APP + 1
-CLEAR_EDIT_SUBCLASS_ID	= 1
-CLEAR_EDIT_PAD		= 2
-CLEAR_EDIT_HIT		= 18
-CLEAR_EDIT_ICON_PX	= 14
-CLEAR_EDIT_MASK		= 00808080h
-CLEAR_EDIT_MASK_HOVER	= 000000FFh
-CLEAR_EDIT_DPI_BASE	= 96
-CLEAR_EDIT_QUALITY	= 5
-ECLEAR_STATUSERRORFULL	= 0EB90h
-TME_LEAVE		= 00000002h
-HTCLIENT		= 1
-
-struct TRACKMOUSEEVENT
-  cbSize      dd ?
-  dwFlags     dd ?
-  hwndTrack   dq ?
-  dwHoverTime dd ?
-	      dd ?
-ends
-
-struct ECLEAR
-  pad	     dd ?
-  hit	     dd ?
-  icon_px    dd ?
-  hover      dd ?
-  tracking   dd ?
-  has_text   dd ?
-	     align 8
-  font	     dq ?
-ends
+;   send CLEAR_EDIT_STATUSCHANGED to the edit with wParam = text-present flag
+;
+; Some potential font-icon characters:
+;	BackSpaceQWERTYLg := 0EB96h
+;	BackSpaceQWERTYMd := 0E926h
+;	BackSpaceQWERTYSm := 0E925h
+;	BackSpaceQWERTY := 0E750h
+;	CalculatorBackspace := 0E94Fh
+;
+;	StatusErrorFull := 0EB90h
+;	ErrorBadge := 0EA39h
+;	ErrorBadge12 := 0EDAEh
 
 macro clear_edit_bss
 	align 8
@@ -45,15 +24,33 @@ purge clear_edit_bss
 end macro
 define __GLOBAL_BSS__  clear_edit_bss
 
+CLEAR_EDIT_STATUSCHANGED = WM_APP + 1
+CLEAR_EDIT_SUBCLASS_ID	= 20260604
+CLEAR_EDIT_PAD		= 0
+CLEAR_EDIT_HIT		= 18
+CLEAR_EDIT_ICON_PX	= 18
+CLEAR_EDIT_MASK		= 00808080h
+CLEAR_EDIT_MASK_HOVER	= 000000FFh
+CLEAR_EDIT_DPI_BASE	= 96
+CLEAR_EDIT_QUALITY	= 5 ; CLEARTYPE_QUALITY
+ECLEAR_CHARACTER	= 0EB96h
+
+struct ECLEAR
+  font	     dq ?
+  pad	     dd ?
+  hit	     dd ?
+  icon_px    dd ?
+  hover      dd ?
+  tracking   dd ?
+  has_text   dd ?
+ends
+
 proc ClearEdit_Register
 	invoke	LoadCursorW,0,IDC_ARROW
 	mov	[clear_edit_arrow_cursor],rax
-	test	eax,eax
-	jz	.fail
-	mov	eax,1
-	ret
-  .fail:
-	xor	eax,eax
+	test	rax,rax
+	setnz	al
+	movzx	eax,al
 	ret
 endp
 
@@ -98,7 +95,8 @@ proc ClearEdit_Attach uses rbx, hwnd,has_text
 	neg	eax
 	invoke	CreateFontW,eax,0,0,0,FW_NORMAL,0,0,0,\
 		DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,\
-		CLEAR_EDIT_QUALITY,DEFAULT_PITCH or FF_DONTCARE,'Segoe MDL2 Assets'
+		CLEAR_EDIT_QUALITY,DEFAULT_PITCH or FF_DONTCARE,\
+		'Segoe Fluent Icons'
 	mov	[rbx+ECLEAR.font],rax
 
 	lea	rax,[ClearEditProc]
@@ -222,7 +220,7 @@ proc ClearEdit_DrawGlyph uses rbx rsi, hwnd,statep,hdc
 	rc RECT
 	old_font dq ?
 	old_bk dd ?
-	glyph_text dw ECLEAR_STATUSERRORFULL,0
+	glyph_text dw ECLEAR_CHARACTER,0
     endl
 	cmp	[rdx+ECLEAR.has_text],0
 	je	done
@@ -292,7 +290,7 @@ proc ClearEditProc uses rbx, hwnd,wmsg,wparam,lparam,subclass_id,refdata
 
 	iterate <message,branch>,\
 		WM_PAINT,	wm_paint,\
-		ECM_TEXTCHANGED,ecm_textchanged,\
+		CLEAR_EDIT_STATUSCHANGED,clear_edit_statuschanged,\
 		WM_MOUSEMOVE,	wm_mousemove,\
 		WM_MOUSELEAVE,	wm_mouseleave,\
 		WM_SETCURSOR,	wm_setcursor,\
@@ -319,14 +317,14 @@ proc ClearEditProc uses rbx, hwnd,wmsg,wparam,lparam,subclass_id,refdata
 	mov	rax,[result]
 	ret
 
-  ecm_textchanged:
+  clear_edit_statuschanged:
 	xor	eax,eax
-	cmp	qword [wparam],0
-	setne	al
+	cmp	[wparam],rax
+	setnz	al
 	mov	dword [rbx+ECLEAR.has_text],eax
 	test	eax,eax
 	jnz	text_state_ready
-	mov	dword [rbx+ECLEAR.hover],0
+	mov	dword [rbx+ECLEAR.hover],eax
   text_state_ready:
 	fastcall ClearEdit_Invalidate,[hwnd],rbx
 	xor	eax,eax
@@ -358,8 +356,7 @@ proc ClearEditProc uses rbx, hwnd,wmsg,wparam,lparam,subclass_id,refdata
 	jmp	default
 
   wm_setcursor:
-	mov	eax,dword [lparam]
-	and	eax,0FFFFh
+	movzx	eax,word [lparam]
 	cmp	eax,HTCLIENT
 	jne	default
 	fastcall ClearEdit_CursorOver,[hwnd],rbx
