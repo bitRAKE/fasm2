@@ -1,6 +1,13 @@
 
 ; SHELL32.DLL structures and constants
 
+struct GUID
+  Data1 dd ?
+  Data2 dw ?
+  Data3 dw ?
+  Data4 db 8 dup (?)
+ends
+
 struct NOTIFYICONDATA
   cbSize	   dd ?
   hWnd		   dd ?
@@ -8,7 +15,15 @@ struct NOTIFYICONDATA
   uFlags	   dd ?
   uCallbackMessage dd ?
   hIcon 	   dd ?
-  szTip 	   TCHAR 64 dup (?)
+  szTip 	   TCHAR 128 dup (?)
+  dwState	   dd ?
+  dwStateMask	   dd ?
+  szInfo	   TCHAR 256 dup (?)
+  uVersion	   dd ?
+  szInfoTitle	   TCHAR 64 dup (?)
+  dwInfoFlags	   dd ?
+  guidItem	   GUID
+  hBalloonIcon    dd ?
 ends
 
 struct NOTIFYICONDATAA
@@ -18,7 +33,15 @@ struct NOTIFYICONDATAA
   uFlags	   dd ?
   uCallbackMessage dd ?
   hIcon 	   dd ?
-  szTip 	   db 64 dup (?)
+  szTip 	   db 128 dup (?)
+  dwState	   dd ?
+  dwStateMask	   dd ?
+  szInfo	   db 256 dup (?)
+  uVersion	   dd ?
+  szInfoTitle	   db 64 dup (?)
+  dwInfoFlags	   dd ?
+  guidItem	   GUID
+  hBalloonIcon    dd ?
 ends
 
 struct NOTIFYICONDATAW
@@ -28,7 +51,15 @@ struct NOTIFYICONDATAW
   uFlags	   dd ?
   uCallbackMessage dd ?
   hIcon 	   dd ?
-  szTip 	   du 64 dup (?)
+  szTip 	   du 128 dup (?)
+  dwState	   dd ?
+  dwStateMask	   dd ?
+  szInfo	   du 256 dup (?)
+  uVersion	   dd ?
+  szInfoTitle	   du 64 dup (?)
+  dwInfoFlags	   dd ?
+  guidItem	   GUID
+  hBalloonIcon    dd ?
 ends
 
 struct BROWSEINFO
@@ -50,6 +81,9 @@ NIM_DELETE     = 2
 NIM_SETFOCUS   = 3
 NIM_SETVERSION = 4
 
+NOTIFYICON_VERSION   = 3
+NOTIFYICON_VERSION_4 = 4
+
 ; Taskbar icon flags
 
 NIF_MESSAGE    = 01h
@@ -58,6 +92,31 @@ NIF_TIP        = 04h
 NIF_STATE      = 08h
 NIF_INFO       = 10h
 NIF_GUID       = 20h
+NIF_REALTIME   = 40h
+NIF_SHOWTIP    = 80h
+
+NIS_HIDDEN     = 01h
+NIS_SHAREDICON = 02h
+
+NIIF_NONE		 = 00h
+NIIF_INFO		 = 01h
+NIIF_WARNING		 = 02h
+NIIF_ERROR		 = 03h
+NIIF_USER		 = 04h
+NIIF_ICON_MASK		 = 0Fh
+NIIF_NOSOUND		 = 10h
+NIIF_LARGE_ICON	 = 20h
+NIIF_RESPECT_QUIET_TIME = 80h
+
+NIN_SELECT	     = WM_USER + 0
+NINF_KEY	     = 01h
+NIN_KEYSELECT	     = NIN_SELECT or NINF_KEY
+NIN_BALLOONSHOW     = WM_USER + 2
+NIN_BALLOONHIDE     = WM_USER + 3
+NIN_BALLOONTIMEOUT  = WM_USER + 4
+NIN_BALLOONUSERCLICK = WM_USER + 5
+NIN_POPUPOPEN	     = WM_USER + 6
+NIN_POPUPCLOSE      = WM_USER + 7
 
 ; Constant Special Item ID List
 
@@ -125,4 +184,3 @@ CSIDL_FLAG_NO_ALIAS	      = 0x1000
 CSIDL_FLAG_DONT_VERIFY	      = 0x4000
 CSIDL_FLAG_CREATE	      = 0x8000
 CSIDL_FLAG_MASK 	      = 0xFF00
-				      

@@ -218,8 +218,7 @@ struct DRAWITEMSTRUCT
   hwndItem   dq ?
   hDC	     dq ?
   rcItem     RECT
-  itemData   dd ?
-	     dd ?
+  itemData   dq ?
 ends
 
 struct MENUITEMINFO
@@ -424,6 +423,7 @@ CW_USEDEFAULT = 80000000h
 ; Predefined window handle
 
 HWND_DESKTOP   = 0
+HWND_BROADCAST = 0FFFFh
 
 ; ShowWindow commands
 

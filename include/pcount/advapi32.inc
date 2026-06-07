@@ -260,6 +260,7 @@ RegDeleteValue% =  2
 RegEnumKey% =  4
 RegEnumKeyEx% =  8
 RegEnumValue% =  8
+RegGetValue% =  7
 RegFlushKey% =	1
 RegGetKeySecurity% =  4
 RegLoadKey% =  3

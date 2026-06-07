@@ -48,6 +48,7 @@ macro _end label
 		advapi32,'ADVAPI32.DLL',\
 		comctl32,'COMCTL32.DLL',\
 		comdlg32,'COMDLG32.DLL',\
+		dwmapi,'DWMAPI.DLL',\
 		shell32,'SHELL32.DLL',\
 		wsock32,'WSOCK32.DLL',\
 		version,'VERSION.DLL',\
@@ -59,6 +60,7 @@ macro _end label
 	include! 'api/advapi32.inc'
 	include! 'api/comctl32.inc'
 	include! 'api/comdlg32.inc'
+	include! 'api/dwmapi.inc'
 	include! 'api/shell32.inc'
 	include! 'api/wsock32.inc'
 	include! 'api/version.inc'

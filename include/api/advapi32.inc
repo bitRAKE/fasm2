@@ -345,6 +345,8 @@ import advapi32,\
        RegEnumKeyExW,'RegEnumKeyExW',\
        RegEnumValueA,'RegEnumValueA',\
        RegEnumValueW,'RegEnumValueW',\
+       RegGetValueA,'RegGetValueA',\
+       RegGetValueW,'RegGetValueW',\
        RegFlushKey,'RegFlushKey',\
        RegGetKeySecurity,'RegGetKeySecurity',\
        RegLoadKeyA,'RegLoadKeyA',\
@@ -510,6 +512,7 @@ api AbortSystemShutdown,\
     RegEnumKey,\
     RegEnumKeyEx,\
     RegEnumValue,\
+    RegGetValue,\
     RegLoadKey,\
     RegOpenKey,\
     RegOpenKeyEx,\
