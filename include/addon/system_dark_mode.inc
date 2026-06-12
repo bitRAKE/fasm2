@@ -1,4 +1,4 @@
-; system_dark_mode.inc - Windows app-mode dark theme detection.
+; addon/system_dark_mode.inc - Windows app-mode dark theme detection.
 
 proc WindowsAppsUseDarkMode
     locals

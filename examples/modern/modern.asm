@@ -1,17 +1,17 @@
 ; modern.asm - modular Win64 GUI example with local includes and MRU state.
 ;
 ; This example mirrors the structure used by larger applications:
-;   * windows.inc owns the executable format and local Win32 policy.
+;   * addon/windows.inc owns the executable format and Win32 policy.
 ;   * common.inc contains small reusable helper procs.
 ;   * feature modules own their data, BSS, and procedures.
 ;   * start stays mostly orchestration.
 
-include 'windows.inc'
+include 'addon/windows.inc'
 include 'ids.inc'
 
 include 'common.inc'
 include 'app_state.inc'
-include 'mru_api.inc'
+include 'addon/mru_api.inc'
 include 'mru_recent.inc'
 include 'dialogs.inc'
 include 'file_io.inc'

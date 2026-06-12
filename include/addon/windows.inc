@@ -1,3 +1,8 @@
+; addon/windows.inc - small Win64 GUI executable policy for modular examples.
+;
+; Optional knobs before include:
+;   ADDON_WINDOWS_RESOURCE equ 'program.res'
+
 format PE64 NX GUI 6.0
 
 include 'win64wx.inc'
@@ -8,8 +13,7 @@ include 'encoding/utf8.inc'
 GLOBWSTR.reuse := 1
 GLOBSTR.reuse := 1
 
-; Keep proc bodies stable across invoke/fastcall calls. This matches the
-; larger reference project and makes local labels safe to pass with `addr`.
+; Keep proc bodies stable across invoke/fastcall calls.
 prologue@proc	equ static_rsp_prologue
 epilogue@proc	equ static_rsp_epilogue
 close@proc	equ static_rsp_close procname
@@ -57,7 +61,9 @@ postpone
 			xbss
 		end irpv
 
-	section '.rsrc' resource from 'modern.res' data readable
+	if defined ADDON_WINDOWS_RESOURCE
+		section '.rsrc' resource from ADDON_WINDOWS_RESOURCE data readable
+	end if
 
 	.end start
 end postpone

@@ -26,7 +26,8 @@ macro mru_recent_data
 
 	recent_files MRUDESC info_ptr: recent_info,\
 		handle: 0,\
-		blob_size: sizeof.RecentFileBlob
+		blob_size: sizeof.RecentFileBlob,\
+		is_wide: 1
 purge mru_recent_data
 end macro
 

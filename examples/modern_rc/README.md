@@ -44,10 +44,11 @@ _build.cmd
 The build script first compiles `modern.rc` to `modern.res` with `rc.exe`,
 then calls the repository-local `..\..\fasm2.cmd`.
 
-The executable includes resources through the local policy file:
+The executable includes resources through `include/addon/windows.inc`:
 
 ```asm
-section '.rsrc' resource from 'modern.res' data readable
+ADDON_WINDOWS_RESOURCE equ 'modern.res'
+include 'addon/windows.inc'
 ```
 
 ## File Layout
@@ -72,9 +73,10 @@ small policy constants stay in one place.
 manifest source readable instead of embedding XML text directly into the
 resource script.
 
-`windows.inc` owns executable policy: PE format, imports, proc64 setup, module
-data finalization, and the final `.rsrc` section. This is the part to copy when
-starting another GUI example with the same local Win64 conventions.
+`include/addon/windows.inc` owns executable policy: PE format, imports, proc64
+setup, module data finalization, and optional `.rsrc` section emission. This is
+the shared policy include to reuse when starting another GUI example with the
+same Win64 conventions.
 
 `app_state.inc` owns process-wide handles and state, including `hAccel` and
 `hFindDlg`. It keeps the global storage contract explicit instead of letting
@@ -88,10 +90,9 @@ feature module that can be reused or replaced.
 routes `WM_COMMAND` and `WM_DROPFILES`, and owns the main window procedure. It
 is the adapter between Windows messages and feature-level procedures.
 
-The remaining modules are inherited from the non-resource example:
-`common.inc`, `mru_api.inc`, `mru_recent.inc`, `dialogs.inc`, and
-`file_io.inc`. They are deliberately ordinary include files so the same pieces
-can be lifted into another fasm2 program without a framework.
+The remaining local modules are inherited from the non-resource example:
+`common.inc`, `mru_recent.inc`, `dialogs.inc`, and `file_io.inc`. Shared MRU
+ordinal binding now comes from `include/addon/mru_api.inc`.
 
 ## Modeless Dialog Loop
 

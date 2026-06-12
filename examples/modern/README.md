@@ -19,12 +19,14 @@ The script calls the repository-local `..\..\fasm2.cmd`, which adds the repo
 
 `modern.asm` is the entry point. It only includes modules and orchestrates
 startup/shutdown. Each module registers its own data/BSS emitter with
-`define __GLOBAL_DATA__ ...` or `define __GLOBAL_BSS__ ...`; `windows.inc`
+`define __GLOBAL_DATA__ ...` or `define __GLOBAL_BSS__ ...`;
+`include/addon/windows.inc`
 collects those emitters when it finalizes the executable.
 
-`windows.inc` is the local Win64 policy layer. It sets the PE format, includes
-`win64wx.inc`, enables reusable inline strings, installs the static proc64
-prologue, and emits module-registered data at the end of the build.
+`include/addon/windows.inc` is the shared Win64 policy layer. It sets the PE
+format, includes `win64wx.inc`, enables reusable inline strings, installs the
+static proc64 prologue, and emits module-registered data at the end of the
+build.
 
 `common.inc` contains code-centric helpers that do not own app state: bounded
 wide string copy, case-folded FNV-1a hashing, menu clearing, and current-path
@@ -33,9 +35,9 @@ helpers.
 `app_state.inc` owns global app data and storage: class strings, title format,
 `WNDCLASSEX`, handles, dialog buffers, and title/menu scratch buffers.
 
-`mru_api.inc` binds the undocumented comctl32 MRU entry points by ordinal using
-`LoadLibraryW` and `GetProcAddress`. The app uses local function-pointer slots
-instead of import-table names.
+`include/addon/mru_api.inc` binds the undocumented comctl32 MRU entry points by
+ordinal using `LoadLibraryW` and `GetProcAddress`. The app uses MRU
+function-pointer slots instead of import-table names.
 
 `mru_recent.inc` is the recent-file feature module. It defines the binary blob,
 comparator, save/update path, menu population, and open-by-menu-id behavior.
@@ -86,7 +88,8 @@ value. `MRU_CACHEWRITE` batches registry writes until `FreeMRUList`.
 
 Good exercises:
 
-1. Add a second MRU module for recent search strings.
+1. Add a second MRU feature module for recent search strings using
+   `include/addon/mru_api.inc`.
 2. Add a `settings.inc` module for window size and word-wrap state.
 3. Move menu creation to a resource file and compare resource-driven versus
    code-driven UI setup.
