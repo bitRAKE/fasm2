@@ -1,0 +1,99 @@
+#include <windows.h>
+#include "resource.h"
+
+LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
+
+1 RT_MANIFEST "manifest.xml"
+
+IDR_MAINMENU MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM L"\xE8BB Insert sample\tCtrl+I", ID_INSERT_SAMPLE
+        MENUITEM L"\xE8A5 Clear text\tCtrl+L", ID_TEXT_CLEAR
+        MENUITEM SEPARATOR
+        MENUITEM L"\xE653 Exit\tEsc", ID_FILE_EXIT
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM L"\xE890 Show window", ID_VIEW_SHOW
+        MENUITEM L"\xE8BB Hide to tray", ID_VIEW_HIDE
+    END
+    POPUP "&Theme"
+    BEGIN
+        MENUITEM L"\xE708 Dark menu theme\tCtrl+D", ID_THEME_TOGGLE
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM L"\xE946 About", ID_HELP_ABOUT
+    END
+END
+
+IDR_TRAY_MENU MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM L"\xE890 Show window", ID_VIEW_SHOW
+        MENUITEM L"\xE8BB Hide window", ID_VIEW_HIDE
+        MENUITEM SEPARATOR
+        MENUITEM L"\xE708 Dark menu theme", ID_THEME_TOGGLE
+        MENUITEM L"\xE8A5 Clear text", ID_TEXT_CLEAR
+        MENUITEM L"\xE8BB Insert sample", ID_INSERT_SAMPLE
+        MENUITEM SEPARATOR
+        MENUITEM L"\xE653 Exit", ID_FILE_EXIT
+    END
+END
+
+IDR_EDIT_MENU MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM L"\xE7A7 Undo\tCtrl+Z", ID_EDIT_UNDO
+        MENUITEM L"\xE7A6 Redo\tCtrl+Y", ID_EDIT_REDO
+        MENUITEM SEPARATOR
+        MENUITEM L"\xE8C6 Cut\tCtrl+X", ID_EDIT_CUT
+        MENUITEM L"\xE8C8 Copy\tCtrl+C", ID_EDIT_COPY
+        MENUITEM L"\xE77F Paste\tCtrl+V", ID_EDIT_PASTE
+        MENUITEM L"\xE74D Delete\tDel", ID_EDIT_DELETE
+        MENUITEM SEPARATOR
+        MENUITEM L"\xE8B3 Select all\tCtrl+A", ID_EDIT_SELECT_ALL
+        MENUITEM L"\xE774 Insert URL", ID_EDIT_INSERT_LINK
+        MENUITEM L"\xE8A5 Clear text", ID_EDIT_CLEAR
+    END
+END
+
+IDR_ACCELERATORS ACCELERATORS
+BEGIN
+    "D", ID_THEME_TOGGLE, VIRTKEY, CONTROL
+    "I", ID_INSERT_SAMPLE, VIRTKEY, CONTROL
+    "L", ID_TEXT_CLEAR, VIRTKEY, CONTROL
+    VK_ESCAPE, ID_FILE_EXIT, VIRTKEY
+END
+
+1 VERSIONINFO
+FILEVERSION 0,1,0,0
+PRODUCTVERSION 0,1,0,0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS__WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "fasm2 examples\0"
+            VALUE "FileDescription", "UAH themed menu and RichEdit tray example\0"
+            VALUE "FileVersion", "0.1.0\0"
+            VALUE "InternalName", "uah_menu\0"
+            VALUE "OriginalFilename", "uah_menu.exe\0"
+            VALUE "ProductName", "Modern fasm2 examples\0"
+            VALUE "ProductVersion", "0.1.0\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

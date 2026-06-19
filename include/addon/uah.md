@@ -5,10 +5,36 @@ that needs to recognize the undocumented `WM_UAH*` menu messages and optionally
 call the private `uxtheme.dll` ordinals used by dark-mode menu experiments.
 
 It does not install hooks, attach subclasses, or draw menus by itself. The
-caller owns the CBT hook or creation hook, subclass procedure, colors, metrics,
-and any `WM_UAH*` return values. This include only supplies the message
-constants, structure layouts, menu-window detection helper, and tolerant runtime
-wrappers for the private exports.
+caller owns any CBT hook or creation hook, subclass procedure, colors, metrics,
+and `WM_UAH*` return values. This include only supplies the message constants,
+structure layouts, menu-window detection helper, and tolerant runtime wrappers
+for the private exports.
+
+## Historical Note
+
+Win32 menus are older than the common-control style most applications use for
+buttons, edits, list views, and similar UI. A normal control has an `HWND` that
+the application creates directly or receives from a dialog template, so the
+program has an obvious handle to subclass.
+
+Menus are different. Application code mostly owns an `HMENU` data model and asks
+USER32 to attach, track, and paint that menu. For an ordinary top-level menu
+bar, UAH messages can be delivered to the application's own frame window because
+that is the window that owns the menu bar. A message logger like `msgflood`,
+which creates a menu with `SetMenu`, can therefore see `WM_UAH*` traffic in its
+main window procedure without installing a hook.
+
+Popup menus add another layer. During popup tracking, the system creates
+short-lived popup menu windows with class name `#32768`, paints them through
+USER32 and uxtheme, and destroys them when tracking ends. The application is not
+handed the popup window handle as part of the ordinary menu API.
+
+That is why popup-menu UAH work usually starts with a CBT hook or another
+window-creation hook: the hook sees the transient `#32768` menu window as it is
+created, lets the application filter it with `UahIsMenuWindow`, and then gives
+the application a real `HWND` it can subclass. Without that discovery step,
+popup-menu `WM_UAH*` offers may be delivered to a window the application never
+directly created or retained.
 
 ## Include Model
 
@@ -173,7 +199,7 @@ exports.
 
 ## Subclass Use
 
-A typical menu-window subclass flow is:
+A typical popup menu-window subclass flow is:
 
 1. Open the UAH runtime during startup if dark-mode private wrappers are needed.
 2. Detect popup menu windows with a CBT hook or another creation hook.
@@ -184,6 +210,6 @@ A typical menu-window subclass flow is:
 
 This include intentionally does not install hooks or subclasses. It is a shared
 add-on support surface for applications that already own those policy decisions.
-A reusable CBT hook or creation-hook implementation would belong under
-`include/subclass`; the UAH message and runtime definitions live here because
-they are useful outside one specific subclass implementation.
+The reusable CBT hook implementation lives in `include/subclass/uah_menu.inc`;
+the UAH message and runtime definitions live here because they are useful
+outside one specific subclass implementation.
