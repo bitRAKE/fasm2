@@ -13,3 +13,5 @@ Current addons:
 - `windows.inc`: small Win64 GUI executable policy for modular examples.
 - `mru_api.inc`: comctl32 MRU ordinal binding and small descriptor helpers.
 - `system_dark_mode.inc`: Windows app-mode dark theme detection helper.
+- `uah.inc`: verified WM_UAH message/structure support and tolerant uxtheme
+  private-ordinal wrappers.
