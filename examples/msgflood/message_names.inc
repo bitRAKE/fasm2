@@ -1,0 +1,248 @@
+; message_names.inc - compact message id to display-name mapping.
+
+; Verified undocumented UAH menu/window messages. Keep these local to the
+; logger: they are useful for traces, but are not public PSDK definitions.
+WM_UAHDESTROYWINDOW	= 0090h
+WM_UAHDRAWMENU		= 0091h
+WM_UAHDRAWMENUITEM	= 0092h ; lParam is UAHDRAWMENUITEM.
+WM_UAHINITMENU		= 0093h
+WM_UAHMEASUREMENUITEM	= 0094h ; lParam is UAHMEASUREMENUITEM.
+WM_UAHNCPAINTMENUPOPUP	= 0095h
+WM_UAHUPDATE		= 0096h
+
+define MSG_NAME_LIST\
+	WM_UAHDESTROYWINDOW,\
+	WM_UAHDRAWMENU,\
+	WM_UAHDRAWMENUITEM,\
+	WM_UAHINITMENU,\
+	WM_UAHMEASUREMENUITEM,\
+	WM_UAHNCPAINTMENUPOPUP,\
+	WM_UAHUPDATE,\
+	WM_NULL,\
+	WM_CREATE,\
+	WM_DESTROY,\
+	WM_MOVE,\
+	WM_SIZE,\
+	WM_ACTIVATE,\
+	WM_SETFOCUS,\
+	WM_KILLFOCUS,\
+	WM_ENABLE,\
+	WM_SETREDRAW,\
+	WM_GETTEXT,\
+	WM_GETTEXTLENGTH,\
+	WM_PAINT,\
+	WM_CLOSE,\
+	WM_QUERYENDSESSION,\
+	WM_ENDSESSION,\
+	WM_ERASEBKGND,\
+	WM_SYSCOLORCHANGE,\
+	WM_SHOWWINDOW,\
+	WM_SETTINGCHANGE,\
+	WM_ACTIVATEAPP,\
+	WM_FONTCHANGE,\
+	WM_TIMECHANGE,\
+	WM_CANCELMODE,\
+	WM_SETCURSOR,\
+	WM_MOUSEACTIVATE,\
+	WM_GETMINMAXINFO,\
+	WM_GETOBJECT,\
+	WM_WINDOWPOSCHANGING,\
+	WM_WINDOWPOSCHANGED,\
+	WM_COPYGLOBALDATA,\
+	WM_POWERBROADCAST,\
+	WM_COPYDATA,\
+	WM_INPUT_DEVICE_CHANGE,\
+	WM_INPUTLANGCHANGEREQUEST,\
+	WM_INPUTLANGCHANGE,\
+	WM_NOTIFY,\
+	WM_INPUT,\
+	WM_KEYDOWN,\
+	WM_KEYUP,\
+	WM_CHAR,\
+	WM_DEADCHAR,\
+	WM_SYSKEYDOWN,\
+	WM_SYSKEYUP,\
+	WM_SYSCHAR,\
+	WM_UNICHAR,\
+	WM_IME_STARTCOMPOSITION,\
+	WM_IME_ENDCOMPOSITION,\
+	WM_IME_COMPOSITION,\
+	WM_IME_SETCONTEXT,\
+	WM_IME_NOTIFY,\
+	WM_INITDIALOG,\
+	WM_COMMAND,\
+	WM_SYSCOMMAND,\
+	WM_TIMER,\
+	WM_HSCROLL,\
+	WM_VSCROLL,\
+	WM_INITMENU,\
+	WM_INITMENUPOPUP,\
+	WM_MENUSELECT,\
+	WM_ENTERIDLE,\
+	WM_UNINITMENUPOPUP,\
+	WM_CTLCOLOREDIT,\
+	WM_CTLCOLORBTN,\
+	WM_CTLCOLORSTATIC,\
+	WM_MOUSEMOVE,\
+	WM_LBUTTONDOWN,\
+	WM_LBUTTONUP,\
+	WM_LBUTTONDBLCLK,\
+	WM_RBUTTONDOWN,\
+	WM_RBUTTONUP,\
+	WM_RBUTTONDBLCLK,\
+	WM_MBUTTONDOWN,\
+	WM_MBUTTONUP,\
+	WM_MBUTTONDBLCLK,\
+	WM_MOUSEWHEEL,\
+	WM_XBUTTONDOWN,\
+	WM_XBUTTONUP,\
+	WM_XBUTTONDBLCLK,\
+	WM_MOUSEHWHEEL,\
+	WM_NCMOUSEHOVER,\
+	WM_MOUSEHOVER,\
+	WM_NCMOUSELEAVE,\
+	WM_MOUSELEAVE,\
+	WM_NCMOUSEMOVE,\
+	WM_NCHITTEST,\
+	WM_NCPAINT,\
+	WM_NCACTIVATE,\
+	WM_NCCALCSIZE,\
+	WM_NCCREATE,\
+	WM_NCDESTROY,\
+	WM_NCLBUTTONDOWN,\
+	WM_NCLBUTTONUP,\
+	WM_NCLBUTTONDBLCLK,\
+	WM_NCRBUTTONDOWN,\
+	WM_GETICON,\
+	WM_SETICON,\
+	WM_QUERYOPEN,\
+	WM_CAPTURECHANGED,\
+	WM_ENTERSIZEMOVE,\
+	WM_EXITSIZEMOVE,\
+	WM_SIZING,\
+	WM_MOVING,\
+	WM_ENTERMENULOOP,\
+	WM_EXITMENULOOP,\
+	WM_DROPFILES,\
+	WM_THEMECHANGED,\
+	WM_DEVICECHANGE,\
+	WM_WTSSESSION_CHANGE,\
+	WM_CLIPBOARDUPDATE,\
+	WM_DWMCOMPOSITIONCHANGED,\
+	WM_DWMCOLORIZATIONCOLORCHANGED,\
+	WM_DPICHANGED,\
+	WM_HOTKEY,\
+	WM_APPCOMMAND,\
+	WM_DISPLAYCHANGE,\
+	WM_COMPACTING,\
+	WM_STYLECHANGING,\
+	WM_STYLECHANGED,\
+	WM_GETDLGCODE,\
+	WM_TRAY
+
+define NOISE_MASK_LIST\
+	WM_MOUSEMOVE,NOISE_MOUSE,\
+	WM_MOUSEHOVER,NOISE_MOUSE,\
+	WM_MOUSELEAVE,NOISE_MOUSE,\
+	WM_INPUT,NOISE_RAW,\
+	WM_INPUT_DEVICE_CHANGE,NOISE_RAW,\
+	WM_TIMER,NOISE_TIMER,\
+	WM_PAINT,NOISE_PAINT,\
+	WM_ERASEBKGND,NOISE_PAINT,\
+	WM_NCPAINT,NOISE_PAINT,\
+	WM_NCHITTEST,NOISE_NONCLIENT,\
+	WM_SETCURSOR,NOISE_NONCLIENT,\
+	WM_NCMOUSEMOVE,NOISE_NONCLIENT,\
+	WM_WINDOWPOSCHANGING,NOISE_POSITION,\
+	WM_WINDOWPOSCHANGED,NOISE_POSITION,\
+	WM_GETICON,NOISE_QUERY,\
+	WM_GETTEXT,NOISE_QUERY,\
+	WM_GETTEXTLENGTH,NOISE_QUERY,\
+	WM_CTLCOLOREDIT,NOISE_CONTROL
+
+unknown_msg_name	GLOBWSTR 'WM_? (registered/unknown)',0
+app_msg_name		GLOBWSTR 'WM_APP+',0
+user_msg_name		GLOBWSTR 'WM_USER+',0
+shell_msg_name		GLOBWSTR 'RWM_SHELLHOOK',0
+taskbar_msg_name	GLOBWSTR 'RWM_TaskbarCreated',0
+
+match any,MSG_NAME_LIST
+	iterate msgid, any
+		msg_name_#msgid GLOBWSTR `msgid,0
+	end iterate
+end match
+
+proc MsgName msgid
+	mov	eax,ecx
+	cmp	eax,dword [msgShell]
+	je	.shell
+	cmp	eax,dword [msgTaskbar]
+	je	.taskbar
+
+	match any,MSG_NAME_LIST
+		iterate msgid_value, any
+			cmp	eax,msgid_value
+			je	.ret_#msgid_value
+		end iterate
+	end match
+
+	cmp	eax,WM_APP
+	jae	.app
+	cmp	eax,WM_USER
+	jae	.user
+	mov	rax,unknown_msg_name
+	ret
+  .shell:
+	mov	rax,shell_msg_name
+	ret
+  .taskbar:
+	mov	rax,taskbar_msg_name
+	ret
+  .app:
+	mov	rax,app_msg_name
+	ret
+  .user:
+	mov	rax,user_msg_name
+	ret
+
+	match any,MSG_NAME_LIST
+		iterate msgid_value, any
+		  .ret_#msgid_value:
+			mov	rax,msg_name_#msgid_value
+			ret
+		end iterate
+	end match
+endp
+
+proc NoiseMaskForMessage msgid
+	mov	eax,ecx
+	match any,NOISE_MASK_LIST
+		iterate <msgid_value,mask_value>, any
+			cmp	eax,msgid_value
+			je	.ret_#msgid_value
+		end iterate
+	end match
+	xor	eax,eax
+	ret
+
+	match any,NOISE_MASK_LIST
+		iterate <msgid_value,mask_value>, any
+		  .ret_#msgid_value:
+			mov	eax,mask_value
+			ret
+		end iterate
+	end match
+endp
+
+proc IsNoiseFiltered msgid
+	fastcall NoiseMaskForMessage,ecx
+	test	eax,eax
+	jz	.show
+	test	eax,dword [noise_show_mask]
+	jnz	.show
+	mov	eax,1
+	ret
+  .show:
+	xor	eax,eax
+	ret
+endp
