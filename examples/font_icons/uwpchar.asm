@@ -3030,21 +3030,23 @@ proc Layout hwnd
 	sub	eax,dword [rc.top]
 	mov	dword [height],eax
 
-;	invoke	MoveWindow,[hLabelFont],8,12,48,22,1
-;	invoke	MoveWindow,[hComboFont],64,8,300,180,1
-;	invoke	MoveWindow,[hLabelSize],8,48,48,22,1
-;	invoke	MoveWindow,[hComboSize],64,44,82,180,1
-;	invoke	MoveWindow,[hCheckMerged],160,44,116,24,1
-;	invoke	MoveWindow,[hCheckLegacy],280,44,104,24,1
-;	invoke	MoveWindow,[hLabelGroup],8,80,48,22,1
-;	invoke	MoveWindow,[hComboGroup],64,76,128,180,1
-;	invoke	MoveWindow,[hLabelFilter],208,80,48,22,1
-;	invoke	MoveWindow,[hFilter],250,76,134,24,1
-;	invoke	MoveWindow,[hButtonFore],8,112,64,28,1
-;	invoke	MoveWindow,[hButtonBack],80,112,64,28,1
-;	invoke	MoveWindow,[hButtonPair],152,112,64,28,1
-;	invoke	MoveWindow,[hButtonCopy],232,112,76,28,1
-;	invoke	MoveWindow,[hStatus],8,148,376,22,1
+; TODO: correct the resource script positioning,
+; and then these MoveWindow can be deleted:
+	invoke	MoveWindow,[hLabelFont],8,12,44,22,1
+	invoke	MoveWindow,[hLabelSize],8,44,44,22,1
+	invoke	MoveWindow,[hLabelGroup],8,76,44,22,1
+	invoke	MoveWindow,[hComboFont],64,8,160,180,1
+	invoke	MoveWindow,[hComboSize],64,40,40,180,1
+	invoke	MoveWindow,[hComboGroup],64,72,96,180,1
+	invoke	MoveWindow,[hCheckMerged],160,44,116,24,1
+	invoke	MoveWindow,[hCheckLegacy],280,44,104,24,1
+	invoke	MoveWindow,[hLabelFilter],172,76,48,22,1
+	invoke	MoveWindow,[hFilter],230,72,144,24,1
+	invoke	MoveWindow,[hButtonFore],8,110,64,28,1
+	invoke	MoveWindow,[hButtonBack],80,110,64,28,1
+	invoke	MoveWindow,[hButtonPair],152,110,64,28,1
+	invoke	MoveWindow,[hButtonCopy],232,110,76,28,1
+	invoke	MoveWindow,[hStatus],8,148,376,22,1
 
 	mov	dword [tab_y],176
 	mov	eax,dword [height]
