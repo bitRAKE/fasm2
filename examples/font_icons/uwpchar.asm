@@ -9,6 +9,7 @@ include 'uwpchar_data.inc'
 HEAP_ZERO_MEMORY		= 0008h
 GGI_MARK_NONEXISTING_GLYPHS	= 0001h
 WHEEL_DELTA			= 120
+SW_INVALIDATE			= 0002h
 
 UWP_VIEW_BG		= 0141212h
 UWP_PANEL_BG		= 026201Ch
@@ -36,6 +37,7 @@ VK_OEM_PLUS		= 0BBh
 VK_OEM_MINUS		= 0BDh
 UWP_VKEY_HANDLED	= -2
 UWP_VKEY_DEFAULT	= -1
+UWP_NO_ANCHOR		= 0
 
 struct UWP_USER_PAIR
   base     dd ?
@@ -79,9 +81,6 @@ macro uwpchar_data
 	menu_clear_text GLOBWSTR 'Clear layers',0
 	code_name_fmt GLOBWSTR 'U+%04X, %s',0
 
-	insert_single_fmt GLOBWSTR 13,10,'namespace %s',13,10,9,'%s := 0%04Xh',13,10,'end namespace',0
-	insert_pair_fmt GLOBWSTR 13,10,'namespace %s',13,10,9,'%s := 0%04Xh',13,10,\
-		9,'%s := 0%04Xh ; layered pair',13,10,'end namespace',0
 	complex_export_begin GLOBWSTR 13,10,'label icon_layers:icon_layers.bytes/sizeof.FONTICON_LAYER',13,10,0
 	complex_export_layer_fmt GLOBWSTR 9,'FONTICON_LAYER glyph: 0%04Xh, color: %08Xh ; %s',13,10,0
 	complex_export_end GLOBWSTR '.bytes = $ - icon_layers',13,10,0
@@ -94,15 +93,15 @@ macro uwpchar_data
 		dwICC: ICC_TAB_CLASSES
 
 	view_wc WNDCLASSEX cbSize: sizeof.WNDCLASSEX,\
-		style: CS_HREDRAW or CS_VREDRAW,\
+		style: 0,\
 		lpfnWndProc: ViewProc,\
-		hbrBackground: COLOR_WINDOW + 1,\
+		hbrBackground: 0,\
 		lpszClassName: view_class
 
 	complex_view_wc WNDCLASSEX cbSize: sizeof.WNDCLASSEX,\
-		style: CS_HREDRAW or CS_VREDRAW,\
+		style: 0,\
 		lpfnWndProc: ComplexViewProc,\
-		hbrBackground: COLOR_WINDOW + 1,\
+		hbrBackground: 0,\
 		lpszClassName: complex_view_class
 
 	uwpchar_name_data
@@ -1201,7 +1200,6 @@ proc OnGroupComboChange
   .all:
 	mov	dword [current_group],0
   .update:
-	mov	dword [scroll_y],0
 	fastcall UpdateAll
 	ret
 endp
@@ -1216,14 +1214,14 @@ proc RebuildColorBrush
 	mov	[hViewBrush],rax
 	cmp	qword [hView],0
 	je	.no_view
-	invoke	InvalidateRect,[hView],0,1
+	invoke	InvalidateRect,[hView],0,0
   .no_view:
 	cmp	qword [hEdit],0
 	je	.done
 	invoke	InvalidateRect,[hEdit],0,1
 	cmp	qword [hComplexView],0
 	je	.done
-	invoke	InvalidateRect,[hComplexView],0,1
+	invoke	InvalidateRect,[hComplexView],0,0
   .done:
 	ret
 endp
@@ -1265,7 +1263,7 @@ proc PickColor colorp
 	test	eax,eax
 	jz	.done
 	fastcall RebuildColorBrush
-	invoke	InvalidateRect,[hView],0,1
+	invoke	InvalidateRect,[hView],0,0
   .done:
 	ret
 endp
@@ -1314,7 +1312,7 @@ proc ComplexLayer_RebuildList uses rsi
   .no_selection:
 	cmp	qword [hComplexView],0
 	je	.done
-	invoke	InvalidateRect,[hComplexView],0,1
+	invoke	InvalidateRect,[hComplexView],0,0
   .done:
 	ret
 endp
@@ -1329,7 +1327,7 @@ proc ComplexLayer_Clear
 	fastcall ComplexUpdateSelectionState
 	cmp	qword [hComplexView],0
 	je	.done
-	invoke	InvalidateRect,[hComplexView],0,1
+	invoke	InvalidateRect,[hComplexView],0,0
   .done:
 	ret
 endp
@@ -1462,7 +1460,7 @@ proc ComplexPickSelectedColor uses rbx
 	fastcall ChooseColorValue,rcx
 	test	eax,eax
 	jz	.done
-	invoke	InvalidateRect,[hComplexView],0,1
+	invoke	InvalidateRect,[hComplexView],0,0
   .done:
 	ret
 endp
@@ -1629,7 +1627,7 @@ proc ComplexSeedHeart
 	ret
 endp
 
-proc AppendComplexExport uses rbx rsi
+proc AppendComplexExport uses rsi
     locals
 	idx dd ?
 	name_w rw 256
@@ -1910,6 +1908,141 @@ proc UpdateStatus
 	ret
 endp
 
+proc CaptureViewAnchor uses rbx, hwnd,codep,offsetp
+    locals
+	rc RECT
+	cols dd ?
+	row dd ?
+	offset dd ?
+    endl
+
+	mov	[hwnd],rcx
+	mov	[codep],rdx
+	mov	[offsetp],r8
+	mov	rax,[codep]
+	mov	dword [rax],UWP_NO_ANCHOR
+	mov	rax,[offsetp]
+	mov	dword [rax],0
+	cmp	qword [hwnd],0
+	je	.fail
+	cmp	dword [glyph_count],0
+	je	.fail
+	cmp	dword [cell_w],0
+	je	.fail
+	cmp	dword [cell_h],0
+	je	.fail
+	invoke	GetClientRect,[hwnd],addr rc
+	mov	eax,dword [rc.right]
+	sub	eax,dword [rc.left]
+	cdq
+	idiv	dword [cell_w]
+	test	eax,eax
+	jg	.cols_ready
+	mov	eax,1
+  .cols_ready:
+	mov	dword [cols],eax
+	mov	eax,dword [scroll_y]
+	cdq
+	idiv	dword [cell_h]
+	mov	dword [row],eax
+	mov	dword [offset],edx
+	imul	eax,dword [cols]
+	cmp	eax,dword [glyph_count]
+	jae	.fail
+	mov	rbx,[glyph_codes]
+	mov	ecx,dword [rbx+rax*4]
+	mov	rax,[codep]
+	mov	dword [rax],ecx
+	mov	rax,[offsetp]
+	mov	ecx,dword [offset]
+	mov	dword [rax],ecx
+	mov	eax,1
+	ret
+  .fail:
+	xor	eax,eax
+	ret
+endp
+
+proc FindGlyphIndex uses rbx, code
+	mov	dword [code],ecx
+	mov	rbx,[glyph_codes]
+	test	rbx,rbx
+	jz	.not_found
+	xor	ecx,ecx
+  .loop:
+	cmp	ecx,dword [glyph_count]
+	jae	.not_found
+	mov	eax,dword [rbx+rcx*4]
+	cmp	eax,dword [code]
+	je	.found
+	inc	ecx
+	jmp	.loop
+  .found:
+	mov	eax,ecx
+	ret
+  .not_found:
+	mov	eax,-1
+	ret
+endp
+
+proc RestoreViewAnchor hwnd,code,offset
+    locals
+	rc RECT
+	cols dd ?
+	index dd ?
+    endl
+
+	mov	[hwnd],rcx
+	mov	dword [code],edx
+	mov	dword [offset],r8d
+	cmp	qword [hwnd],0
+	je	.done
+	cmp	dword [code],UWP_NO_ANCHOR
+	je	.update
+	cmp	dword [glyph_count],0
+	je	.update
+	cmp	dword [cell_w],0
+	je	.update
+	cmp	dword [cell_h],0
+	je	.update
+	fastcall FindGlyphIndex,dword [code]
+	cmp	eax,-1
+	je	.update
+	mov	dword [index],eax
+	invoke	GetClientRect,[hwnd],addr rc
+	mov	eax,dword [rc.right]
+	sub	eax,dword [rc.left]
+	cdq
+	idiv	dword [cell_w]
+	test	eax,eax
+	jg	.cols_ready
+	mov	eax,1
+  .cols_ready:
+	mov	dword [cols],eax
+	mov	eax,dword [index]
+	xor	edx,edx
+	div	dword [cols]
+	imul	eax,dword [cell_h]
+	mov	ecx,dword [offset]
+	cmp	ecx,0
+	jge	.offset_nonnegative
+	xor	ecx,ecx
+  .offset_nonnegative:
+	mov	edx,dword [cell_h]
+	dec	edx
+	cmp	ecx,edx
+	jle	.offset_ready
+	mov	ecx,edx
+  .offset_ready:
+	add	eax,ecx
+	mov	dword [scroll_y],eax
+  .update:
+	fastcall UpdateViewScroll,[hwnd]
+	fastcall ClampScroll,[hwnd]
+  .done:
+	ret
+endp
+
 proc UpdateViewScroll hwnd
     locals
 	rc RECT
@@ -2004,17 +2137,44 @@ proc ClampScroll hwnd
 	ret
 endp
 
-proc ViewScrollBy hwnd,delta
+proc ViewScrollTo hwnd,pos
+    locals
+	old_y dd ?
+	shift_y dd ?
+    endl
+
 	mov	[hwnd],rcx
-	mov	dword [delta],edx
-	mov	eax,dword [delta]
-	add	dword [scroll_y],eax
+	mov	dword [pos],edx
+	mov	eax,dword [scroll_y]
+	mov	dword [old_y],eax
+	mov	eax,dword [pos]
+	mov	dword [scroll_y],eax
 	fastcall ClampScroll,[hwnd]
-	invoke	InvalidateRect,[hwnd],0,1
+	mov	eax,dword [scroll_y]
+	sub	eax,dword [old_y]
+	jz	.done
+	neg	eax
+	mov	dword [shift_y],eax
+	invoke	ScrollWindowEx,[hwnd],0,dword [shift_y],0,0,0,0,SW_INVALIDATE
+  .done:
 	ret
 endp
 
-proc DrawOneCell uses rbx rsi, hdc,code,rectp
+proc ViewScrollBy hwnd,delta
+    locals
+	target dd ?
+    endl
+
+	mov	[hwnd],rcx
+	mov	dword [delta],edx
+	mov	eax,dword [scroll_y]
+	add	eax,dword [delta]
+	mov	dword [target],eax
+	fastcall ViewScrollTo,[hwnd],dword [target]
+	ret
+endp
+
+proc DrawOneCell hdc,code,rectp
     locals
 	namep dq ?
 	base_namep dq ?
@@ -2041,7 +2201,7 @@ proc DrawOneCell uses rbx rsi, hdc,code,rectp
 	ret
 endp
 
-proc ViewOnPaint uses rbx rsi rdi r12 r13 r14 r15, hwnd
+proc ViewOnPaint uses rbx r15, hwnd
     locals
 	ps PAINTSTRUCT
 	rc RECT
@@ -2064,7 +2224,7 @@ proc ViewOnPaint uses rbx rsi rdi r12 r13 r14 r15, hwnd
 	invoke	BeginPaint,[hwnd],addr ps
 	mov	r15,rax
 	invoke	GetClientRect,[hwnd],addr rc
-	invoke	FillRect,r15,addr rc,[hViewBrush]
+	invoke	FillRect,r15,addr ps.rcPaint,[hViewBrush]
 	invoke	SetBkMode,r15,TRANSPARENT
 	cmp	dword [cell_w],0
 	je	.paint_done
@@ -2082,13 +2242,12 @@ proc ViewOnPaint uses rbx rsi rdi r12 r13 r14 r15, hwnd
 	mov	dword [cols],eax
 
 	mov	eax,dword [scroll_y]
+	add	eax,dword [ps.rcPaint.top]
 	cdq
 	idiv	dword [cell_h]
 	mov	dword [start_row],eax
 	mov	eax,dword [scroll_y]
-	mov	ecx,dword [rc.bottom]
-	sub	ecx,dword [rc.top]
-	add	eax,ecx
+	add	eax,dword [ps.rcPaint.bottom]
 	cdq
 	idiv	dword [cell_h]
 	inc	eax
@@ -2175,7 +2334,7 @@ proc ViewOnPaint uses rbx rsi rdi r12 r13 r14 r15, hwnd
 	ret
 endp
 
-proc ComplexViewOnPaint uses rbx rsi rdi, hwnd
+proc ComplexViewOnPaint uses rdi, hwnd
     locals
 	ps PAINTSTRUCT
 	rc RECT
@@ -2213,13 +2372,13 @@ proc ComplexViewOnPaint uses rbx rsi rdi, hwnd
 	mov	eax,dword [width]
 	sub	eax,dword [size]
 	cdq
-	mov	ebx,2
-	idiv	ebx
+	mov	ecx,2
+	idiv	ecx
 	mov	dword [draw_rect.left],eax
 	mov	eax,dword [height]
 	sub	eax,dword [size]
 	cdq
-	idiv	ebx
+	idiv	ecx
 	mov	dword [draw_rect.top],eax
 	mov	eax,dword [draw_rect.left]
 	add	eax,dword [size]
@@ -2257,7 +2416,280 @@ proc AppendToEdit textp
 	ret
 endp
 
-proc InsertSelection uses rbx rsi, code
+proc WideSkipLineSpaces textp
+	mov	[textp],rcx
+	mov	rax,[textp]
+  .loop:
+	cmp	word [rax],' '
+	je	.next
+	cmp	word [rax],9
+	jne	.done
+  .next:
+	add	rax,2
+	jmp	.loop
+  .done:
+	ret
+endp
+
+proc WideLineRemainderEmptyOrComment textp
+	mov	[textp],rcx
+	fastcall WideSkipLineSpaces,[textp]
+	movzx	ecx,word [rax]
+	test	ecx,ecx
+	jz	.yes
+	cmp	ecx,13
+	je	.yes
+	cmp	ecx,10
+	je	.yes
+	cmp	ecx,';'
+	je	.yes
+	xor	eax,eax
+	ret
+  .yes:
+	mov	eax,1
+	ret
+endp
+
+proc WideTokenMatch textp,tokenp
+	mov	[textp],rcx
+	mov	[tokenp],rdx
+	mov	r8,[textp]
+	mov	r9,[tokenp]
+  .loop:
+	movzx	eax,word [r9]
+	test	eax,eax
+	jz	.token_done
+	movzx	ecx,word [r8]
+	cmp	ecx,'A'
+	jb	.text_ready
+	cmp	ecx,'Z'
+	ja	.text_ready
+	add	ecx,20h
+  .text_ready:
+	cmp	eax,'A'
+	jb	.token_ready
+	cmp	eax,'Z'
+	ja	.token_ready
+	add	eax,20h
+  .token_ready:
+	cmp	ecx,eax
+	jne	.fail
+	add	r8,2
+	add	r9,2
+	jmp	.loop
+  .token_done:
+	movzx	ecx,word [r8]
+	test	ecx,ecx
+	jz	.match
+	cmp	ecx,' '
+	je	.match
+	cmp	ecx,9
+	je	.match
+	cmp	ecx,13
+	je	.match
+	cmp	ecx,10
+	je	.match
+	cmp	ecx,';'
+	je	.match
+  .fail:
+	xor	eax,eax
+	ret
+  .match:
+	mov	rax,r8
+	ret
+endp
+
+proc WideNamespaceAnyLine linep
+	mov	[linep],rcx
+	fastcall WideSkipLineSpaces,[linep]
+	fastcall WideTokenMatch,rax,'namespace'
+	test	rax,rax
+	jz	.no
+	mov	eax,1
+	ret
+  .no:
+	xor	eax,eax
+	ret
+endp
+
+proc WideNamespaceLineMatches uses rsi rdi, linep,namespacep
+	mov	[linep],rcx
+	mov	[namespacep],rdx
+	fastcall WideSkipLineSpaces,[linep]
+	fastcall WideTokenMatch,rax,'namespace'
+	test	rax,rax
+	jz	.no
+	mov	rsi,rax
+	cmp	word [rsi],' '
+	je	.skip_name_spaces
+	cmp	word [rsi],9
+	jne	.no
+  .skip_name_spaces:
+	cmp	word [rsi],' '
+	je	.name_space_next
+	cmp	word [rsi],9
+	jne	.name_start
+  .name_space_next:
+	add	rsi,2
+	jmp	.skip_name_spaces
+  .name_start:
+	mov	rdi,[namespacep]
+  .compare:
+	movzx	eax,word [rdi]
+	test	eax,eax
+	jz	.name_done
+	cmp	word [rsi],ax
+	jne	.no
+	add	rsi,2
+	add	rdi,2
+	jmp	.compare
+  .name_done:
+	fastcall WideLineRemainderEmptyOrComment,rsi
+	ret
+  .no:
+	xor	eax,eax
+	ret
+endp
+
+proc WideEndNamespaceLine linep
+	mov	[linep],rcx
+	fastcall WideSkipLineSpaces,[linep]
+	fastcall WideTokenMatch,rax,'end'
+	test	rax,rax
+	jz	.no
+	cmp	word [rax],' '
+	je	.skip_namespace_spaces
+	cmp	word [rax],9
+	jne	.no
+  .skip_namespace_spaces:
+	cmp	word [rax],' '
+	je	.namespace_space_next
+	cmp	word [rax],9
+	jne	.namespace_start
+  .namespace_space_next:
+	add	rax,2
+	jmp	.skip_namespace_spaces
+  .namespace_start:
+	fastcall WideTokenMatch,rax,'namespace'
+	test	rax,rax
+	jz	.no
+	fastcall WideLineRemainderEmptyOrComment,rax
+	ret
+  .no:
+	xor	eax,eax
+	ret
+endp
+
+proc FindNamespaceInsertIndex uses rbx rsi, textp,namespacep
+    locals
+	depth dd ?
+	line_index dd ?
+    endl
+
+	mov	[textp],rcx
+	mov	[namespacep],rdx
+	mov	rsi,[textp]
+	xor	ebx,ebx
+	mov	dword [depth],0
+  .line_loop:
+	cmp	word [rsi],0
+	je	.not_found
+	mov	dword [line_index],ebx
+	cmp	dword [depth],0
+	jne	.inside_namespace
+	fastcall WideNamespaceLineMatches,rsi,[namespacep]
+	test	eax,eax
+	jz	.advance_line
+	mov	dword [depth],1
+	jmp	.advance_line
+
+  .inside_namespace:
+	fastcall WideEndNamespaceLine,rsi
+	test	eax,eax
+	jz	.check_nested
+	dec	dword [depth]
+	jnz	.advance_line
+	mov	eax,dword [line_index]
+	ret
+  .check_nested:
+	fastcall WideNamespaceAnyLine,rsi
+	test	eax,eax
+	jz	.advance_line
+	inc	dword [depth]
+
+  .advance_line:
+	movzx	eax,word [rsi]
+	test	eax,eax
+	jz	.not_found
+	cmp	eax,13
+	je	.cr
+	cmp	eax,10
+	je	.lf
+	add	rsi,2
+	inc	ebx
+	jmp	.advance_line
+  .cr:
+	add	rsi,2
+	inc	ebx
+	cmp	word [rsi],10
+	jne	.line_loop
+	add	rsi,2
+	inc	ebx
+	jmp	.line_loop
+  .lf:
+	add	rsi,2
+	inc	ebx
+	jmp	.line_loop
+  .not_found:
+	mov	eax,-1
+	ret
+endp
+
+proc InsertIntoNamespace namespacep,textp
+    locals
+	len dd ?
+	insert_index dd ?
+	bytes dq ?
+	heap_handle dq ?
+	buffer dq ?
+    endl
+
+	mov	[namespacep],rcx
+	mov	[textp],rdx
+	cmp	qword [hEdit],0
+	je	.fail
+	invoke	GetWindowTextLengthW,[hEdit]
+	test	eax,eax
+	jle	.fail
+	mov	dword [len],eax
+	inc	eax
+	shl	rax,1
+	mov	[bytes],rax
+	invoke	GetProcessHeap
+	mov	[heap_handle],rax
+	invoke	HeapAlloc,[heap_handle],HEAP_ZERO_MEMORY,[bytes]
+	mov	[buffer],rax
+	test	rax,rax
+	jz	.fail
+	mov	eax,dword [len]
+	inc	eax
+	invoke	GetWindowTextW,[hEdit],[buffer],eax
+	fastcall FindNamespaceInsertIndex,[buffer],[namespacep]
+	mov	dword [insert_index],eax
+	invoke	HeapFree,[heap_handle],0,[buffer]
+	cmp	dword [insert_index],-1
+	je	.fail
+	invoke	SendMessageW,[hEdit],EM_SETSEL,dword [insert_index],dword [insert_index]
+	invoke	SendMessageW,[hEdit],EM_REPLACESEL,1,[textp]
+	invoke	SendMessageW,[hEdit],EM_SCROLLCARET,0,0
+	mov	eax,1
+	ret
+  .fail:
+	xor	eax,eax
+	ret
+endp
+
+proc InsertSelection code
     locals
 	name_ascii dq ?
 	base_name_ascii dq ?
@@ -2292,10 +2724,17 @@ proc InsertSelection uses rbx rsi, code
 	mov	[namep],rax
 	fastcall CopyAsciiToWide,addr pair_name_w,[fill_name_ascii],256
 	mov	[pair_namep],rax
-	invoke	wsprintfW,addr line,insert_pair_fmt,[namespacep],\
+	invoke	wsprintfW,addr line,<9,'%s := 0%04Xh',13,10,\
+		9,'%s := 0%04Xh ; layered pair',13,10>,\
+		[namep],dword [base_code],[pair_namep],dword [fill_code]
+	fastcall InsertIntoNamespace,[namespacep],addr line
+	test	eax,eax
+	jnz	.done
+	invoke	wsprintfW,addr line,<13,10,'namespace %s',13,10,9,'%s := 0%04Xh',13,10,\
+		9,'%s := 0%04Xh ; layered pair',13,10,'end namespace'>,[namespacep],\
 		[namep],dword [base_code],[pair_namep],dword [fill_code]
 	fastcall AppendToEdit,addr line
-	ret
+	jmp	.done
 
   .fallback_name:
 	cmp	dword [code],0E000h
@@ -2310,8 +2749,14 @@ proc InsertSelection uses rbx rsi, code
 	lea	rax,[fallback]
 	mov	[namep],rax
   .single:
-	invoke	wsprintfW,addr line,insert_single_fmt,[namespacep],[namep],dword [code]
+	invoke	wsprintfW,addr line,<9,'%s := 0%04Xh',13,10>,[namep],dword [code]
+	fastcall InsertIntoNamespace,[namespacep],addr line
+	test	eax,eax
+	jnz	.done
+	invoke	wsprintfW,addr line,<13,10,'namespace %s',13,10,9,'%s := 0%04Xh',13,10,\
+		'end namespace'>,[namespacep],[namep],dword [code]
 	fastcall AppendToEdit,addr line
+  .done:
 	ret
 endp
 
@@ -2357,11 +2802,19 @@ proc CopyExportText
 endp
 
 proc UpdateAll
+    locals
+	anchor_code dd ?
+	anchor_offset dd ?
+    endl
+
+	mov	dword [anchor_code],UWP_NO_ANCHOR
+	mov	dword [anchor_offset],0
+	fastcall CaptureViewAnchor,[hView],addr anchor_code,addr anchor_offset
 	fastcall BuildGlyphList
 	fastcall UpdateStatus
-	fastcall UpdateViewScroll,[hView]
-	invoke	InvalidateRect,[hView],0,1
-	invoke	InvalidateRect,[hComplexView],0,1
+	fastcall RestoreViewAnchor,[hView],dword [anchor_code],dword [anchor_offset]
+	invoke	InvalidateRect,[hView],0,0
+	invoke	InvalidateRect,[hComplexView],0,0
 	ret
 endp
 
@@ -2409,22 +2862,22 @@ endp
 proc RedrawActivePage
 	cmp	qword [hModeTab],0
 	je	.page
-	invoke	RedrawWindow,[hModeTab],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME
+	invoke	RedrawWindow,[hModeTab],0,0,RDW_INVALIDATE or RDW_NOERASE or RDW_FRAME
   .page:
 	cmp	dword [mode_tab],UWP_TAB_COMPLEX
 	je	.complex
 	cmp	qword [hEdit],0
 	je	.done
-	invoke	RedrawWindow,[hEdit],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW
+	invoke	RedrawWindow,[hEdit],0,0,RDW_INVALIDATE or RDW_NOERASE or RDW_FRAME
 	ret
   .complex:
 	cmp	qword [hComplexView],0
 	je	.no_view
-	invoke	RedrawWindow,[hComplexView],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW
+	invoke	RedrawWindow,[hComplexView],0,0,RDW_INVALIDATE or RDW_NOERASE or RDW_FRAME
   .no_view:
 	cmp	qword [hComplexList],0
 	je	.done
-	invoke	RedrawWindow,[hComplexList],0,0,RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW
+	invoke	RedrawWindow,[hComplexList],0,0,RDW_INVALIDATE or RDW_NOERASE or RDW_FRAME
   .done:
 	ret
 endp
@@ -2577,21 +3030,21 @@ proc Layout hwnd
 	sub	eax,dword [rc.top]
 	mov	dword [height],eax
 
-	invoke	MoveWindow,[hLabelFont],8,12,48,22,1
-	invoke	MoveWindow,[hComboFont],64,8,300,180,1
-	invoke	MoveWindow,[hLabelSize],8,48,48,22,1
-	invoke	MoveWindow,[hComboSize],64,44,82,180,1
-	invoke	MoveWindow,[hCheckMerged],160,44,116,24,1
-	invoke	MoveWindow,[hCheckLegacy],280,44,104,24,1
-	invoke	MoveWindow,[hLabelGroup],8,80,48,22,1
-	invoke	MoveWindow,[hComboGroup],64,76,128,180,1
-	invoke	MoveWindow,[hLabelFilter],208,80,48,22,1
-	invoke	MoveWindow,[hFilter],250,76,134,24,1
-	invoke	MoveWindow,[hButtonFore],8,112,64,28,1
-	invoke	MoveWindow,[hButtonBack],80,112,64,28,1
-	invoke	MoveWindow,[hButtonPair],152,112,64,28,1
-	invoke	MoveWindow,[hButtonCopy],232,112,76,28,1
-	invoke	MoveWindow,[hStatus],8,148,376,22,1
+;	invoke	MoveWindow,[hLabelFont],8,12,48,22,1
+;	invoke	MoveWindow,[hComboFont],64,8,300,180,1
+;	invoke	MoveWindow,[hLabelSize],8,48,48,22,1
+;	invoke	MoveWindow,[hComboSize],64,44,82,180,1
+;	invoke	MoveWindow,[hCheckMerged],160,44,116,24,1
+;	invoke	MoveWindow,[hCheckLegacy],280,44,104,24,1
+;	invoke	MoveWindow,[hLabelGroup],8,80,48,22,1
+;	invoke	MoveWindow,[hComboGroup],64,76,128,180,1
+;	invoke	MoveWindow,[hLabelFilter],208,80,48,22,1
+;	invoke	MoveWindow,[hFilter],250,76,134,24,1
+;	invoke	MoveWindow,[hButtonFore],8,112,64,28,1
+;	invoke	MoveWindow,[hButtonBack],80,112,64,28,1
+;	invoke	MoveWindow,[hButtonPair],152,112,64,28,1
+;	invoke	MoveWindow,[hButtonCopy],232,112,76,28,1
+;	invoke	MoveWindow,[hStatus],8,148,376,22,1
 
 	mov	dword [tab_y],176
 	mov	eax,dword [height]
@@ -2668,7 +3121,6 @@ proc Layout hwnd
 	mov	eax,160
   .view_h_ready:
 	invoke	MoveWindow,[hView],dword [view_x],8,dword [view_w],eax,1
-	fastcall RedrawActivePage
 	ret
 endp
 
@@ -2686,7 +3138,6 @@ proc OnFontComboChange
   .symbol:
 	mov	dword [current_font],UWPCHAR_FONT_SYMBOL
   .update:
-	mov	dword [scroll_y],0
 	fastcall SyncFontOptionControls
 	fastcall PopulateGroupCombo
 	fastcall UpdateAll
@@ -2701,7 +3152,6 @@ proc OnSizeComboChange
 	jg	.done
 	mov	eax,dword [size_values+rax*4]
 	mov	dword [font_size],eax
-	mov	dword [scroll_y],0
 	fastcall UpdateAll
   .done:
 	ret
@@ -2734,11 +3184,15 @@ proc ViewProc uses rbx, hwnd,wmsg,wparam,lparam
 	je	.wm_lbuttondown
 	cmp	edx,WM_PAINT
 	je	.wm_paint
+	cmp	edx,WM_ERASEBKGND
+	je	.wm_erasebkgnd
 	invoke	DefWindowProcW,[hwnd],dword [wmsg],[wparam],[lparam]
 	ret
 
   .wm_size:
 	fastcall UpdateViewScroll,[hwnd]
+	fastcall ClampScroll,[hwnd]
+	invoke	InvalidateRect,[hwnd],0,0
 	xor	eax,eax
 	ret
 
@@ -2789,10 +3243,7 @@ proc ViewProc uses rbx, hwnd,wmsg,wparam,lparam
 	mov	dword [si.cbSize],sizeof.SCROLLINFO
 	mov	dword [si.fMask],SIF_TRACKPOS
 	invoke	GetScrollInfo,[hwnd],SB_VERT,addr si
-	mov	eax,dword [si.nTrackPos]
-	mov	dword [scroll_y],eax
-	fastcall ClampScroll,[hwnd]
-	invoke	InvalidateRect,[hwnd],0,1
+	fastcall ViewScrollTo,[hwnd],dword [si.nTrackPos]
 	xor	eax,eax
 	ret
 
@@ -2862,6 +3313,9 @@ proc ViewProc uses rbx, hwnd,wmsg,wparam,lparam
 	fastcall ViewOnPaint,[hwnd]
 	xor	eax,eax
 	ret
+  .wm_erasebkgnd:
+	mov	eax,1
+	ret
 endp
 
 proc ComplexViewProc hwnd,wmsg,wparam,lparam
@@ -2927,6 +3381,11 @@ proc ComplexViewProc hwnd,wmsg,wparam,lparam
 endp
 
 proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
+    locals
+	anchor_code dd ?
+	anchor_offset dd ?
+    endl
+
 	mov	[hwnd],rcx
 	mov	dword [wmsg],edx
 	mov	[wparam],r8
@@ -2940,8 +3399,6 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	je	.wm_notify
 	cmp	edx,WM_VKEYTOITEM
 	je	.wm_vkeytoitem
-	cmp	edx,WM_WINDOWPOSCHANGING
-	je	.wm_windowposchanging
 	cmp	edx,WM_SIZE
 	je	.wm_size
 	cmp	edx,WM_GETMINMAXINFO
@@ -3047,7 +3504,6 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
   .filter_empty:
 	mov	dword [filter_has_text],0
   .filter_state_ready:
-	mov	dword [scroll_y],0
 	fastcall UpdateAll
 	invoke	SendMessageW,[hFilter],CLEAR_EDIT_STATUSCHANGED,dword [filter_has_text],0
 	jmp	.done_one
@@ -3060,7 +3516,6 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
   .merged_off:
 	mov	dword [show_merged_pairs],0
   .merged_update:
-	mov	dword [scroll_y],0
 	fastcall UpdateAll
 	jmp	.done_one
   .legacy_cmd:
@@ -3072,7 +3527,6 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
   .legacy_off:
 	mov	dword [show_legacy],0
   .legacy_update:
-	mov	dword [scroll_y],0
 	fastcall UpdateAll
 	jmp	.done_one
   .complex_list_cmd:
@@ -3135,12 +3589,6 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
 	mov	eax,UWP_VKEY_DEFAULT
 	ret
 
-  .wm_windowposchanging:
-	mov	rbx,[lparam]
-	or	dword [rbx+WINDOWPOS.flags],SWP_NOCOPYBITS
-	xor	eax,eax
-	ret
-
   .wm_notify:
 	mov	rbx,[lparam]
 	cmp	qword [rbx+NMHDR.idFrom],ID_MODE_TAB
@@ -3154,10 +3602,13 @@ proc UwpCharDlgProc uses rbx, hwnd,wmsg,wparam,lparam
   .wm_size:
 	cmp	qword [hView],0
 	je	.done_one
+	mov	dword [anchor_code],UWP_NO_ANCHOR
+	mov	dword [anchor_offset],0
+	fastcall CaptureViewAnchor,[hView],addr anchor_code,addr anchor_offset
 	fastcall Layout,[hwnd]
-	fastcall UpdateViewScroll,[hView]
-	invoke	InvalidateRect,[hView],0,1
-	invoke	InvalidateRect,[hComplexView],0,1
+	fastcall RestoreViewAnchor,[hView],dword [anchor_code],dword [anchor_offset]
+	invoke	InvalidateRect,[hView],0,0
+	invoke	InvalidateRect,[hComplexView],0,0
 	fastcall RedrawActivePage
 	mov	eax,1
 	ret
