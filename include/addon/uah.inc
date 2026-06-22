@@ -27,7 +27,7 @@ WM_UAHNCPAINTMENUPOPUP	= 0095h
 WM_UAHUPDATE		= 0096h
 
 UAH_CLASS_CHARS		= 16
-UAH_LOAD_LIBRARY_SEARCH_SYSTEM32 = 00000800h
+UAH_LOAD_LIBRARY_SEARCH_SYSTEM32 = LOAD_LIBRARY_SEARCH_SYSTEM32
 
 UAH_ORD_REFRESH_IMMERSIVE_COLORS	= 104
 UAH_ORD_ALLOW_DARK_MODE_FOR_WINDOW	= 133
@@ -93,7 +93,7 @@ proc UahRuntimeOpen runtimep
 	mov	[runtimep],rcx
 	invoke	RtlZeroMemory,[runtimep],sizeof.UAH_RUNTIME
 
-	invoke	LoadLibraryExW,'uxtheme.dll',0,UAH_LOAD_LIBRARY_SEARCH_SYSTEM32
+	invoke	LoadLibraryExW,'uxtheme.dll',0,LOAD_LIBRARY_SEARCH_SYSTEM32
 	mov	[module],rax
 	test	rax,rax
 	jz	.fail
