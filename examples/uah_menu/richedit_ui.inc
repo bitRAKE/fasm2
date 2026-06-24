@@ -115,7 +115,7 @@ proc CreateRichEdit hwnd
 	test	rax,rax
 	jz	.fail
 
-	invoke	CreateWindowEx,WS_EX_CLIENTEDGE,'RICHEDIT50W',0,\
+	invoke	CreateWindowEx,WS_EX_ACCEPTFILES,'RICHEDIT50W',0,\
 		RICHEDIT_STYLE,\
 		0,0,0,0,[hwnd],ID_RICHEDIT,[hInstance],0
 	mov	[hRich],rax

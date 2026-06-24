@@ -1,3 +1,16 @@
+OBJID_MENU = 0FFFFFFFDh
+CHILDID_SELF = 0
+
+struct MENUBARINFO
+	cbSize dd ?
+	rcBar RECT
+	dd ?
+	hMenu dq ?
+	hwndMenu dq ?
+	flags dd ?
+	dd ?
+ends
+
 proc MenuFindTab textp
 	mov	rax,rcx
   .scan:
@@ -120,7 +133,93 @@ proc MenuLoadItemInfo menup,position,infop,textp
 	ret
 endp
 
-proc MenuMeasureItem uses rbx, hwnd,measurep
+proc MenuGetBarRect hwnd,rectp
+    locals
+	mbi MENUBARINFO
+	wnd RECT
+	dx dd ?
+	dy dd ?
+    endl
+	mov	[hwnd],rcx
+	mov	[rectp],rdx
+	invoke	RtlZeroMemory,addr mbi,sizeof.MENUBARINFO
+	mov	[mbi.cbSize],sizeof.MENUBARINFO
+	invoke	GetMenuBarInfo,[hwnd],OBJID_MENU,CHILDID_SELF,addr mbi
+	test	eax,eax
+	jz	.fail
+	invoke	GetWindowRect,[hwnd],addr wnd
+	mov	rdx,[rectp]
+	fastcall MenuCopyRect,rdx,addr mbi.rcBar
+	mov	eax,[wnd.left]
+	neg	eax
+	mov	[dx],eax
+	mov	eax,[wnd.top]
+	neg	eax
+	mov	[dy],eax
+	invoke	OffsetRect,[rectp],dword [dx],dword [dy]
+	mov	eax,1
+	ret
+  .fail:
+	xor	eax,eax
+	ret
+endp
+
+proc MenuBuildItemState item_state,infop
+	mov	dword [item_state],ecx
+	mov	[infop],rdx
+	xor	eax,eax
+	mov	edx,dword [item_state]
+	test	edx,ODS_HOTLIGHT
+	jz	.no_hot
+	or	eax,MENU_STATE_HOT
+  .no_hot:
+	test	edx,ODS_SELECTED
+	jz	.no_selected
+	or	eax,MENU_STATE_SELECTED
+  .no_selected:
+	test	edx,ODS_GRAYED or ODS_DISABLED
+	jz	.no_disabled_ods
+	or	eax,MENU_STATE_DISABLED
+  .no_disabled_ods:
+	test	edx,ODS_INACTIVE
+	jz	.no_inactive
+	or	eax,MENU_STATE_INACTIVE
+  .no_inactive:
+	test	edx,ODS_NOACCEL
+	jz	.no_noaccel
+	or	eax,MENU_STATE_NOACCEL
+  .no_noaccel:
+	test	edx,ODS_DEFAULT
+	jz	.no_default_ods
+	or	eax,MENU_STATE_DEFAULT
+  .no_default_ods:
+	mov	rcx,[infop]
+	mov	edx,[rcx+MENUITEMINFO.fState]
+	test	edx,MFS_DISABLED
+	jz	.no_disabled_info
+	or	eax,MENU_STATE_DISABLED
+  .no_disabled_info:
+	test	edx,MFS_CHECKED
+	jz	.no_checked
+	or	eax,MENU_STATE_CHECKED
+  .no_checked:
+	test	edx,MFS_DEFAULT
+	jz	.no_default_info
+	or	eax,MENU_STATE_DEFAULT
+  .no_default_info:
+	mov	edx,[rcx+MENUITEMINFO.fType]
+	test	edx,MFT_RADIOCHECK
+	jz	.no_radio
+	or	eax,MENU_STATE_RADIO
+  .no_radio:
+	cmp	qword [rcx+MENUITEMINFO.hSubMenu],0
+	je	.done
+	or	eax,MENU_STATE_HASSUB
+  .done:
+	ret
+endp
+
+proc MenuMeasureItemSurface uses rbx, hwnd,measurep,surface
     locals
 	info MENUITEMINFO
 	text rw MENU_TEXT_MAX
@@ -139,6 +238,7 @@ proc MenuMeasureItem uses rbx, hwnd,measurep
     endl
 	mov	[hwnd],rcx
 	mov	[measurep],rdx
+	mov	dword [surface],r8d
 	mov	rbx,rdx
 	invoke	IsMenu,qword [rbx+UAHMEASUREMENUITEM.um+UAHMENU.hmenu]
 	test	eax,eax
@@ -158,6 +258,8 @@ proc MenuMeasureItem uses rbx, hwnd,measurep
 	mov	[dpi],eax
 	fastcall EnsureMenuFonts,eax
 
+	cmp	dword [surface],MENU_SURFACE_BAR
+	je	.normal
 	mov	eax,[info.fType]
 	and	eax,MFT_SEPARATOR
 	jz	.normal
@@ -207,6 +309,9 @@ proc MenuMeasureItem uses rbx, hwnd,measurep
 	invoke	SelectObject,[hdc],[old_font]
 	invoke	ReleaseDC,[hwnd],[hdc]
 
+	cmp	dword [surface],MENU_SURFACE_BAR
+	je	.bar_dimensions
+
 	fastcall ScaleForDpi,MENU_GUTTER_96,dword [dpi]
 	mov	[width],eax
 	mov	eax,[label_size.cx]
@@ -234,11 +339,47 @@ proc MenuMeasureItem uses rbx, hwnd,measurep
 	cmp	[height],eax
 	jge	.store
 	mov	[height],eax
+	jmp	.store
+
+  .bar_dimensions:
+	mov	eax,[label_size.cx]
+	mov	[width],eax
+	fastcall ScaleForDpi,MENU_BAR_PAD_X_96,dword [dpi]
+	shl	eax,1
+	add	[width],eax
+	mov	eax,[label_size.cy]
+	mov	[height],eax
+	fastcall ScaleForDpi,MENU_BAR_PAD_Y_96,dword [dpi]
+	shl	eax,1
+	add	[height],eax
+	fastcall ScaleForDpi,MENU_BAR_MIN_H_96,dword [dpi]
+	cmp	[height],eax
+	jge	.store
+	mov	[height],eax
+
   .store:
+	cmp	dword [surface],MENU_SURFACE_BAR
+	je	.store_bar
 	mov	eax,[width]
 	mov	dword [rbx+UAHMEASUREMENUITEM.mis+MEASUREITEMSTRUCT.itemWidth],eax
 	mov	eax,[height]
 	mov	dword [rbx+UAHMEASUREMENUITEM.mis+MEASUREITEMSTRUCT.itemHeight],eax
+	mov	eax,1
+	ret
+
+  .store_bar:
+	mov	eax,[width]
+	mov	ecx,dword [rbx+UAHMEASUREMENUITEM.mis+MEASUREITEMSTRUCT.itemWidth]
+	cmp	eax,ecx
+	jle	.height_bar
+	mov	dword [rbx+UAHMEASUREMENUITEM.mis+MEASUREITEMSTRUCT.itemWidth],eax
+  .height_bar:
+	mov	eax,[height]
+	mov	ecx,dword [rbx+UAHMEASUREMENUITEM.mis+MEASUREITEMSTRUCT.itemHeight]
+	cmp	eax,ecx
+	jle	.done_ok
+	mov	dword [rbx+UAHMEASUREMENUITEM.mis+MEASUREITEMSTRUCT.itemHeight],eax
+  .done_ok:
 	mov	eax,1
 	ret
 
@@ -247,7 +388,21 @@ proc MenuMeasureItem uses rbx, hwnd,measurep
 	ret
 endp
 
-proc MenuPaintItem uses rbx, hwnd,itemp
+proc MenuMeasureItem hwnd,measurep
+	mov	[hwnd],rcx
+	mov	[measurep],rdx
+	fastcall MenuMeasureItemSurface,[hwnd],[measurep],MENU_SURFACE_POPUP
+	ret
+endp
+
+proc MenuMeasureBarItem hwnd,measurep
+	mov	[hwnd],rcx
+	mov	[measurep],rdx
+	fastcall MenuMeasureItemSurface,[hwnd],[measurep],MENU_SURFACE_BAR
+	ret
+endp
+
+proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
     locals
 	info MENUITEMINFO
 	text rw MENU_TEXT_MAX
@@ -274,10 +429,12 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	inset_y dd ?
 	glyph dd ?
 	label_chars dd ?
-	grayed dd ?
+	state dd ?
+	text_flags dd ?
     endl
 	mov	[hwnd],rcx
 	mov	[itemp],rdx
+	mov	dword [surface],r8d
 	mov	rbx,rdx
 
 	mov	rax,qword [rbx+UAHDRAWMENUITEM.um+UAHMENU.hdc]
@@ -311,6 +468,9 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 
 	lea	rdx,[rbx+UAHDRAWMENUITEM.dis+DRAWITEMSTRUCT.rcItem]
 	fastcall MenuCopyRect,addr rect,rdx
+	fastcall MenuBuildItemState,\
+		dword [rbx+UAHDRAWMENUITEM.dis+DRAWITEMSTRUCT.itemState],addr info
+	mov	[state],eax
 
 	fastcall ThemeBg
 	mov	[bg],eax
@@ -319,6 +479,8 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	mov	[item_fg],eax
 	fastcall MenuFillRect,[hdc],addr rect,dword [bg]
 
+	cmp	dword [surface],MENU_SURFACE_BAR
+	je	.not_separator
 	mov	eax,[info.fType]
 	and	eax,MFT_SEPARATOR
 	jz	.not_separator
@@ -337,27 +499,24 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	jmp	.done
 
   .not_separator:
-	mov	dword [grayed],0
-	mov	eax,dword [rbx+UAHDRAWMENUITEM.dis+DRAWITEMSTRUCT.itemState]
-	and	eax,ODS_GRAYED or ODS_DISABLED
-	jnz	.mark_grayed
-	mov	eax,[info.fState]
-	and	eax,MFS_DISABLED
+	mov	eax,[state]
+	and	eax,MENU_STATE_DISABLED
 	jz	.check_hover
-  .mark_grayed:
-	mov	dword [grayed],1
 	fastcall ThemeBlendColor,dword [fg],dword [bg],58
 	mov	[item_fg],eax
 
   .check_hover:
-	cmp	dword [grayed],0
-	jne	.draw_gutter
-	mov	eax,dword [rbx+UAHDRAWMENUITEM.dis+DRAWITEMSTRUCT.itemState]
-	and	eax,ODS_SELECTED or ODS_HOTLIGHT
-	jz	.draw_gutter
+	mov	eax,[state]
+	and	eax,MENU_STATE_DISABLED
+	jnz	.layout
+	mov	eax,[state]
+	and	eax,MENU_STATE_SELECTED or MENU_STATE_HOT
+	jz	.layout
 	fastcall ThemeHover
 	mov	[hover_color],eax
 	fastcall MenuCopyRect,addr hover_rect,addr rect
+	cmp	dword [surface],MENU_SURFACE_BAR
+	je	.bar_hover_inset
 	fastcall ScaleForDpi,3,dword [dpi]
 	neg	eax
 	mov	[inset_x],eax
@@ -366,6 +525,20 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	mov	[inset_y],eax
 	invoke	InflateRect,addr hover_rect,dword [inset_x],dword [inset_y]
 	fastcall MenuFillRect,[hdc],addr hover_rect,dword [hover_color]
+	jmp	.layout
+  .bar_hover_inset:
+	fastcall ScaleForDpi,2,dword [dpi]
+	neg	eax
+	mov	[inset_x],eax
+	fastcall ScaleForDpi,1,dword [dpi]
+	neg	eax
+	mov	[inset_y],eax
+	invoke	InflateRect,addr hover_rect,dword [inset_x],dword [inset_y]
+	fastcall MenuFillRect,[hdc],addr hover_rect,dword [hover_color]
+
+  .layout:
+	cmp	dword [surface],MENU_SURFACE_BAR
+	je	.draw_bar
 
   .draw_gutter:
 	fastcall MenuCopyRect,addr icon_rect,addr rect
@@ -375,12 +548,12 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	fastcall MenuSplitGlyph,addr text,addr labelp
 	mov	[glyph],eax
 
-	mov	eax,[info.fState]
-	and	eax,MFS_CHECKED
+	mov	eax,[state]
+	and	eax,MENU_STATE_CHECKED
 	jz	.maybe_glyph
 	mov	dword [glyph],ICON_CHECK
-	mov	eax,[info.fType]
-	and	eax,MFT_RADIOCHECK
+	mov	eax,[state]
+	and	eax,MENU_STATE_RADIO
 	jz	.draw_check
 	mov	dword [glyph],ICON_RADIO
   .draw_check:
@@ -400,8 +573,9 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	add	[text_rect.left],eax
 	mov	eax,[pad]
 	sub	[text_rect.right],eax
-	cmp	qword [info.hSubMenu],0
-	je	.text_ready
+	mov	eax,[state]
+	and	eax,MENU_STATE_HASSUB
+	jz	.text_ready
 	mov	eax,[arrow]
 	sub	[text_rect.right],eax
   .text_ready:
@@ -419,7 +593,8 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	invoke	DrawTextW,[hdc],[labelp],dword [label_chars],addr text_rect,\
 		DT_LEFT or DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS
 	fastcall ThemeMuted
-	cmp	dword [grayed],0
+	mov	ecx,[state]
+	and	ecx,MENU_STATE_DISABLED
 	je	.accel_color_ready
 	mov	eax,[item_fg]
   .accel_color_ready:
@@ -441,8 +616,9 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	invoke	SelectObject,[hdc],[old_font]
 
   .submenu:
-	cmp	qword [info.hSubMenu],0
-	je	.done
+	mov	eax,[state]
+	and	eax,MENU_STATE_HASSUB
+	jz	.done
 	fastcall MenuCopyRect,addr arrow_rect,addr rect
 	mov	eax,[arrow_rect.right]
 	sub	eax,[arrow]
@@ -450,25 +626,124 @@ proc MenuPaintItem uses rbx, hwnd,itemp
 	mov	dword [glyph],ICON_SUBMENU
 	fastcall MenuDrawGlyph,[hdc],[hMenuFontSymbol],addr arrow_rect,\
 		dword [glyph],dword [item_fg]
+	jmp	.done
+
+  .draw_bar:
+	fastcall MenuSplitGlyph,addr text,addr labelp
+	fastcall MenuCopyRect,addr text_rect,addr rect
+	fastcall ScaleForDpi,MENU_BAR_PAD_X_96,dword [dpi]
+	add	[text_rect.left],eax
+	sub	[text_rect.right],eax
+	fastcall ScaleForDpi,MENU_BAR_PAD_Y_96,dword [dpi]
+	add	[text_rect.top],eax
+	sub	[text_rect.bottom],eax
+	mov	dword [text_flags],DT_CENTER or DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS
+	mov	eax,[state]
+	and	eax,MENU_STATE_NOACCEL
+	jz	.bar_flags_ready
+	or	dword [text_flags],DT_HIDEPREFIX
+  .bar_flags_ready:
+	invoke	SelectObject,[hdc],[hMenuFontText]
+	mov	[old_font],rax
+	invoke	SetBkMode,[hdc],TRANSPARENT
+	invoke	SetTextColor,[hdc],dword [item_fg]
+	fastcall MenuFindTab,[labelp]
+	mov	[accelp],rax
+	test	rax,rax
+	jz	.bar_draw_all
+	sub	rax,[labelp]
+	shr	rax,1
+	mov	[label_chars],eax
+	invoke	DrawTextW,[hdc],[labelp],dword [label_chars],addr text_rect,\
+		dword [text_flags]
+	jmp	.bar_after_text
+  .bar_draw_all:
+	invoke	DrawTextW,[hdc],[labelp],-1,addr text_rect,dword [text_flags]
+  .bar_after_text:
+	cmp	qword [old_font],0
+	je	.done
+	invoke	SelectObject,[hdc],[old_font]
   .done:
 	ret
 endp
 
-proc MenuPaintBackground hwnd,menuinfo
+proc MenuPaintItem hwnd,itemp
+	mov	[hwnd],rcx
+	mov	[itemp],rdx
+	fastcall MenuPaintItemSurface,[hwnd],[itemp],MENU_SURFACE_POPUP
+	ret
+endp
+
+proc MenuPaintBarItem hwnd,itemp
+	mov	[hwnd],rcx
+	mov	[itemp],rdx
+	fastcall MenuPaintItemSurface,[hwnd],[itemp],MENU_SURFACE_BAR
+	ret
+endp
+
+proc MenuPaintSurface hwnd,menuinfo,surface
     locals
 	rc RECT
     endl
 	mov	[hwnd],rcx
 	mov	[menuinfo],rdx
+	mov	dword [surface],r8d
 	cmp	qword [menuinfo],0
 	je	.done
 	mov	rcx,[menuinfo]
 	cmp	qword [rcx+UAHMENU.hdc],0
 	je	.done
+	cmp	dword [surface],MENU_SURFACE_BAR
+	je	.bar_rect
 	invoke	GetClientRect,[hwnd],addr rc
+	jmp	.fill
+  .bar_rect:
+	fastcall MenuGetBarRect,[hwnd],addr rc
+	test	eax,eax
+	jz	.done
+  .fill:
 	fastcall ThemeBg
 	mov	rdx,[menuinfo]
 	fastcall MenuFillRect,[rdx+UAHMENU.hdc],addr rc,eax
+  .done:
+	ret
+endp
+
+proc MenuPaintBackground hwnd,menuinfo
+	mov	[hwnd],rcx
+	mov	[menuinfo],rdx
+	fastcall MenuPaintSurface,[hwnd],[menuinfo],MENU_SURFACE_POPUP
+	ret
+endp
+
+proc MenuPaintBarBackground hwnd,menuinfo
+	mov	[hwnd],rcx
+	mov	[menuinfo],rdx
+	fastcall MenuPaintSurface,[hwnd],[menuinfo],MENU_SURFACE_BAR
+	ret
+endp
+
+proc MenuPaintBarBottomLine hwnd
+    locals
+	hdc dq ?
+	rc RECT
+	line RECT
+    endl
+	mov	[hwnd],rcx
+	fastcall MenuGetBarRect,[hwnd],addr rc
+	test	eax,eax
+	jz	.done
+	invoke	GetWindowDC,[hwnd]
+	mov	[hdc],rax
+	test	rax,rax
+	jz	.done
+	fastcall MenuCopyRect,addr line,addr rc
+	mov	eax,[line.bottom]
+	dec	eax
+	mov	[line.top],eax
+	fastcall ThemeBorder
+	fastcall MenuFillRect,[hdc],addr line,eax
+	invoke	ReleaseDC,[hwnd],[hdc]
   .done:
 	ret
 endp

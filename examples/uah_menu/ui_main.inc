@@ -61,6 +61,9 @@ proc HandleCommand hwnd,command
 endp
 
 proc WindowProc hwnd,wmsg,wparam,lparam
+    locals
+	result dq ?
+    endl
 	mov	[hwnd],rcx
 	mov	dword [wmsg],edx
 	mov	[wparam],r8
@@ -75,6 +78,10 @@ proc WindowProc hwnd,wmsg,wparam,lparam
   .route:
 	cmp	edx,WM_CREATE
 	je	.wm_create
+	cmp	edx,WM_NCPAINT
+	je	.wm_ncpaint
+	cmp	edx,WM_NCACTIVATE
+	je	.wm_ncactivate
 	cmp	edx,WM_SIZE
 	je	.wm_size
 	cmp	edx,WM_SETFOCUS
@@ -85,6 +92,14 @@ proc WindowProc hwnd,wmsg,wparam,lparam
 	je	.wm_initmenu
 	cmp	edx,WM_COMMAND
 	je	.wm_command
+	cmp	edx,WM_UAHDRAWMENU
+	je	.wm_uah_drawmenu
+	cmp	edx,WM_UAHDRAWMENUITEM
+	je	.wm_uah_drawitem
+	cmp	edx,WM_UAHMEASUREMENUITEM
+	je	.wm_uah_measure
+	cmp	edx,WM_UAHUPDATE
+	je	.wm_uah_update
 	cmp	edx,WM_TIMER
 	je	.wm_timer
 	cmp	edx,WM_CONTEXTMENU
@@ -123,6 +138,20 @@ proc WindowProc hwnd,wmsg,wparam,lparam
 	xor	eax,eax
 	ret
 
+  .wm_ncpaint:
+	invoke	DefWindowProc,[hwnd],dword [wmsg],[wparam],[lparam]
+	mov	[result],rax
+	fastcall MenuPaintBarBottomLine,[hwnd]
+	mov	rax,[result]
+	ret
+
+  .wm_ncactivate:
+	invoke	DefWindowProc,[hwnd],dword [wmsg],[wparam],[lparam]
+	mov	[result],rax
+	fastcall MenuPaintBarBottomLine,[hwnd]
+	mov	rax,[result]
+	ret
+
   .wm_setfocus:
 	cmp	qword [hRich],0
 	je	.focus_done
@@ -145,6 +174,37 @@ proc WindowProc hwnd,wmsg,wparam,lparam
 	invoke	DefWindowProc,[hwnd],dword [wmsg],[wparam],[lparam]
 	ret
   .command_done:
+	xor	eax,eax
+	ret
+
+  .wm_uah_drawmenu:
+	cmp	qword [lparam],0
+	je	.uah_true
+	fastcall MenuPaintBarBackground,[hwnd],[lparam]
+  .uah_true:
+	mov	eax,1
+	ret
+
+  .wm_uah_drawitem:
+	cmp	qword [lparam],0
+	je	.uah_drawitem_true
+	fastcall MenuPaintBarItem,[hwnd],[lparam]
+  .uah_drawitem_true:
+	mov	eax,1
+	ret
+
+  .wm_uah_measure:
+	invoke	DefWindowProc,[hwnd],dword [wmsg],[wparam],[lparam]
+	cmp	qword [lparam],0
+	je	.uah_measure_done
+	fastcall MenuMeasureBarItem,[hwnd],[lparam]
+  .uah_measure_done:
+	mov	eax,1
+	ret
+
+  .wm_uah_update:
+	invoke	DefWindowProc,[hwnd],dword [wmsg],[wparam],[lparam]
+	fastcall MenuPaintBarBottomLine,[hwnd]
 	xor	eax,eax
 	ret
 

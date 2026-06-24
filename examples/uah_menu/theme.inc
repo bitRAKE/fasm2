@@ -185,6 +185,7 @@ proc ApplyMenuAppMode
 	cmp	qword [hMain],0
 	je	.done
 	fastcall UahAllowDarkModeForWindow,[hMain],dword [dark_mode]
+	invoke	DrawMenuBar,[hMain]
   .done:
 	ret
 endp
