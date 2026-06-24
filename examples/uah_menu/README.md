@@ -1,5 +1,7 @@
 # uah_menu
 
+![Light themed UAH menu showing the RichEdit proofing sample](merge_view_light.png)
+
 `uah_menu` demonstrates native popup menu theming through the undocumented
 UserApiHook (`WM_UAH*`) menu seam.
 
@@ -19,15 +21,21 @@ UAH painter splits that glyph into a gutter column and draws the label,
 accelerator, disabled state, check mark, separator, submenu arrow, and popup
 border using the same theme roles.
 
-The RichEdit surface is configured for rich text, multi-level undo, broad URL
-detection, advanced typography/layout, CTF text services, proofing, smart tags,
-spell checking, touch keyboard prediction, and IME UI integration. The setup is
-ordered so empty-control requirements such as `EM_SETTEXTMODE` run first, then
-style and language services are enabled before any sample text is inserted.
-Startup inserts an intentionally misspelled sample through `EM_REPLACESEL`.
-Programmatic insert and paste paths enable URL detection before mutating text,
-then refresh it afterward, because RichEdit applies automatic link detection to
-modified ranges.
+The RichEdit surface wraps paragraphs to the client width by default and is
+configured for rich text, multi-level undo, broad URL detection, advanced
+typography/layout, CTF text services, proofing, smart tags, spell checking,
+touch keyboard prediction, and IME UI integration. The setup is ordered so
+empty-control requirements such as `EM_SETTEXTMODE` run first, then style and
+language services are enabled before any sample text is inserted. Startup
+appends a high Levenshtein-candidate-density proofing paragraph through
+`EM_REPLACESEL`. The RichEdit context menu also exposes a manual proofing
+command that reapplies the spell-checking language option without clearing
+RichEdit's existing language-option mask. The `Test` menu keeps proofing
+trajectories separate: direct store insertion, direct insertion followed by a
+sent `WM_CHAR` edit, immediate queued `SendInput` wake, delayed queued
+`SendInput` wake, foreground/focus activation, attached-thread focus activation,
+CTF open-status forcing, attached Unicode `SendInput`, keyboard-free `WM_PASTE`,
+CTF rebinding, and language-option reapplication.
 
 ## Build
 
@@ -47,5 +55,7 @@ _build.cmd
 - Right-click the tray icon. Tray popup foreground handling and the classic
   posted `WM_NULL` cleanup are included.
 - Toggle `Ctrl+D` to switch the app between light and dark menu themes.
-- Use `Ctrl+I` to insert another misspelled sample sentence.
+- Use `Ctrl+I` to append the dense proofing paragraph again.
+- Use the `Test` menu to compare which RichEdit edit paths wake proofing for
+  already-present text.
 - `Esc` exits; closing the window hides it to the tray.
