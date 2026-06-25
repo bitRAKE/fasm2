@@ -5,10 +5,9 @@ proc WindowsAppsUseDarkMode
 	value dd ?
 	size dd ?
     endl
-
 	mov	dword [value],1
 	mov	dword [size],4
-	invoke	RegGetValueW,HKEY_CURRENT_USER,\
+	invoke	RegGetValue,HKEY_CURRENT_USER,\
 		'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize',\
 		'AppsUseLightTheme',RRF_RT_REG_DWORD,0,addr value,addr size
 	test	eax,eax

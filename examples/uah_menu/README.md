@@ -1,6 +1,6 @@
 # uah_menu
 
-![Light themed UAH menu showing the RichEdit proofing sample](merge_view_light.png)
+![Dark themed UAH menu showing the RichEdit proofing sample](merge_view_dark.png)
 
 `uah_menu` demonstrates native popup menu theming through the undocumented
 UserApiHook (`WM_UAH*`) menu seam.
