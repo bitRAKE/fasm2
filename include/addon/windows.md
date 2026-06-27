@@ -58,3 +58,29 @@ after the string pools.
 
 The source must provide `proc start ... endp`. The include emits `.end start`
 after postponed data/resource sections.
+
+## Checked Calls
+
+`addon/windows.inc` provides a `✓` macro for lightweight failure diagnostics:
+
+```asm
+✓       invoke  RegisterClassExW,addr wc
+        test    rax,rax
+        jz      .fatal_msgbox
+
+  .fatal_msgbox:
+        invoke  MessageBox,0,rdx,'Program',MB_ICONERROR
+        invoke  ExitProcess,1
+```
+
+The macro executes the line that follows it, builds a TCHAR diagnostic string
+from that source line plus the source line number, and leaves the message
+address in `rdx`. This makes `MessageBox` a natural sink because `rdx` is the
+second Win64 argument register and no extra move is needed for `lpText`.
+
+The same `rdx` message pointer can be routed to other diagnostics such as
+`OutputDebugString`, a log-file writer, or a shared fatal-error procedure. Keep
+the reporting path close to the checked call or copy `rdx` before intervening
+calls, since `rdx` is volatile by ABI. Do not use `✓` before a line whose
+successful result must remain live in `rdx`; the macro intentionally reuses it
+for the diagnostic pointer.
