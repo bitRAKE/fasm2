@@ -1,16 +1,6 @@
 OBJID_MENU = 0FFFFFFFDh
 CHILDID_SELF = 0
 
-struct MENUBARINFO
-	cbSize dd ?
-	rcBar RECT
-	dd ?
-	hMenu dq ?
-	hwndMenu dq ?
-	flags dd ?
-	dd ?
-ends
-
 proc MenuFindTab textp
 	mov	rax,rcx
   .scan:
@@ -51,18 +41,6 @@ proc MenuSplitGlyph textp,label_out
 	ret
   .none:
 	xor	eax,eax
-	ret
-endp
-
-proc MenuCopyRect dstp,srcp
-	mov	eax,[rdx+RECT.left]
-	mov	[rcx+RECT.left],eax
-	mov	eax,[rdx+RECT.top]
-	mov	[rcx+RECT.top],eax
-	mov	eax,[rdx+RECT.right]
-	mov	[rcx+RECT.right],eax
-	mov	eax,[rdx+RECT.bottom]
-	mov	[rcx+RECT.bottom],eax
 	ret
 endp
 
@@ -148,8 +126,7 @@ proc MenuGetBarRect hwnd,rectp
 	test	eax,eax
 	jz	.fail
 	invoke	GetWindowRect,[hwnd],addr wnd
-	mov	rdx,[rectp]
-	fastcall MenuCopyRect,rdx,addr mbi.rcBar
+	invoke	CopyRect,[rectp],addr mbi.rcBar
 	mov	eax,[wnd.left]
 	neg	eax
 	mov	[dx],eax
@@ -165,35 +142,9 @@ proc MenuGetBarRect hwnd,rectp
 endp
 
 proc MenuBuildItemState item_state,infop
-	mov	dword [item_state],ecx
-	mov	[infop],rdx
-	xor	eax,eax
-	mov	edx,dword [item_state]
-	test	edx,ODS_HOTLIGHT
-	jz	.no_hot
-	or	eax,MENU_STATE_HOT
-  .no_hot:
-	test	edx,ODS_SELECTED
-	jz	.no_selected
-	or	eax,MENU_STATE_SELECTED
-  .no_selected:
-	test	edx,ODS_GRAYED or ODS_DISABLED
-	jz	.no_disabled_ods
-	or	eax,MENU_STATE_DISABLED
-  .no_disabled_ods:
-	test	edx,ODS_INACTIVE
-	jz	.no_inactive
-	or	eax,MENU_STATE_INACTIVE
-  .no_inactive:
-	test	edx,ODS_NOACCEL
-	jz	.no_noaccel
-	or	eax,MENU_STATE_NOACCEL
-  .no_noaccel:
-	test	edx,ODS_DEFAULT
-	jz	.no_default_ods
-	or	eax,MENU_STATE_DEFAULT
-  .no_default_ods:
-	mov	rcx,[infop]
+	mov	eax,ecx
+	and	eax,MENU_STATE_ODS_MASK
+	mov	rcx,rdx
 	mov	edx,[rcx+MENUITEMINFO.fState]
 	test	edx,MFS_DISABLED
 	jz	.no_disabled_info
@@ -467,7 +418,7 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 	mov	[arrow],eax
 
 	lea	rdx,[rbx+UAHDRAWMENUITEM.dis+DRAWITEMSTRUCT.rcItem]
-	fastcall MenuCopyRect,addr rect,rdx
+	invoke	CopyRect,addr rect,rdx
 	fastcall MenuBuildItemState,\
 		dword [rbx+UAHDRAWMENUITEM.dis+DRAWITEMSTRUCT.itemState],addr info
 	mov	[state],eax
@@ -484,7 +435,7 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 	mov	eax,[info.fType]
 	and	eax,MFT_SEPARATOR
 	jz	.not_separator
-	fastcall MenuCopyRect,addr line_rect,addr rect
+	invoke	CopyRect,addr line_rect,addr rect
 	mov	eax,[line_rect.top]
 	add	eax,[line_rect.bottom]
 	sar	eax,1
@@ -500,21 +451,21 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 
   .not_separator:
 	mov	eax,[state]
-	and	eax,MENU_STATE_DISABLED
+	and	eax,MENU_STATE_UNAVAILABLE
 	jz	.check_hover
 	fastcall ThemeBlendColor,dword [fg],dword [bg],58
 	mov	[item_fg],eax
 
   .check_hover:
 	mov	eax,[state]
-	and	eax,MENU_STATE_DISABLED
+	and	eax,MENU_STATE_UNAVAILABLE
 	jnz	.layout
 	mov	eax,[state]
 	and	eax,MENU_STATE_SELECTED or MENU_STATE_HOT
 	jz	.layout
 	fastcall ThemeHover
 	mov	[hover_color],eax
-	fastcall MenuCopyRect,addr hover_rect,addr rect
+	invoke	CopyRect,addr hover_rect,addr rect
 	cmp	dword [surface],MENU_SURFACE_BAR
 	je	.bar_hover_inset
 	fastcall ScaleForDpi,3,dword [dpi]
@@ -541,7 +492,7 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 	je	.draw_bar
 
   .draw_gutter:
-	fastcall MenuCopyRect,addr icon_rect,addr rect
+	invoke	CopyRect,addr icon_rect,addr rect
 	mov	eax,[icon_rect.left]
 	add	eax,[gutter]
 	mov	[icon_rect.right],eax
@@ -568,7 +519,7 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 		dword [glyph],dword [item_fg]
 
   .draw_text:
-	fastcall MenuCopyRect,addr text_rect,addr rect
+	invoke	CopyRect,addr text_rect,addr rect
 	mov	eax,[gutter]
 	add	[text_rect.left],eax
 	mov	eax,[pad]
@@ -594,7 +545,7 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 		DT_LEFT or DT_VCENTER or DT_SINGLELINE or DT_END_ELLIPSIS
 	fastcall ThemeMuted
 	mov	ecx,[state]
-	and	ecx,MENU_STATE_DISABLED
+	and	ecx,MENU_STATE_UNAVAILABLE
 	je	.accel_color_ready
 	mov	eax,[item_fg]
   .accel_color_ready:
@@ -619,7 +570,7 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 	mov	eax,[state]
 	and	eax,MENU_STATE_HASSUB
 	jz	.done
-	fastcall MenuCopyRect,addr arrow_rect,addr rect
+	invoke	CopyRect,addr arrow_rect,addr rect
 	mov	eax,[arrow_rect.right]
 	sub	eax,[arrow]
 	mov	[arrow_rect.left],eax
@@ -630,7 +581,7 @@ proc MenuPaintItemSurface uses rbx, hwnd,itemp,surface
 
   .draw_bar:
 	fastcall MenuSplitGlyph,addr text,addr labelp
-	fastcall MenuCopyRect,addr text_rect,addr rect
+	invoke	CopyRect,addr text_rect,addr rect
 	fastcall ScaleForDpi,MENU_BAR_PAD_X_96,dword [dpi]
 	add	[text_rect.left],eax
 	sub	[text_rect.right],eax
@@ -737,7 +688,7 @@ proc MenuPaintBarBottomLine hwnd
 	mov	[hdc],rax
 	test	rax,rax
 	jz	.done
-	fastcall MenuCopyRect,addr line,addr rc
+	invoke	CopyRect,addr line,addr rc
 	mov	eax,[line.bottom]
 	dec	eax
 	mov	[line.top],eax

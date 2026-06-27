@@ -5,6 +5,34 @@ LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
 
 1 RT_MANIFEST "manifest.xml"
 
+/*
+    Menu theming through WM_UAH* is efficient because the resource remains a
+    normal native menu and the app only answers the draw/measure messages it
+    cares about. This file shows the low-code interface: item text can carry
+    compact presentation hints, while menu_painter.inc owns the application
+    policy that interprets and paints them.
+
+    The dark/light presentation here is only an example of the method. The same
+    pattern can drive an app-specific palette, including light/dark color arrays
+    and colorful icons. Adapt menu_painter.inc to the style and resource-string
+    convention of your application.
+
+    Convention implemented by this sample painter:
+
+        MENUITEM L"\xE7A7Undo\tCtrl+Z", ID_EDIT_UNDO
+        MENUITEM L"\xE7A6Redo\tCtrl+Y", ID_EDIT_REDO
+
+    Possible application-specific extensions:
+
+        // Font icon layer color configuration, with as many layers as needed.
+        MENUITEM L"#FF0000\xE7A7Undo\tCtrl+Z", ID_EDIT_UNDO
+        MENUITEM L"#00FF00\xE7A6Redo\tCtrl+Y", ID_EDIT_REDO
+
+        // Resource icon configuration, using a short decimal resource id.
+        MENUITEM L"#10Undo\tCtrl+Z", ID_EDIT_UNDO
+        MENUITEM L"#127Redo\tCtrl+Y", ID_EDIT_REDO
+*/
+
 IDR_MAINMENU MENU
 BEGIN
     POPUP "&File"
