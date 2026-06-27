@@ -7,6 +7,14 @@ Building on [flat assembler 2](https://github.com/tgrysztar/fasm2) with a focus 
  - PSDK scrapping tools
  - coding guides
 
+
+Typical Updating:
+```cmd
+git fetch origin
+git rebase origin/master
+git push --force-with-lease
+```
+
 ---
 
 # flat assembler 2
