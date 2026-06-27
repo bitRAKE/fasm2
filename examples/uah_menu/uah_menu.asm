@@ -33,27 +33,27 @@ proc start
 	mov	[wc.hIcon],rax
 	mov	[wc.hIconSm],rax
 
-	invoke	RegisterClassExW,addr wc
+✓	invoke	RegisterClassExW,addr wc
 	test	rax,rax
-	jz	.fatal_register
+	jz	.fatal_msgbox
 
-	invoke	LoadMenu,[hInstance],IDR_MAINMENU
+✓	invoke	LoadMenu,[hInstance],IDR_MAINMENU
+	test	rax,rax
+	jz	.fatal_msgbox
 	mov	[hMenubar],rax
-	test	rax,rax
-	jz	.fatal_menu
 
-	invoke	LoadAccelerators,[hInstance],IDR_ACCELERATORS
+✓	invoke	LoadAccelerators,[hInstance],IDR_ACCELERATORS
+	test	rax,rax
+	jz	.fatal_msgbox
 	mov	[hAccel],rax
-	test	rax,rax
-	jz	.fatal_accelerators
 
-	invoke	CreateWindowEx,0,class_name,'UAH Menu RichEdit',\
+✓	invoke	CreateWindowEx,0,class_name,'UAH Menu RichEdit',\
 		WS_OVERLAPPEDWINDOW or WS_CLIPCHILDREN,\
 		CW_USEDEFAULT,CW_USEDEFAULT,900,560,\
 		0,[hMenubar],[hInstance],0
-	mov	[hMain],rax
 	test	rax,rax
-	jz	.fatal_window
+	jz	.fatal_msgbox
+	mov	[hMain],rax
 
 	invoke	ShowWindow,[hMain],SW_SHOWDEFAULT
 	invoke	UpdateWindow,[hMain]
@@ -72,19 +72,7 @@ proc start
   .shutdown:
 	invoke	ExitProcess,[msg.wParam]
 
-  .fatal_register:
-	invoke	MessageBox,0,'RegisterClassExW failed.','UAH Menu RichEdit',MB_ICONERROR
-	invoke	ExitProcess,1
-
-  .fatal_menu:
-	invoke	MessageBox,0,'LoadMenuW failed.','UAH Menu RichEdit',MB_ICONERROR
-	invoke	ExitProcess,1
-
-  .fatal_accelerators:
-	invoke	MessageBox,0,'LoadAcceleratorsW failed.','UAH Menu RichEdit',MB_ICONERROR
-	invoke	ExitProcess,1
-
-  .fatal_window:
-	invoke	MessageBox,0,'CreateWindowExW failed.','UAH Menu RichEdit',MB_ICONERROR
+  .fatal_msgbox:
+	invoke	MessageBox,0,rdx,'UAH Menu RichEdit',MB_ICONERROR
 	invoke	ExitProcess,1
 endp
