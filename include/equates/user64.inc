@@ -238,6 +238,27 @@ struct MENUITEMINFO
   hbmpItem	dq ? 
 ends
 
+struct MENUINFO
+  cbSize	    dd ?
+  fMask 	    dd ?
+  dwStyle	    dd ?
+  cyMax	    dd ?
+  hbrBack	    dq ?
+  dwContextHelpID  dd ?
+		    dd ?
+  dwMenuData	    dq ?
+ends
+
+struct MENUBARINFO
+  cbSize   dd ?
+  rcBar    RECT
+	   dd ?
+  hMenu    dq ?
+  hwndMenu dq ?
+  flags    dd ?
+	   dd ?
+ends
+
 struct MEASUREITEMSTRUCT
   CtlType    dd ?
   CtlID      dd ?
@@ -1578,6 +1599,12 @@ MFS_UNHILITE	   = MF_UNHILITE
 MFS_DEFAULT	   = MF_DEFAULT
 MFR_POPUP	   = 0001h
 MFR_END 	   = MF_END
+MNS_NOCHECK	   = 80000000h
+MNS_MODELESS	   = 40000000h
+MNS_DRAGDROP	   = 20000000h
+MNS_AUTODISMISS   = 10000000h
+MNS_NOTIFYBYPOS   = 08000000h
+MNS_CHECKORBMP    = 04000000h
 
 ; System menu command values
 
@@ -1719,6 +1746,9 @@ DT_END_ELLIPSIS    = 08000h
 DT_MODIFYSTRING    = 10000h
 DT_RTLREADING	   = 20000h
 DT_WORD_ELLIPSIS   = 40000h
+DT_NOFULLWIDTHCHARBREAK = 80000h
+DT_HIDEPREFIX	   = 100000h
+DT_PREFIXONLY	   = 200000h
 
 ; GetDCEx flags
 
@@ -1843,6 +1873,16 @@ TPM_VERPOSANIMATION = 1000h
 TPM_VERNEGANIMATION = 2000h
 TPM_NOANIMATION     = 4000h
 TPM_LAYOUTRTL	    = 8000h
+TPM_WORKAREA	    = 10000h
+
+; Menu info mask values
+
+MIM_MAXHEIGHT	    = 00000001h
+MIM_BACKGROUND	    = 00000002h
+MIM_HELPID	    = 00000004h
+MIM_MENUDATA	    = 00000008h
+MIM_STYLE	    = 00000010h
+MIM_APPLYTOSUBMENUS = 80000000h
 
 ; Menu item info mask values
 
@@ -1881,6 +1921,8 @@ ODS_DEFAULT	 = 0020h
 ODS_COMBOBOXEDIT = 1000h
 ODS_HOTLIGHT	 = 0040h
 ODS_INACTIVE	 = 0080h
+ODS_NOACCEL	 = 0100h
+ODS_NOFOCUSRECT  = 0200h
 
 ; WINDOWPLACEMENT flags
 

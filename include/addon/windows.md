@@ -28,6 +28,17 @@ ADDON_WINDOWS_RESOURCE equ 'program.res'
 include 'addon/windows.inc'
 ```
 
+For custom resource section emission:
+
+```asm
+ADDON_WINDOWS_RESOURCE_CUSTOM = 1
+macro ADDON_WINDOWS_RESOURCE
+        section '.rsrc' resource from 'program.res' data readable
+        ; emit any additional resource or metadata sections here
+end macro
+include 'addon/windows.inc'
+```
+
 Other API-specific equate files should be included normally by the program that
 needs them.
 

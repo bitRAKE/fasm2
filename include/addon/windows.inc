@@ -2,6 +2,10 @@
 ;
 ; Optional knobs before include:
 ;   ADDON_WINDOWS_RESOURCE equ 'program.res'
+;   ADDON_WINDOWS_RESOURCE_CUSTOM = 1
+;   macro ADDON_WINDOWS_RESOURCE
+;     ; emit custom resource section(s)
+;   end macro
 
 format PE64 NX GUI 6.0
 
@@ -44,25 +48,51 @@ macro _code
 	end if
 end macro
 
+
+macro ✓ line& ; fatal error reporting
+	local message
+	repeat 1,L:__LINE__
+		message equ '"',`line,'" failed at line ',`L,'.'
+	end repeat
+
+	line ; execute line
+
+	; Let TCHAR decide string type:
+	fastcall.inline_string message
+	lea rdx, [message] ; prepare for error reporting
+end macro
+
 .code
 
 postpone
-	section '.data' data readable writeable
-		GLOBWSTR.here
-		GLOBSTR.here
+	align 64 ; HACK: later aligns in macros are nop for empty data
 
-		align 16
-		irpv xdata,__GLOBAL_DATA__
-			xdata
-		end irpv
+	if COFF._data_bytes_
+		section '.data' data readable writeable
+	end if
 
-		align 16
-		irpv xbss,__GLOBAL_BSS__
-			xbss
-		end irpv
+	GLOBWSTR.here
+	GLOBSTR.here
 
-	if defined ADDON_WINDOWS_RESOURCE
-		section '.rsrc' resource from ADDON_WINDOWS_RESOURCE data readable
+	align 16
+	irpv xdata,__GLOBAL_DATA__
+		xdata
+	end irpv
+
+	align 16
+	irpv xbss,__GLOBAL_BSS__
+		xbss
+	end irpv
+
+	COFF._data_bytes_ := $ - GLOBWSTR.baseaddr
+
+	if definite ADDON_WINDOWS_RESOURCE_CUSTOM \
+	& ADDON_WINDOWS_RESOURCE_CUSTOM ; non-zero
+		ADDON_WINDOWS_RESOURCE
+	else
+		if defined ADDON_WINDOWS_RESOURCE
+			section '.rsrc' resource from ADDON_WINDOWS_RESOURCE data readable
+		end if
 	end if
 
 	.end start

@@ -45,6 +45,21 @@ Win32 contracts visible at the call site.
 - If a helper exists only to make a call look uniform, delete it and keep the
   call site explicit.
 
+## Windows API Alignment
+
+Prefer the Windows API surface when it already provides the operation or
+structure contract the code needs. This keeps examples aligned with PSDK names,
+reduces custom helper vocabulary, and makes call sites easier to compare with C
+or SDK documentation.
+
+For example, use the imported RECT helpers such as `CopyRect`, `OffsetRect`,
+`InflateRect`, `IntersectRect`, `UnionRect`, and `SetRect` instead of creating a
+local `proc` that copies or edits `RECT` fields by hand. A hand-written RECT
+copy, including a shorter SIMD copy, is justified only when it is a measured or
+clearly documented performance decision. In that case, leave a short comment at
+the implementation or call site explaining why the API call is intentionally not
+used.
+
 ## Reusable Modules
 
 Most small assembly examples can be one source file. Split a program into
