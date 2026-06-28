@@ -51,23 +51,6 @@ BEGIN
     BEGIN
         MENUITEM L"\xE708 Dark menu theme\tCtrl+D", ID_THEME_TOGGLE
     END
-    POPUP "&Test"
-    BEGIN
-        MENUITEM L"\xE8BB Direct load fixture", ID_TEST_DIRECT_LOAD
-        MENUITEM L"\xE8BB Direct load + input wake", ID_TEST_DIRECT_LOAD_WAKE
-        MENUITEM L"\xE7F4 Input wake only", ID_TEST_WAKE_INPUT
-        MENUITEM L"\xE7F4 Queued SendInput wake only", ID_TEST_QUEUED_WAKE
-        MENUITEM L"\xE7F4 Delayed SendInput wake only", ID_TEST_DELAYED_WAKE
-        MENUITEM SEPARATOR
-        MENUITEM L"\xE7F4 Foreground + focus RichEdit", ID_TEST_FOCUS_RICH
-        MENUITEM L"\xE7F4 AttachThreadInput focus", ID_TEST_ATTACH_FOCUS
-        MENUITEM L"\xE7F4 CTF open status", ID_TEST_CTF_OPEN_STATUS
-        MENUITEM L"\xE7F4 Attached Unicode SendInput wake", ID_TEST_ATTACH_UNICODE_WAKE
-        MENUITEM L"\xE77F Clipboard WM_PASTE fixture", ID_TEST_PASTE_LOAD
-        MENUITEM SEPARATOR
-        MENUITEM L"\xE72C Rebind CTF", ID_TEST_REBIND_CTF
-        MENUITEM L"\xE72C Re-apply proofing flags", ID_TEST_REAPPLY_PROOFING
-    END
     POPUP "&Help"
     BEGIN
         MENUITEM L"\xE946 About", ID_HELP_ABOUT
@@ -103,7 +86,6 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM L"\xE8B3 Select all\tCtrl+A", ID_EDIT_SELECT_ALL
         MENUITEM L"\xE774 Insert URL", ID_EDIT_INSERT_LINK
-        MENUITEM L"\xE72C Re-apply proofing", ID_EDIT_REPROOF
         MENUITEM L"\xE8A5 Clear text", ID_EDIT_CLEAR
     END
 END

@@ -2,13 +2,13 @@
 
 ## Status
 
-Unresolved. Move on unless new evidence appears.
+Dead end for this sample. Move on unless new evidence appears.
 
 The `uah_menu` sample can configure RichEdit 4.1 for CTF/proofing and insert a
 dense misspelling fixture at startup, but the visible proofing pass does not run
 until the control receives a real key press. After that first key press,
-proofing appears to be armed for the document, and later programmatic edits and
-test-menu actions behave as expected.
+proofing appears to be armed for the document, and later inserted text can be
+proofed normally.
 
 This makes the startup failure mode look like a CTF/TSF document activation
 problem, not a spelling-flag or fixture-content problem.
@@ -18,11 +18,9 @@ problem, not a spelling-flag or fixture-content problem.
 1. Launch `uah_menu`.
 2. Do not type in the RichEdit control.
 3. The startup fixture text is present, but spell-check squiggles do not appear.
-4. Use the `Test` menu proofing trajectories. They do not force visible
-   startup proofing before a key press.
-5. Press any real key in the RichEdit control.
-6. Proofing wakes up. After this point, the same test actions that failed before
-   the key press tend to work.
+4. Press any real key in the RichEdit control.
+5. Proofing wakes up. After this point, text appended through normal edit
+   commands may be proofed.
 
 ## Known-Good Trigger
 
@@ -51,6 +49,12 @@ RichEdit needs before the proofer will sweep the document.
 - Using `AttachThreadInput` around foreground/focus setup.
 - Calling `EM_SETCTFOPENSTATUS` after focusing the control.
 - Combining attached-thread focus with Unicode `SendInput`.
+
+These probes used to live behind a `Test` menu in the example. They did not
+teach a reusable UI pattern, so the menu and its command handlers were removed.
+The RichEdit context-menu proofing reapply command was removed for the same
+reason: initial text can remain unproofed while later text is proofed, and
+reapplying the language-option mask does not refresh the startup range.
 
 ## Current Interpretation
 
@@ -95,7 +99,6 @@ path instead:
   layer.
 - Treat `EM_SETAUTOCORRECTPROC` and TOM-based approaches as the historically
   aligned RichEdit integration surface, not the built-in TSF proofer.
-- Keep the current `Test` menu only as a repro harness for the startup case.
 
 ## Notes For Future Work
 

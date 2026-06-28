@@ -26,16 +26,11 @@ configured for rich text, multi-level undo, broad URL detection, advanced
 typography/layout, CTF text services, proofing, smart tags, spell checking,
 touch keyboard prediction, and IME UI integration. The setup is ordered so
 empty-control requirements such as `EM_SETTEXTMODE` run first, then style and
-language services are enabled before any sample text is inserted. Startup
-appends a high Levenshtein-candidate-density proofing paragraph through
-`EM_REPLACESEL`. The RichEdit context menu also exposes a manual proofing
-command that reapplies the spell-checking language option without clearing
-RichEdit's existing language-option mask. The `Test` menu keeps proofing
-trajectories separate: direct store insertion, direct insertion followed by a
-sent `WM_CHAR` edit, immediate queued `SendInput` wake, delayed queued
-`SendInput` wake, foreground/focus activation, attached-thread focus activation,
-CTF open-status forcing, attached Unicode `SendInput`, keyboard-free `WM_PASTE`,
-CTF rebinding, and language-option reapplication.
+language services are enabled before any sample text is inserted. The sample
+text is a high Levenshtein-candidate-density paragraph inserted through
+`EM_REPLACESEL`. RichEdit's built-in TSF proofer is treated as opportunistic:
+startup text can remain unmarked until the control has a live input session,
+while later inserted text may be proofed normally.
 
 ## Build
 
@@ -50,12 +45,10 @@ _build.cmd
 
 - Open the menu bar. The popup windows are created by USER32 and discovered by
   the CBT hook.
-- Right-click the RichEdit control or a misspelled word. The edit/proofing
-  popup uses the same resource and UAH painter path.
+- Right-click the RichEdit control. The edit popup uses the same resource and
+  UAH painter path.
 - Right-click the tray icon. Tray popup foreground handling and the classic
   posted `WM_NULL` cleanup are included.
 - Toggle `Ctrl+D` to switch the app between light and dark menu themes.
 - Use `Ctrl+I` to append the dense proofing paragraph again.
-- Use the `Test` menu to compare which RichEdit edit paths wake proofing for
-  already-present text.
 - `Esc` exits; closing the window hides it to the tray.

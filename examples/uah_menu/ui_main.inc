@@ -15,16 +15,9 @@ proc HandleCommand hwnd,command
 	je	.sample
 	cmp	edx,ID_HELP_ABOUT
 	je	.about
-	cmp	edx,ID_TEST_DIRECT_LOAD
-	jb	.maybe_edit
-	cmp	edx,ID_TEST_REAPPLY_PROOFING
-	ja	.maybe_edit
-	fastcall RichExecuteTestCommand,dword [command]
-	jmp	.handled
-  .maybe_edit:
 	cmp	edx,ID_EDIT_UNDO
 	jb	.unhandled
-	cmp	edx,ID_EDIT_REPROOF
+	cmp	edx,ID_EDIT_CLEAR
 	ja	.unhandled
 	fastcall RichExecuteEditCommand,dword [command]
 	jmp	.handled
@@ -100,8 +93,6 @@ proc WindowProc hwnd,wmsg,wparam,lparam
 	je	.wm_uah_measure
 	cmp	edx,WM_UAHUPDATE
 	je	.wm_uah_update
-	cmp	edx,WM_TIMER
-	je	.wm_timer
 	cmp	edx,WM_CONTEXTMENU
 	je	.wm_contextmenu
 	cmp	edx,WM_TRAY_CALLBACK
@@ -206,24 +197,6 @@ proc WindowProc hwnd,wmsg,wparam,lparam
 	invoke	DefWindowProc,[hwnd],dword [wmsg],[wparam],[lparam]
 	fastcall MenuPaintBarBottomLine,[hwnd]
 	xor	eax,eax
-	ret
-
-  .wm_timer:
-	cmp	qword [wparam],RICH_WAKE_START_TIMER_ID
-	je	.timer_start_wake
-	cmp	qword [wparam],RICH_WAKE_FINISH_TIMER_ID
-	jne	.timer_default
-	invoke	KillTimer,[hwnd],RICH_WAKE_FINISH_TIMER_ID
-	fastcall RichFinishQueuedWake
-	xor	eax,eax
-	ret
-  .timer_start_wake:
-	invoke	KillTimer,[hwnd],RICH_WAKE_START_TIMER_ID
-	fastcall RichQueueInputWake
-	xor	eax,eax
-	ret
-  .timer_default:
-	invoke	DefWindowProc,[hwnd],dword [wmsg],[wparam],[lparam]
 	ret
 
   .wm_contextmenu:
