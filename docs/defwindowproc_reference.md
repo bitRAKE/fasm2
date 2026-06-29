@@ -30,6 +30,89 @@ A tail `jmp DefWindowProcW` is valid only when the four argument registers are i
 
 ---
 
+## Parameter quick lookup
+
+This table is only for unpacking `WPARAM` and `LPARAM` at a window-procedure entry point. On x64, `wParam` is the third argument (`r8`) and `lParam` is the fourth (`r9`). The table deliberately stays terse; behavior, return values, and forwarding obligations are covered in the sections that follow.
+
+| Message(s) | `wParam` / `r8` | `lParam` / `r9` | Detail |
+|---|---|---|---|
+| `WM_NCCREATE` | unused | `CREATESTRUCT*` | See creation notes. |
+| `WM_CREATE` | unused | `CREATESTRUCT*` | See creation notes. |
+| `WM_CLOSE` | `0` | `0` | |
+| `WM_DESTROY` | `0` | `0` | |
+| `WM_NCDESTROY` | `0` | `0` | |
+| `WM_QUIT` (message loop only) | exit code in `MSG.wParam` | `0` | Not delivered to a window procedure; `GetMessage` returns `0`. |
+| `WM_PAINT` | `0` | `0` | The paint DC comes from `BeginPaint`, not the message parameters. |
+| `WM_ERASEBKGND` | `HDC` | unused | The DC is clipped for the erase pass. |
+| `WM_NCPAINT` | `HRGN`, or `1` for the whole frame | unused | |
+| `WM_NCCALCSIZE` | `FALSE` or `TRUE` | `RECT*` if `FALSE`; `NCCALCSIZE_PARAMS*` if `TRUE` | [^nccalc] |
+| `WM_NCHITTEST` | unused | packed signed screen `x,y` | [^coords] |
+| `WM_NCACTIVATE` | active flag (`TRUE`/`FALSE`) | previous/next active `HWND`, `NULL`, or `-1` to suppress repaint | [^ncactivate] |
+| `WM_NCLBUTTONDOWN` and other `WM_NC*BUTTON*` | `HT*` hit-test code | packed signed screen `x,y` | [^coords] |
+| `WM_NCMOUSEMOVE` | `HT*` hit-test code | packed signed screen `x,y` | [^coords] |
+| `WM_NCMOUSELEAVE` | unused | unused | |
+| `WM_SETCURSOR` | `HWND` containing the cursor | `LOWORD` = `HT*`; `HIWORD` = triggering mouse message | [^setcursor] |
+| `WM_SYSCOMMAND` | `SC_*` command in `wParam & 0FFF0h` | command-specific; often packed screen `x,y`, or Alt mnemonic for `SC_KEYMENU` | [^syscommand] |
+| `WM_KEYDOWN`, `WM_KEYUP`, `WM_SYSKEYDOWN`, `WM_SYSKEYUP` | virtual-key code | packed repeat/scancode/extended/context/previous/transition bits | [^keybits] |
+| `WM_CHAR`, `WM_SYSCHAR` | character code | same packed key bits as translated keystrokes | [^keybits] |
+| `WM_GETDLGCODE` | virtual-key code, or `0` | `MSG*`, or `NULL` | |
+| `WM_MOUSEACTIVATE` | top-level parent `HWND` | `LOWORD` = `HT*`; `HIWORD` = mouse message | [^mouseactivate] |
+| `WM_LBUTTONDOWN`, `WM_LBUTTONDBLCLK`, other client `WM_*BUTTON*` | key/button state flags (`MK_*`) | packed signed client `x,y` | [^mousebuttons] |
+| `WM_CONTEXTMENU` | source `HWND` | packed signed screen `x,y`, or `-1` for keyboard | [^coords] |
+| `WM_MOUSEWHEEL` | `HIWORD` = wheel delta; `LOWORD` = `MK_*` flags | packed signed screen `x,y` | [^coords] |
+| `WM_MOUSEHOVER` | key/button state flags (`MK_*`) | packed signed client `x,y` | [^coords] |
+| `WM_MOUSELEAVE` | unused | unused | |
+| `WM_CAPTURECHANGED` | unused | `HWND` gaining capture | |
+| `WM_WINDOWPOSCHANGING` | unused | `WINDOWPOS*` | |
+| `WM_WINDOWPOSCHANGED` | unused | `WINDOWPOS*` | Load-bearing generator for `WM_SIZE`/`WM_MOVE`. |
+| `WM_SIZE` | `SIZE_*` resize type | `LOWORD` = client width; `HIWORD` = client height | [^sizes] |
+| `WM_MOVE` | unused | packed client-area upper-left `x,y` | [^sizes] |
+| `WM_SHOWWINDOW` | shown flag (`TRUE`/`FALSE`) | status code (`SW_*` reason) | |
+| `WM_GETMINMAXINFO` | unused | `MINMAXINFO*` | |
+| `WM_ENTERSIZEMOVE`, `WM_EXITSIZEMOVE` | unused | unused | |
+| `WM_DPICHANGED` | `LOWORD` = X DPI; `HIWORD` = Y DPI | suggested window `RECT*` | |
+| `WM_SETTEXT` | unused | zero-terminated string pointer | |
+| `WM_GETTEXT` | buffer capacity in characters | output buffer pointer | |
+| `WM_GETTEXTLENGTH` | unused | unused | |
+| `WM_COMMAND` | packed source/id/notification | source-dependent, often `HWND` or `0` | [^command] |
+| `WM_NOTIFY` | control id, or `0` | `NMHDR*` (or larger struct beginning with `NMHDR`) | |
+| `WM_CTLCOLOR*` | child/control `HDC` | child/control `HWND` | |
+| `WM_INITMENU` | `HMENU` | unused | |
+| `WM_INITMENUPOPUP` | popup `HMENU` | `LOWORD` = popup position; `HIWORD` = system-menu flag | |
+| `WM_MENUSELECT` | `LOWORD` = item/index; `HIWORD` = menu flags | `HMENU`; `NULL` when menu closed | [^menuselect] |
+| `WM_MENUCOMMAND` | selected item index | `HMENU` | Requires `MNS_NOTIFYBYPOS`. |
+| `WM_UNINITMENUPOPUP` | popup `HMENU` | `HIWORD` = menu type (`MF_SYSMENU` when system menu) | |
+| `WM_HSCROLL`, `WM_VSCROLL` | `LOWORD` = scroll request; `HIWORD` = thumb position for thumb messages | scroll-bar `HWND`, or `0` for a standard window scroll bar | [^scroll] |
+| `WM_TIMER` | timer id | `TIMERPROC`, or `0` | |
+| `WM_HOTKEY` | hotkey id | `LOWORD` = modifier flags; `HIWORD` = virtual-key code | |
+| `WM_CLIPBOARDUPDATE` | unused | unused | |
+| `WM_DRAWCLIPBOARD` | unused | unused | |
+| `WM_CHANGECBCHAIN` | removed viewer `HWND` | next viewer `HWND` | Legacy clipboard-viewer chain. |
+| `WM_DROPFILES` | `HDROP` | unused | |
+| `WM_DEVICECHANGE` | `DBT_*` event code | `DEV_BROADCAST_HDR*` or `0` | Event-specific. |
+| `WM_POWERBROADCAST` | `PBT_*` event code | event-specific; `POWERBROADCAST_SETTING*` for `PBT_POWERSETTINGCHANGE` | |
+| `WM_QUERYENDSESSION` | unused | `ENDSESSION_*` reason flags | |
+| `WM_ENDSESSION` | ending flag (`TRUE`/`FALSE`) | `ENDSESSION_*` reason flags | |
+| `WM_INPUTLANGCHANGEREQUEST` | request flags | input locale `HKL` | Load-bearing if forwarded. |
+| `WM_INPUTLANGCHANGE` | character set | input locale `HKL` | |
+| `WM_HELP` | usually unused | `HELPINFO*` | |
+| `WM_QUERYDRAGICON` | unused | unused | |
+
+[^nccalc]: `WM_NCCALCSIZE` switches the pointed-to structure based on `wParam`; do not treat `lParam` as one fixed layout.
+[^ncactivate]: For `WM_NCACTIVATE`, `lParam == -1` tells `DefWindowProcW` not to repaint the non-client area for the activation change. Otherwise it may identify the previously active or next active window.
+[^coords]: Mouse coordinates packed in `lParam` are signed 16-bit values. Use sign extension (`GET_X_LPARAM`/`GET_Y_LPARAM` style), not unsigned `LOWORD`/`HIWORD`.
+[^setcursor]: `WM_SETCURSOR` is also parent-routed by `DefWindowProcW`; returning `TRUE` stops further cursor processing.
+[^syscommand]: The low 4 bits of `WM_SYSCOMMAND`'s `wParam` are system-reserved. Mask with `0FFF0h` before comparing. `lParam` is not one universal shape; it depends on how the system command was produced.
+[^keybits]: Keyboard `lParam` is a bitfield: repeat count, scan code, extended-key flag, context bit, previous-state bit, and transition bit.
+[^mouseactivate]: `WM_MOUSEACTIVATE` uses a parent-window handle in `wParam`, then packs the hit-test result and triggering mouse message into `lParam`.
+[^mousebuttons]: For `WM_XBUTTON*`, the high word of `wParam` identifies `XBUTTON1`/`XBUTTON2`; the low word still carries `MK_*` flags.
+[^sizes]: `WM_SIZE` and `WM_MOVE` use packed 16-bit fields; this is convenient but not a substitute for querying full rectangles when large or multi-monitor coordinates matter.
+[^command]: `WM_COMMAND` depends on the source: menu (`HIWORD(wParam)=0`, `LOWORD` item id, `lParam=0`), accelerator (`HIWORD=1`, `LOWORD` id, `lParam=0`), or control (`HIWORD` notification, `LOWORD` control id, `lParam=HWND`).
+[^menuselect]: Menu closure is reported as `HIWORD(wParam)=0FFFFh` with `lParam=NULL`.
+[^scroll]: For standard window scroll bars, `lParam` is `0`; for scroll-bar controls it is the control `HWND`. The 16-bit thumb position in `HIWORD(wParam)` is limited; query the full scroll info when precision matters.
+
+---
+
 ## Why a window may not receive a given message
 
 Not every window receives every message. A message can be gated by a style flag set at creation, by an opt-in registration call that must precede it, by the system being in a particular mode, by another handler that generates it as a side effect, or by what the message loop and owning thread are doing. When a message that "should" arrive does not, the cause is usually one of the following — and is frequently *outside* the window procedure.
