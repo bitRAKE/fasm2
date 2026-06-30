@@ -1,0 +1,13 @@
+[project]
+name = "fasm2-structure-tools"
+version = "0.1.0"
+description = "Static structure analysis helpers for fasm2/fasmg assembly sources."
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+fasm2-structure = "fasm2_structure.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests_py"]
+pythonpath = ["."]

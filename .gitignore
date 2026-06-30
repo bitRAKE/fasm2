@@ -1,0 +1,8 @@
+# Python/tooling caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Generated analysis/report artifacts
+analysis/
