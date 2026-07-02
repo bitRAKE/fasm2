@@ -15,6 +15,23 @@ git rebase origin/master
 git push --force-with-lease
 ```
 
+## Repository-local assembler wrappers
+
+Use the wrapper for your host so the repository `include` directory is placed on
+fasmg's include search path before assembling fasm2 sources:
+
+```cmd
+fasm2.cmd -e 5 examples\globstr\demo_windows.asm
+```
+
+```sh
+./fasm2.sh -e 5 examples/globstr/demo_linux.asm /tmp/demo_linux
+```
+
+The Windows wrapper calls `fasmg.exe`; the POSIX wrapper calls the checked-in
+Linux `fasmg.x64` binary. Both inject `Include('fasm2.inc')` so examples and
+local tests can use the fasm2 macro layer without repeating the bootstrap line.
+
 ---
 
 # flat assembler 2
