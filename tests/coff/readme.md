@@ -48,10 +48,35 @@ section '.pdata$name' data readable comdat associative some_label
   final inversion** (not the PNG/zlib parameters), which is what MSVC and
   lld compute and matches a `clang-cl`-produced object byte for byte. The
   CRC is taken over the initialized bytes plus any zero-padded uninitialized
-  tail. Matching content links (`optref_xmatch_*`); differing content of the
-  same size is rejected because the checksums differ (`linkfail_xmatch_*`).
-  Like the other cross-object selections, `exactmatch` requires a `public`
+  tail, and is computed once per section in the format's `postpone` stage
+  from bytes staged during section finalization (the same accumulate-then-
+  emit pattern the format uses for relocations and the symbol table).
+  Matching content links (`optref_xmatch_*`); differing content of the same
+  size is rejected because the checksums differ (`linkfail_xmatch_*`). Like
+  the other cross-object selections, `exactmatch` requires a `public`
   (`fail_exactmatch_nopub.asm`).
+
+## Cross-validating the CheckSum against LLVM
+
+`crc_vectors.asm` reproduces, byte for byte, five COMDAT sections that
+`clang-cl` emits, and carries clang's aux `CheckSum` for each as a comment.
+Because the CRC is a pure function of the raw section bytes, generation
+details do not interfere: assembling the file and dumping the symbols shows
+fasm2's `CheckSum` equal to clang's on every section, confirming the
+algorithm matches LLVM's.
+
+```cmd
+tests\coff\_build.cmd            :: assembles + runs it as a positive test
+llvm-readobj --symbols crc_vectors.obj
+```
+
+| section | bytes | CheckSum (fasm2 = clang-cl) |
+| --- | --- | --- |
+| `.text$f0` | 6 | `0x7F8535B7` |
+| `.text$f1` | 7 | `0xD940D5A4` |
+| `.text$f2` | 9 | `0x186DBB85` |
+| `.data$pool` | 20 | `0x26CD321D` |
+| `.data$str` | 13 | `0x1B85DBCF` |
 
 ## Rules the assembler now enforces
 
@@ -80,6 +105,7 @@ them at assembly time:
 | `optref_any_a/b.asm` | `comdat any`: duplicate definitions across objects deduplicate instead of erroring. |
 | `optref_exactmatch.asm` | `comdat exactmatch`: baseline single object; the aux `CheckSum` carries the CRC-32 of the section data. |
 | `optref_xmatch_a/b.asm` | `exactmatch` with byte-identical content across two objects deduplicates (equal checksums). |
+| `crc_vectors.asm` | Reproduces five clang-cl COMDAT sections; fasm2's aux `CheckSum` matches clang's on each (CRC cross-validation). |
 | `optref_bss.asm` | Uninitialized (BSS-style) COMDAT section. |
 | `optref_empty.asm` | Zero-length COMDAT section (and no spurious `LNK4078` attribute-mismatch warning). |
 | `optref_pinned.asm` | Counter-example: a **non**-COMDAT `.pdata` referencing a COMDAT function pins it — `/OPT:REF` cannot discard it. This is why associative COMDAT exists. |

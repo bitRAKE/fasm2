@@ -288,6 +288,22 @@ namespace COFF
 		dd 0x9B64C2B0,0x86D3D2D4,0xA00AE278,0xBDBDF21C
 	end virtual
 
+	; EXACT_MATCH staging, mirroring how relocations and the symbol table
+	; are accumulated: each exactmatch section copies its initialized raw
+	; bytes into xm_data during finalization and records a descriptor in
+	; xm_meta; the CRC-32 is then computed once per section in POSTPONE.
+	; xm_meta per section (indexed by section number):
+	;   +0 dd offset of the section's bytes within xm_data
+	;   +4 dd initialized length
+	;   +8 dd zero-padded uninitialized tail length
+	;   +12 dd aux symbol index (0 = section is not exactmatch)
+	virtual at 0
+		xm_data:: rb XM_DATA_SIZE
+	end virtual
+	virtual at 0
+		xm_meta:: rb NUMBER_OF_SECTIONS * 16
+	end virtual
+
 	element relocatable?
 
 	macro section_start
@@ -342,6 +358,7 @@ namespace COFF
 	SYMBOL_INDEX = 0
 	COMDAT_PENDING = 0
 	PUBLICS_SEEN = 0
+	XM_POS = 0
 	SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
 	SECTION_COMDAT_ASSOCIATION = 0
 
@@ -360,32 +377,21 @@ macro section?
 
 		SECTION_SIZE = $% - SECTION_OFFSET
 
-		; EXACT_MATCH needs a CRC-32 of the section's raw data in the aux
-		; CheckSum. Computed here, while the section content is still in
-		; its own ORG space, over the initialized bytes plus the zero
-		; padding that the finalizer writes for any uninitialized tail.
-		; Seed 0, no final inversion (see crc32_table above).
-		; a fully uninitialized section ($%% = SECTION_OFFSET) writes no raw
-		; data to the file, so its checksum stays 0, as MSVC computes it
-		SECTION_CHECKSUM = 0
+		; EXACT_MATCH: stage the section's initialized raw bytes into
+		; xm_data now, while the content is still in its own ORG space, and
+		; record a descriptor in xm_meta. The CRC-32 is computed once in
+		; POSTPONE (see below). A fully uninitialized section
+		; ($%% = SECTION_OFFSET) writes no raw data to the file, so its
+		; checksum stays 0, as MSVC computes it.
 		if SECTION_SYMBOL_INDEX >= 0 & SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH & $%% > SECTION_OFFSET
-			local crc, byte, fold
-			crc = 0
-			repeat $%% - SECTION_OFFSET, i:0
-				load byte:1 from SECTION_BASE + i
-				crc = crc xor byte
-				load fold:4 from crc32_table : (crc and 15) shl 2
-				crc = (crc shr 4) xor fold
-				load fold:4 from crc32_table : (crc and 15) shl 2
-				crc = (crc shr 4) xor fold
-			end repeat
-			repeat $% - $%%
-				load fold:4 from crc32_table : (crc and 15) shl 2
-				crc = (crc shr 4) xor fold
-				load fold:4 from crc32_table : (crc and 15) shl 2
-				crc = (crc shr 4) xor fold
-			end repeat
-			SECTION_CHECKSUM = crc and 0xFFFFFFFF
+			local blk
+			load blk : $%% - SECTION_OFFSET from SECTION_BASE
+			store blk : $%% - SECTION_OFFSET at xm_data : XM_POS
+			store XM_POS : 4 at xm_meta : SECTION_INDEX * 16
+			store $%% - SECTION_OFFSET : 4 at xm_meta : SECTION_INDEX * 16 + 4
+			store $% - $%% : 4 at xm_meta : SECTION_INDEX * 16 + 8
+			store SECTION_SYMBOL_INDEX + 1 : 4 at xm_meta : SECTION_INDEX * 16 + 12
+			XM_POS = XM_POS + ($%% - SECTION_OFFSET)
 		end if
 
 		if DEFINED_SECTION | SECTION_SIZE > 0
@@ -440,9 +446,6 @@ macro section?
 						err 'associated symbol is not in a preceding section'
 					end if
 					store SECTION_COMDAT_ASSOCIATION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Number
-				end if
-				if SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH
-					store SECTION_CHECKSUM at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.CheckSum
 				end if
 				store SECTION_COMDAT_SELECTION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Selection
 			end if
@@ -855,6 +858,36 @@ postpone
 		STRING_TABLE_SIZE := STRING_POSITION
 		NUMBER_OF_SYMBOLS := SYMBOL_INDEX
 		NUMBER_OF_RELOCATIONS := RELOCATION_INDEX
+		XM_DATA_SIZE := XM_POS
+
+		; compute each EXACT_MATCH section's aux CheckSum once, from the raw
+		; bytes staged in xm_data: reflected CRC-32 (poly 0xEDB88320) seeded
+		; with 0 and with NO final inversion, over the initialized bytes then
+		; the zero-padded uninitialized tail (see crc32_table)
+		repeat NUMBER_OF_SECTIONS, secn:0
+			load XM_AUX : 4 from xm_meta : secn * 16 + 12
+			if XM_AUX > 0
+				load XM_OFFSET : 4 from xm_meta : secn * 16
+				load XM_INIT : 4 from xm_meta : secn * 16 + 4
+				load XM_TAIL : 4 from xm_meta : secn * 16 + 8
+				XM_CRC = 0
+				repeat XM_INIT, i:0
+					load XM_BYTE : 1 from xm_data : XM_OFFSET + i
+					XM_CRC = XM_CRC xor XM_BYTE
+					load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+					XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+					load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+					XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+				end repeat
+				repeat XM_TAIL
+					load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+					XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+					load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+					XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+				end repeat
+				store XM_CRC and 0xFFFFFFFF at symbol_table : XM_AUX * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.CheckSum
+			end if
+		end repeat
 
 		RELOCATIONS_OFFSET = $%
 		load byte_sequence : NUMBER_OF_RELOCATIONS * sizeof IMAGE_RELOCATION from relocations:0
