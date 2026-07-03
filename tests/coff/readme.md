@@ -81,10 +81,15 @@ them at assembly time:
 ## Gotchas observed while testing
 
 - **Do not write `mov eax,[rip+sym]` for a relocatable `sym`.** Explicit
-  `rip` addressing emits the raw displacement with an `ADDR32` relocation on
-  a RIP-relative encoding — it links without complaint and reads the wrong
-  address at run time. Plain `mov eax,[sym]` selects RIP-relative encoding
-  *and* the matching `REL32` relocation automatically in long mode.
+  `rip` is *manual* RIP-relative addressing (fasm 1 manual: `mov [rip+3],sil
+  ; manual RIP-relative addressing`): the expression after `rip+` is the
+  literal displacement, so the effective address is `next_instruction + sym`
+  — fasm 1.73 produces the identical encoding. In MS COFF output that
+  literal relocatable displacement becomes an `ADDR32` relocation on a
+  RIP-relative encoding, which links without complaint and reads the wrong
+  address at run time. To address `sym` itself, write `mov eax,[sym]`
+  (automatic RIP-relative in long mode), or force the encoding with the
+  `{rip}` decorator / `use rip` — never by naming `rip` in the address.
 - `lld-link` is stricter than MSVC in some places (x86 objects need
   `@feat.00` or `/SAFESEH:NO`; x86 entry symbols must carry their `_`
   decoration) and looser in others (it tolerated COMDAT sections with no
