@@ -27,6 +27,16 @@ struct IMAGE_SECTION_HEADER
 	Characteristics 	dd ?
 end struct
 
+struct IMAGE_AUX_SECTION
+	Length			dd ?
+	NumberOfRelocations	dw ?
+	NumberOfLinenumbers	dw ?
+	CheckSum		dd ?
+	Number			dw ?
+	Selection		db ?
+	Unused			db 3 dup ?
+end struct
+
 struct IMAGE_RELOCATION
 	VirtualAddress		dd ?
 	SymbolTableIndex	dd ?
@@ -205,6 +215,13 @@ IMAGE_SYM_CLASS_SECTION 	 = 104
 IMAGE_SYM_CLASS_WEAK_EXTERNAL	 = 105
 IMAGE_SYM_CLASS_CLR_TOKEN	 = 107
 
+IMAGE_COMDAT_SELECT_NODUPLICATES = 1
+IMAGE_COMDAT_SELECT_ANY 	 = 2
+IMAGE_COMDAT_SELECT_SAME_SIZE	 = 3
+IMAGE_COMDAT_SELECT_EXACT_MATCH  = 4
+IMAGE_COMDAT_SELECT_ASSOCIATIVE  = 5
+IMAGE_COMDAT_SELECT_LARGEST	 = 6
+
 IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY = 1
 IMAGE_WEAK_EXTERN_SEARCH_LIBRARY   = 2
 IMAGE_WEAK_EXTERN_SEARCH_ALIAS	   = 3
@@ -259,11 +276,30 @@ namespace COFF
 		SECTION_BASE = sym
 		org sym
 		align.assume sym, SECTION_ALIGN
+		if lengthof SECTION_NAME > 8
+			SECTION_NAME_POS = STRING_POSITION
+			store SECTION_NAME : lengthof SECTION_NAME at string_table:STRING_POSITION
+			STRING_POSITION = STRING_POSITION + lengthof SECTION_NAME + 1
+		else
+			SECTION_NAME_POS = 0
+		end if
+		SECTION_SYMBOL_INDEX = -1
 		if DEFINED_SECTION | defined DEFAULT_SECTION
-			store SECTION_NAME : 8 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.ShortName
+			if lengthof SECTION_NAME > 8
+				store 0 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Zeroes
+				store SECTION_NAME_POS at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Offset
+			else
+				store SECTION_NAME : 8 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.ShortName
+			end if
 			store IMAGE_SYM_CLASS_STATIC at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.StorageClass
 			store 1+SECTION_INDEX at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber
-			SYMBOL_INDEX = SYMBOL_INDEX + 1
+			if SECTION_FLAGS and IMAGE_SCN_LNK_COMDAT
+				SECTION_SYMBOL_INDEX = SYMBOL_INDEX
+				store 1 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.NumberOfAuxSymbols
+				SYMBOL_INDEX = SYMBOL_INDEX + 2
+			else
+				SYMBOL_INDEX = SYMBOL_INDEX + 1
+			end if
 		end if
 	end macro
 
@@ -319,7 +355,21 @@ macro section?
 				end if
 			end if
 
-			store SECTION_NAME : 8 at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
+			if lengthof SECTION_NAME > 8
+				repeat 1, pos:SECTION_NAME_POS
+					store ('/' + (`pos shl 8)) : 8 at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
+				end repeat
+			else
+				store SECTION_NAME : 8 at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
+			end if
+			if SECTION_SYMBOL_INDEX >= 0
+				store SECTION_SIZE at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Length
+				if RELOCATION_INDEX - SECTION_RELOCATION_INDEX <= 65535
+					store RELOCATION_INDEX - SECTION_RELOCATION_INDEX at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.NumberOfRelocations
+				end if
+				store IMAGE_COMDAT_SELECT_NODUPLICATES at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Selection
+			end if
+
 			store SECTION_OFFSET at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.PointerToRawData
 			store SECTION_SIZE at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.SizeOfRawData
 			store SECTION_FLAGS at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Characteristics
@@ -387,6 +437,8 @@ macro section? declaration*
 					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_REMOVE
 				else match =linkinfo?, attribute
 					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_INFO
+				else match =comdat?, attribute
+					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_COMDAT
 				else
 					err 'unknown attribute "',`attribute,'"'
 				end match
@@ -432,15 +484,18 @@ macro public? declaration*
 			SYMBOL_NAME = `declaration
 			SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 		end match
-		if SYMBOL_VALUE relativeto 1 elementof SYMBOL_VALUE & 1 elementof (1 metadataof SYMBOL_VALUE) relativeto relocatable & SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
+		if SYMBOL_VALUE relativeto 1 elementof SYMBOL_VALUE & 1 elementof (1 metadataof SYMBOL_VALUE) relativeto relocatable
 			if 1 scaleof (1 metadataof SYMBOL_VALUE) > 0
 				SYMBOL_SECTION_INDEX = 1 scaleof (1 metadataof SYMBOL_VALUE)
 				SYMBOL_VALUE = SYMBOL_VALUE - 1 elementof SYMBOL_VALUE
-			else
+			else if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 				SYMBOL_SECTION_INDEX = IMAGE_SYM_UNDEFINED
 				SYMBOL_VALUE = 0
 				SYMBOL_CLASS = IMAGE_SYM_CLASS_WEAK_EXTERNAL
 				SYMBOL_TAG = 0 scaleof (1 metadataof SYMBOL_VALUE)
+			else
+				SYMBOL_SECTION_INDEX = IMAGE_SYM_UNDEFINED
+				SYMBOL_VALUE = 0
 			end if
 		else
 			SYMBOL_SECTION_INDEX = IMAGE_SYM_ABSOLUTE
