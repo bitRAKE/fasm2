@@ -34,9 +34,19 @@ section '.pdata$name' data readable comdat associative some_label
   with it. This is how unwind/exception metadata (`.pdata$x`, `.xdata$x`)
   follows its function (see `optref_assoc.asm`). The associated section must
   be defined **earlier** in the source.
-- `exactmatch` is deliberately not offered: MSVC compares COMDAT contents by
-  the aux-record `CheckSum`, which this format leaves 0, so two different
-  sections would silently "match". Use `samesize` or `any` instead.
+- A non-associative COMDAT section with **no `public` at all** gets a
+  synthetic static COMDAT symbol (named after the section) appended to the
+  symbol table, keeping the object valid. Static symbols have no
+  cross-object identity, so such a section is simply individually
+  discardable by `/OPT:REF` (`optref_nosym.asm`). Selections other than the
+  default `noduplicates` exist to match sections *across* objects by
+  external symbol name, so they still require a `public`
+  (`fail_any_no_symbol.asm`).
+- `exactmatch` is rejected explicitly (`fail_exactmatch.asm`): it needs the
+  aux-record `CheckSum` — a CRC-32 of the final section contents, which
+  would have to be computed in `postpone` after all fixups. Left 0, MSVC
+  would treat every same-named section as "matching". Use `samesize` or
+  `any` instead.
 
 ## Rules the assembler now enforces
 
@@ -44,12 +54,10 @@ These come from the PE/COFF spec and are hard errors in MSVC `link`
 (`LNK1143: invalid or corrupt file`) if violated, so `coffms.inc` rejects
 them at assembly time:
 
-- **Every non-associative COMDAT section needs a symbol declared after its
-  `section` statement.** Use `public name`, or `public static name` when
-  nothing should be exported (see `optref_static.asm`). A `public` placed
-  *before* the `section` statement lands in front of the section symbol in
-  the symbol table and corrupts the COMDAT record (`fail_public_first.asm`,
-  `fail_no_symbol.asm`).
+- **No `public` into a COMDAT section may precede that `section`
+  statement.** The section symbol must be the first symbol carrying its
+  section number; MSVC rejects the object even when another proper `public`
+  follows the section (`fail_public_first.asm`, `fail_public_early.asm`).
 - **Long section names have a string-table budget.** A section name longer
   than 8 bytes is stored as `/offset` in the header; the offset field caps
   at 7 decimal digits, so the referenced string must start below offset
@@ -63,6 +71,7 @@ them at assembly time:
 | `optref32.asm` | Same in 32-bit `format MS COFF`; also emits `@feat.00` (SafeSEH marker, required by `lld-link` for x86) and a decorated `_mainCRTStartup`. |
 | `optref_assoc.asm` | `comdat associative`: `.pdata`/`.xdata` COMDATs are discarded together with their function. |
 | `optref_static.asm` | `public static` provides the COMDAT symbol without exporting; unreferenced section still discarded. |
+| `optref_nosym.asm` | No `public` at all: the synthesized static COMDAT symbol keeps the object valid; unreferenced section still discarded. |
 | `optref_any_a/b.asm` | `comdat any`: duplicate definitions across objects deduplicate instead of erroring. |
 | `optref_bss.asm` | Uninitialized (BSS-style) COMDAT section. |
 | `optref_empty.asm` | Zero-length COMDAT section (and no spurious `LNK4078` attribute-mismatch warning). |

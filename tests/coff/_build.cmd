@@ -46,7 +46,7 @@ for %%L in (lld ms) do (
   if "%%L"=="lld" if defined LLD set "LINKER=!LLD!"
   if "%%L"=="ms" if defined MSLINK set "LINKER=!MSLINK!"
   if defined LINKER (
-    for %%T in (optref64 optref_assoc optref_static optref_bss optref_empty optref_pinned) do (
+    for %%T in (optref64 optref_assoc optref_static optref_nosym optref_bss optref_empty optref_pinned) do (
       call :run_42 %%L "!LINKER!" "%%T_%%L.exe" %%T.obj
     )
     call :run_42 %%L "!LINKER!" "optref_any_%%L.exe" optref_any_a.obj optref_any_b.obj

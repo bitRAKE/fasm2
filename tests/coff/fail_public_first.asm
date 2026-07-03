@@ -1,6 +1,7 @@
-; PUBLIC declared before its COMDAT section exists.
-; Symbol table order becomes: external symbol, then section symbol+aux.
-; PE/COFF spec expects the section symbol to precede the COMDAT symbol.
+; PUBLIC declared before its COMDAT section exists. The external symbol
+; would precede the section symbol in the table, which MSVC link rejects
+; as a corrupt object (LNK1143) - the assembler errors at the SECTION
+; statement instead.
 
 format MS64 COFF
 

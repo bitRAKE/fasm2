@@ -1,7 +1,7 @@
-; COMDAT section with no external (public) symbol at all.
-; helper is referenced only through the section symbol (section+offset reloc).
-; Per spec a COMDAT with selection != ASSOCIATIVE is keyed by "the COMDAT
-; symbol" = the symbol immediately after the aux record; here there is none.
+; COMDAT sections with no PUBLIC at all. The format synthesizes a static
+; COMDAT symbol (named after the section) at the end of the symbol table,
+; so the object stays valid and /OPT:REF can discard each section
+; individually: helper survives (referenced), orphan is dropped.
 
 format MS64 COFF
 
