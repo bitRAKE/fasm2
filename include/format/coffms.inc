@@ -276,6 +276,18 @@ namespace COFF
 		comdat_symbols:: rb NUMBER_OF_SECTIONS * 16
 	end virtual
 
+	; reflected CRC-32 nibble table (polynomial 0xEDB88320). The COMDAT
+	; aux CheckSum used by IMAGE_COMDAT_SELECT_EXACT_MATCH is this CRC of
+	; the section's raw data, seeded with 0 and with NO final inversion -
+	; unlike the PNG/zlib CRC which seeds with -1 and inverts the result.
+	virtual at 0
+		crc32_table::
+		dd 0x00000000,0x1DB71064,0x3B6E20C8,0x26D930AC
+		dd 0x76DC4190,0x6B6B51F4,0x4DB26158,0x5005713C
+		dd 0xEDB88320,0xF00F9344,0xD6D6A3E8,0xCB61B38C
+		dd 0x9B64C2B0,0x86D3D2D4,0xA00AE278,0xBDBDF21C
+	end virtual
+
 	element relocatable?
 
 	macro section_start
@@ -348,6 +360,34 @@ macro section?
 
 		SECTION_SIZE = $% - SECTION_OFFSET
 
+		; EXACT_MATCH needs a CRC-32 of the section's raw data in the aux
+		; CheckSum. Computed here, while the section content is still in
+		; its own ORG space, over the initialized bytes plus the zero
+		; padding that the finalizer writes for any uninitialized tail.
+		; Seed 0, no final inversion (see crc32_table above).
+		; a fully uninitialized section ($%% = SECTION_OFFSET) writes no raw
+		; data to the file, so its checksum stays 0, as MSVC computes it
+		SECTION_CHECKSUM = 0
+		if SECTION_SYMBOL_INDEX >= 0 & SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH & $%% > SECTION_OFFSET
+			local crc, byte, fold
+			crc = 0
+			repeat $%% - SECTION_OFFSET, i:0
+				load byte:1 from SECTION_BASE + i
+				crc = crc xor byte
+				load fold:4 from crc32_table : (crc and 15) shl 2
+				crc = (crc shr 4) xor fold
+				load fold:4 from crc32_table : (crc and 15) shl 2
+				crc = (crc shr 4) xor fold
+			end repeat
+			repeat $% - $%%
+				load fold:4 from crc32_table : (crc and 15) shl 2
+				crc = (crc shr 4) xor fold
+				load fold:4 from crc32_table : (crc and 15) shl 2
+				crc = (crc shr 4) xor fold
+			end repeat
+			SECTION_CHECKSUM = crc and 0xFFFFFFFF
+		end if
+
 		if DEFINED_SECTION | SECTION_SIZE > 0
 
 			if ~ DEFINED_SECTION
@@ -400,6 +440,9 @@ macro section?
 						err 'associated symbol is not in a preceding section'
 					end if
 					store SECTION_COMDAT_ASSOCIATION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Number
+				end if
+				if SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH
+					store SECTION_CHECKSUM at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.CheckSum
 				end if
 				store SECTION_COMDAT_SELECTION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Selection
 			end if
@@ -496,10 +539,7 @@ macro section? declaration*
 				else match =largest?, attribute
 					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_LARGEST
 				else match =exactmatch?, attribute
-					; needs the auxiliary CheckSum field: a CRC-32 of the final
-					; section contents, computed in POSTPONE after all fixups;
-					; left 0 it would make every same-named section "match"
-					err 'COMDAT selection "exactmatch" is not supported'
+					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH
 				else
 					err 'unknown attribute "',`attribute,'"'
 				end match

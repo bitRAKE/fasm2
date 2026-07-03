@@ -28,7 +28,7 @@ section '.pdata$name' data readable comdat associative some_label
 - `comdat` marks the section `IMAGE_SCN_LNK_COMDAT` with selection
   `NODUPLICATES`: a second definition anywhere in the link is an error.
 - A selection keyword after `comdat` overrides that: `any`, `samesize`,
-  `largest`, `noduplicates`.
+  `largest`, `noduplicates`, `exactmatch`.
 - `comdat associative <label>` ties the section's fate to the section that
   contains `<label>`: when the linker discards that section, this one goes
   with it. This is how unwind/exception metadata (`.pdata$x`, `.xdata$x`)
@@ -42,11 +42,16 @@ section '.pdata$name' data readable comdat associative some_label
   default `noduplicates` exist to match sections *across* objects by
   external symbol name, so they still require a `public`
   (`fail_any_no_symbol.asm`).
-- `exactmatch` is rejected explicitly (`fail_exactmatch.asm`): it needs the
-  aux-record `CheckSum` — a CRC-32 of the final section contents, which
-  would have to be computed in `postpone` after all fixups. Left 0, MSVC
-  would treat every same-named section as "matching". Use `samesize` or
-  `any` instead.
+- `exactmatch` folds two same-named COMDATs only if their contents are
+  identical. The assembler fills the aux-record `CheckSum` with a CRC-32 of
+  the section's raw data — reflected polynomial `0xEDB88320`, **seed 0, no
+  final inversion** (not the PNG/zlib parameters), which is what MSVC and
+  lld compute and matches a `clang-cl`-produced object byte for byte. The
+  CRC is taken over the initialized bytes plus any zero-padded uninitialized
+  tail. Matching content links (`optref_xmatch_*`); differing content of the
+  same size is rejected because the checksums differ (`linkfail_xmatch_*`).
+  Like the other cross-object selections, `exactmatch` requires a `public`
+  (`fail_exactmatch_nopub.asm`).
 
 ## Rules the assembler now enforces
 
@@ -73,10 +78,13 @@ them at assembly time:
 | `optref_static.asm` | `public static` provides the COMDAT symbol without exporting; unreferenced section still discarded. |
 | `optref_nosym.asm` | No `public` at all: the synthesized static COMDAT symbol keeps the object valid; unreferenced section still discarded. |
 | `optref_any_a/b.asm` | `comdat any`: duplicate definitions across objects deduplicate instead of erroring. |
+| `optref_exactmatch.asm` | `comdat exactmatch`: baseline single object; the aux `CheckSum` carries the CRC-32 of the section data. |
+| `optref_xmatch_a/b.asm` | `exactmatch` with byte-identical content across two objects deduplicates (equal checksums). |
 | `optref_bss.asm` | Uninitialized (BSS-style) COMDAT section. |
 | `optref_empty.asm` | Zero-length COMDAT section (and no spurious `LNK4078` attribute-mismatch warning). |
 | `optref_pinned.asm` | Counter-example: a **non**-COMDAT `.pdata` referencing a COMDAT function pins it — `/OPT:REF` cannot discard it. This is why associative COMDAT exists. |
 | `linkfail_dup_a/b.asm` | Default `NODUPLICATES`: same COMDAT in two objects must fail to link (LNK2005). |
+| `linkfail_xmatch_a/b.asm` | `exactmatch` with same name+size but differing content: checksums differ, so the linker must reject the merge. |
 
 ## Gotchas observed while testing
 

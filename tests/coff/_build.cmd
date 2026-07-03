@@ -46,10 +46,19 @@ for %%L in (lld ms) do (
   if "%%L"=="lld" if defined LLD set "LINKER=!LLD!"
   if "%%L"=="ms" if defined MSLINK set "LINKER=!MSLINK!"
   if defined LINKER (
-    for %%T in (optref64 optref_assoc optref_static optref_nosym optref_bss optref_empty optref_pinned) do (
+    for %%T in (optref64 optref_assoc optref_static optref_nosym optref_bss optref_empty optref_pinned optref_exactmatch) do (
       call :run_42 %%L "!LINKER!" "%%T_%%L.exe" %%T.obj
     )
     call :run_42 %%L "!LINKER!" "optref_any_%%L.exe" optref_any_a.obj optref_any_b.obj
+    call :run_42 %%L "!LINKER!" "optref_xmatch_%%L.exe" optref_xmatch_a.obj optref_xmatch_b.obj
+
+    "!LINKER!" linkfail_xmatch_a.obj linkfail_xmatch_b.obj /nologo /OPT:REF /SUBSYSTEM:CONSOLE /ENTRY:mainCRTStartup /OUT:linkfail_xmatch_%%L.exe >nul 2>nul
+    if not errorlevel 1 (
+      echo [FAIL] %%L: mismatched EXACT_MATCH COMDAT linked, expected error
+      set FAILED=1
+    ) else (
+      echo [ok]   %%L: mismatched EXACT_MATCH COMDAT rejected, as expected
+    )
 
     "!LINKER!" optref32.obj /nologo /OPT:REF /SUBSYSTEM:CONSOLE /ENTRY:mainCRTStartup /MACHINE:X86 /OUT:optref32_%%L.exe >nul 2>nul
     if errorlevel 1 (
