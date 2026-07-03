@@ -268,6 +268,14 @@ namespace COFF
 		relocations:: rb NUMBER_OF_RELOCATIONS * sizeof IMAGE_RELOCATION
 	end virtual
 
+	; per-section record for COMDAT symbol synthesis in POSTPONE:
+	; +0 dd string table offset of long name (0 = short name)
+	; +4 dq short name
+	; +12 db selection
+	virtual at 0
+		comdat_symbols:: rb NUMBER_OF_SECTIONS * 16
+	end virtual
+
 	element relocatable?
 
 	macro section_start
@@ -294,9 +302,22 @@ namespace COFF
 			store IMAGE_SYM_CLASS_STATIC at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.StorageClass
 			store 1+SECTION_INDEX at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber
 			if SECTION_FLAGS and IMAGE_SCN_LNK_COMDAT
+				if PUBLICS_SEEN and (1 shl SECTION_INDEX)
+					; the linker requires the section symbol to be the first
+					; symbol carrying this section number (MSVC: LNK1143)
+					err 'PUBLIC symbol for a COMDAT section must be declared after its SECTION statement'
+				end if
 				SECTION_SYMBOL_INDEX = SYMBOL_INDEX
 				store 1 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.NumberOfAuxSymbols
 				SYMBOL_INDEX = SYMBOL_INDEX + 2
+				if SECTION_COMDAT_SELECTION <> IMAGE_COMDAT_SELECT_ASSOCIATIVE
+					COMDAT_PENDING = COMDAT_PENDING or 1 shl SECTION_INDEX
+					store SECTION_NAME_POS : 4 at comdat_symbols : SECTION_INDEX * 16
+					if SECTION_NAME_POS = 0
+						store SECTION_NAME : 8 at comdat_symbols : SECTION_INDEX * 16 + 4
+					end if
+					store SECTION_COMDAT_SELECTION : 1 at comdat_symbols : SECTION_INDEX * 16 + 12
+				end if
 			else
 				SYMBOL_INDEX = SYMBOL_INDEX + 1
 			end if
@@ -307,6 +328,10 @@ namespace COFF
 	SECTION_INDEX = 0
 	SECTION_RELOCATION_INDEX = RELOCATION_INDEX
 	SYMBOL_INDEX = 0
+	COMDAT_PENDING = 0
+	PUBLICS_SEEN = 0
+	SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
+	SECTION_COMDAT_ASSOCIATION = 0
 
 	SECTION_OFFSET = $%
 	SECTION_ALIGN = 4
@@ -329,7 +354,7 @@ macro section?
 				DEFAULT_SECTION := 1
 			end if
 
-			if $%% = SECTION_OFFSET
+			if SECTION_SIZE > 0 & $%% = SECTION_OFFSET
 				SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_CNT_UNINITIALIZED_DATA
 				SECTION_OFFSET = 0
 				section $
@@ -356,6 +381,9 @@ macro section?
 			end if
 
 			if lengthof SECTION_NAME > 8
+				if SECTION_NAME_POS > 9999999
+					err 'string table too large to reference long section names (offset above /9999999)'
+				end if
 				repeat 1, pos:SECTION_NAME_POS
 					store ('/' + (`pos shl 8)) : 8 at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
 				end repeat
@@ -367,7 +395,13 @@ macro section?
 				if RELOCATION_INDEX - SECTION_RELOCATION_INDEX <= 65535
 					store RELOCATION_INDEX - SECTION_RELOCATION_INDEX at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.NumberOfRelocations
 				end if
-				store IMAGE_COMDAT_SELECT_NODUPLICATES at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Selection
+				if SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ASSOCIATIVE
+					if SECTION_COMDAT_ASSOCIATION < 1 | SECTION_COMDAT_ASSOCIATION > SECTION_INDEX
+						err 'associated symbol is not in a preceding section'
+					end if
+					store SECTION_COMDAT_ASSOCIATION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Number
+				end if
+				store SECTION_COMDAT_SELECTION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Selection
 			end if
 
 			store SECTION_OFFSET at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.PointerToRawData
@@ -390,6 +424,8 @@ macro section? declaration*
 		SECTION_FLAGS = 0
 		SECTION_OFFSET = $%
 		SECTION_ALIGN = 4
+		SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
+		SECTION_COMDAT_ASSOCIATION = 0
 
 		match name attributes, declaration
 
@@ -404,6 +440,18 @@ macro section? declaration*
 				define seq
 			else
 				define seq attributes
+			end match
+			match flags =comdat? =associative? target, seq
+				SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_COMDAT
+				SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ASSOCIATIVE
+				SECTION_COMDAT_ASSOCIATION = 1 scaleof (1 metadataof (target))
+				define seq flags
+			end match
+			match =comdat? =associative? target, seq
+				SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_COMDAT
+				SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ASSOCIATIVE
+				SECTION_COMDAT_ASSOCIATION = 1 scaleof (1 metadataof (target))
+				define seq
 			end match
 			while 1
 				match car cdr, seq
@@ -439,10 +487,26 @@ macro section? declaration*
 					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_INFO
 				else match =comdat?, attribute
 					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_COMDAT
+				else match =noduplicates?, attribute
+					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
+				else match =any?, attribute
+					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ANY
+				else match =samesize?, attribute
+					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_SAME_SIZE
+				else match =largest?, attribute
+					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_LARGEST
+				else match =exactmatch?, attribute
+					; needs the auxiliary CheckSum field: a CRC-32 of the final
+					; section contents, computed in POSTPONE after all fixups;
+					; left 0 it would make every same-named section "match"
+					err 'COMDAT selection "exactmatch" is not supported'
 				else
 					err 'unknown attribute "',`attribute,'"'
 				end match
 			end irpv
+			if SECTION_COMDAT_SELECTION <> IMAGE_COMDAT_SELECT_NODUPLICATES & ~ (SECTION_FLAGS and IMAGE_SCN_LNK_COMDAT)
+				err 'COMDAT selection attribute requires "comdat"'
+			end if
 
 		else
 
@@ -488,6 +552,8 @@ macro public? declaration*
 			if 1 scaleof (1 metadataof SYMBOL_VALUE) > 0
 				SYMBOL_SECTION_INDEX = 1 scaleof (1 metadataof SYMBOL_VALUE)
 				SYMBOL_VALUE = SYMBOL_VALUE - 1 elementof SYMBOL_VALUE
+				COMDAT_PENDING = COMDAT_PENDING and not (1 shl (SYMBOL_SECTION_INDEX-1))
+				PUBLICS_SEEN = PUBLICS_SEEN or 1 shl (SYMBOL_SECTION_INDEX-1)
 			else if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 				SYMBOL_SECTION_INDEX = IMAGE_SYM_UNDEFINED
 				SYMBOL_VALUE = 0
@@ -718,6 +784,32 @@ postpone
 	purge section?
 	section
 	namespace COFF
+
+		; a COMDAT section without any PUBLIC gets a synthetic static symbol
+		; named after the section, appended at the end of the symbol table;
+		; static symbols have no cross-object identity, so this only makes
+		; the section individually discardable by /OPT:REF - which is why
+		; selections other than the default NODUPLICATES (whose purpose is
+		; cross-object matching by external symbol name) reject it instead
+		repeat SECTION_INDEX
+			if COMDAT_PENDING and (1 shl (%-1))
+				load SYNTH_SELECTION : 1 from comdat_symbols : (%-1) * 16 + 12
+				if SYNTH_SELECTION <> IMAGE_COMDAT_SELECT_NODUPLICATES
+					err 'COMDAT selection requires a PUBLIC symbol declared after the SECTION statement'
+				end if
+				load SYNTH_NAME_POS : 4 from comdat_symbols : (%-1) * 16
+				if SYNTH_NAME_POS > 0
+					store 0 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Zeroes
+					store SYNTH_NAME_POS at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Offset
+				else
+					load SYNTH_NAME : 8 from comdat_symbols : (%-1) * 16 + 4
+					store SYNTH_NAME : 8 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.ShortName
+				end if
+				store % at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber
+				store IMAGE_SYM_CLASS_STATIC at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.StorageClass
+				SYMBOL_INDEX = SYMBOL_INDEX + 1
+			end if
+		end repeat
 
 		NUMBER_OF_SECTIONS := SECTION_INDEX
 		STRING_TABLE_SIZE := STRING_POSITION
