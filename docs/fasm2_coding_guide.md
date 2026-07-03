@@ -163,6 +163,70 @@ mov	[rectp],r8
 
 unless each value is actually needed after calls.
 
+A non-leaf procedure can still use incoming registers directly before its first
+call. The call boundary is what ends the volatile lifetime, not the fact that a
+call appears later in the procedure.
+
+Good:
+
+```asm
+proc CsdCaptionInputInit inputp,statep,count
+	mov	dword [rcx+CSD_CAPTION_INPUT.hotIndex],CSD_CAPTION_NO_INDEX
+	mov	dword [rcx+CSD_CAPTION_INPUT.pressedIndex],CSD_CAPTION_NO_INDEX
+	mov	dword [rcx+CSD_CAPTION_INPUT.tracking],0
+	mov	dword [rcx+CSD_CAPTION_INPUT.active],1
+	fastcall CsdCaptionSetAllStates,rdx,r8d,CSD_STATE_NORMAL
+	xor	eax,eax
+	ret
+endp
+```
+
+Avoid copying `rcx` into `rax`, `rbx`, or another register only to initialize
+the input row before the first call.
+
+### Leaf Procedures Keep Incoming Registers
+
+A leaf procedure is one that executes no `invoke`, `fastcall`, or raw `call`.
+In a leaf procedure, no callee can alter the incoming volatile argument
+registers, so keep using `rcx`, `rdx`, `r8`, and `r9` directly until the
+algorithm itself needs to overwrite them.
+
+Good:
+
+```asm
+proc CsdCaptionSetAllStates statep,count,value
+	test	edx,edx
+	jz	set_all_done
+set_all_loop:
+	mov	[rcx+CSD_CAPTION_STATE.value],r8b
+	mov	byte [rcx+CSD_CAPTION_STATE.fadePhase],255
+	mov	[rcx+CSD_CAPTION_STATE.fromValue],r8b
+	mov	byte [rcx+CSD_CAPTION_STATE.animFlags],0
+	add	rcx,sizeof.CSD_CAPTION_STATE
+	dec	edx
+	jnz	set_all_loop
+set_all_done:
+	ret
+endp
+```
+
+Avoid copying argument registers only to use a preferred addressing register:
+
+```asm
+mov	rsi,rcx        ; unnecessary in leaf code
+mov	[rsi+CSD_CAPTION_STATE.value],r8b
+```
+
+Long-mode addressing accepts all general-purpose registers as base registers.
+There is no need to move a pointer through `rax`, `rsi`, `rdi`, or `rbx` just
+to address `[reg+STRUCT.field]`.
+
+If the original argument value is not needed later, mutate the argument
+register itself. A leaf loop can advance `rcx` through an array, decrement
+`edx` as the remaining count, and write `r8b` into byte fields without creating
+an artificial preserved copy. Preserve a source value only when a later read
+actually needs the original.
+
 ### Match Register Width To The Value
 
 Use the ABI register that corresponds to the argument position and the value
@@ -190,6 +254,51 @@ When a register is already the right argument, pass it directly:
 invoke	SetTextColor,rsi,edx
 invoke	DrawTextW,rsi,addr glyph_text,1,addr rc,\
 	DT_SINGLELINE or DT_CENTER or DT_VCENTER or DT_NOPREFIX or DT_NOCLIP
+```
+
+When the value is already in the right live register, operate on it there.
+Prefer a direct test or mask over copying into `rax` for a one-off transform:
+
+```asm
+test	r9d,0FFFF0000h
+jnz	.menu_from_window
+```
+
+not:
+
+```asm
+mov	rax,r9
+shr	eax,16
+test	eax,eax
+jnz	.menu_from_window
+```
+
+Copy a value only when the copy owns a real job: preserving the source across a
+call, keeping the original before a destructive transform, satisfying an
+instruction with fixed operands, or building the return value. Otherwise keep
+the operation on the register that already holds the value.
+
+Tiny register transforms should remain local. If a color conversion is only a
+byte swap and shift, do it in the register that already holds the value and
+store the results where they belong:
+
+```asm
+mov	eax,[color_argb]
+mov	[rbx+CSD_THEME.accentArgb],eax
+bswap	eax
+shr	eax,8
+mov	[rbx+CSD_THEME.accentColor],eax
+```
+
+Do not add a helper or move a parameter into `eax` first unless `eax` is the
+return value or the accumulated result. A DWORD argument in `r8d` can be
+compared, masked, shifted, stored, or passed onward as `r8d`.
+
+The extended register low-byte names are available. Use `r8b`, `r9b`, `r10b`,
+or `r11b` directly for byte fields instead of copying through `al`:
+
+```asm
+mov	[rcx+CSD_CAPTION_STATE.value],r8b
 ```
 
 ### Respect Left-To-Right Argument Expansion

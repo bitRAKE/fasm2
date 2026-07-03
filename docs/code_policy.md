@@ -20,6 +20,45 @@ Win32 contracts visible at the call site.
   needs it and no intervening call can clobber it.
 - Spill `proc` arguments at entry only when they are needed after calls or when
   the spill makes later code materially clearer.
+- A procedure that eventually calls another function can still use incoming
+  argument registers directly before that first call. Do not copy a pointer to
+  `rax` or a nonvolatile register just because the procedure is not leaf; the
+  call boundary, not the procedure boundary, is what ends the volatile value's
+  guaranteed lifetime.
+- Treat leaf procedures as a separate register regime. If a `proc` executes no
+  `invoke`, `fastcall`, or raw `call`, no callee can clobber the incoming
+  volatile argument registers. Keep using `rcx`, `rdx`, `r8`, and `r9`
+  directly until the algorithm itself needs to overwrite them.
+- In leaf procedures, prefer volatile scratch registers (`rax`, `r10`, `r11`,
+  and unused argument registers) before adding nonvolatile `uses` registers.
+  Avoid `uses` merely to move pointers into traditional loop registers such as
+  `rsi`, `rdi`, or `rbx`.
+- Any 64-bit general-purpose register can be a long-mode address base. Do not
+  copy a pointer from `rcx`, `rdx`, `r8`, or `r9` into `rax`, `rsi`, `rdi`, or
+  `rbx` just to address `[reg+STRUCT.field]`; use the live source register.
+- Avoid copy-only transforms. Prefer direct tests, masks, shifts, and stores on
+  the live register when the copy has no semantic purpose, and keep `rax`/`eax`
+  available for return values or accumulated result flags when practical.
+- A register copy should have a concrete reason: preserving a value across a
+  call, preserving the original before a destructive transform, satisfying an
+  instruction with fixed operands, or building the return value. If none of
+  those apply, keep operating on the source register.
+- Tiny pure transforms should normally stay inline and operate in the register
+  that already owns the value. If an ARGB/COLORREF shuffle is only `bswap` plus
+  `shr`, do that at the assignment site instead of routing the value through a
+  helper or first moving the parameter into `rax` out of habit. Copy to `eax`
+  only when `eax` is the intended return value or accumulator.
+- Match the scratch register to the next consumer. If a DWORD parameter arrives
+  in `r8d` and is only compared, stored, masked, shifted, or forwarded before a
+  call, use `r8d`; moving it to `eax` first is noise unless the transform
+  deliberately produces the function result.
+- Mutate the incoming argument register when the original value is no longer
+  needed. Advancing `rcx` through an array, decrementing `edx` as a count, or
+  masking `r8d` in a leaf path is usually clearer than first preserving a value
+  that the procedure never reads again.
+- Use the named low halves of extended registers directly. `r8b`, `r9b`,
+  `r10b`, and `r11b` are valid byte operands; do not bounce through `al` just to
+  store or compare a byte field unless the instruction itself requires `al`.
 - Preserve only nonvolatile registers whose values are needed after the code
   that mutates them. Keep `uses` lists narrow.
 - Prefer parameter ordering that aligns with Win64 ABI register positions:
@@ -36,6 +75,10 @@ Win32 contracts visible at the call site.
 
 - Do not add a `proc`, macro, or helper that only renames a single API call or
   replaces one obvious line with another single line.
+- Do not add a `proc`, macro, or helper for a one- or two-instruction register
+  transform unless the helper owns a real contract beyond the instruction
+  sequence. Local color-channel shuffles, simple sign/zero-extension, and
+  single-field assignments are usually clearer inline.
 - An abstraction must remove real duplication, hide a fragile calling
   convention, centralize a tested algorithm, own state or lifetime, or provide
   a clearer contract than the raw call site.
