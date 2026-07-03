@@ -48,9 +48,8 @@ section '.pdata$name' data readable comdat associative some_label
   final inversion** (not the PNG/zlib parameters), which is what MSVC and
   lld compute and matches a `clang-cl`-produced object byte for byte. The
   CRC is taken over the initialized bytes plus any zero-padded uninitialized
-  tail, and is computed once per section in the format's `postpone` stage
-  from bytes staged during section finalization (the same accumulate-then-
-  emit pattern the format uses for relocations and the symbol table).
+  tail, and is computed once per section in the format's `postpone` stage,
+  reading each section's raw bytes back from the output area in place.
   Matching content links (`optref_xmatch_*`); differing content of the same
   size is rejected because the checksums differ (`linkfail_xmatch_*`). Like
   the other cross-object selections, `exactmatch` requires a `public`
