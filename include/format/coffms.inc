@@ -355,7 +355,6 @@ namespace COFF
 				repeat 1, si:SECTION_INDEX
 					define exactmatch_list xm_area, sym, si
 				end repeat
-				XM_COUNT = XM_COUNT + 1
 			end if
 		end if
 	end macro
@@ -366,7 +365,6 @@ namespace COFF
 	SYMBOL_INDEX = 0
 	COMDAT_PENDING = 0
 	PUBLICS_SEEN = 0
-	XM_COUNT = 0
 	SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
 	SECTION_COMDAT_ASSOCIATION = 0
 
@@ -865,34 +863,33 @@ postpone
 		; section's raw bytes back from the output area in place (its own ORG
 		; space, reached through the remembered anchor and base element):
 		; reflected CRC-32 (poly 0xEDB88320) seeded 0 with NO final inversion,
-		; over the initialized bytes then the zero-padded tail (see crc32_table)
-		if XM_COUNT > 0
-			irpv xm_cell, exactmatch_list
-				match xm_area =, xm_base =, xm_sec, xm_cell
-					load XM_AUX : 4 from xm_meta : xm_sec * 16 + 8
-					if XM_AUX > 0
-						load XM_INIT : 4 from xm_meta : xm_sec * 16
-						load XM_TAIL : 4 from xm_meta : xm_sec * 16 + 4
-						XM_CRC = 0
-						repeat XM_INIT, i:0
-							load XM_BYTE : 1 from xm_area : (xm_base + i)
-							XM_CRC = XM_CRC xor XM_BYTE
-							load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-							XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-							load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-							XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-						end repeat
-						repeat XM_TAIL
-							load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-							XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-							load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-							XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-						end repeat
-						store XM_CRC and 0xFFFFFFFF at symbol_table : XM_AUX * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.CheckSum
-					end if
-				end match
-			end irpv
-		end if
+		; over the initialized bytes then the zero-padded tail (see crc32_table).
+		; irpv iterates nothing when no exactmatch section was recorded.
+		irpv xm_cell, exactmatch_list
+			match xm_area =, xm_base =, xm_sec, xm_cell
+				load XM_AUX : 4 from xm_meta : xm_sec * 16 + 8
+				if XM_AUX > 0
+					load XM_INIT : 4 from xm_meta : xm_sec * 16
+					load XM_TAIL : 4 from xm_meta : xm_sec * 16 + 4
+					XM_CRC = 0
+					repeat XM_INIT, i:0
+						load XM_BYTE : 1 from xm_area : (xm_base + i)
+						XM_CRC = XM_CRC xor XM_BYTE
+						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+					end repeat
+					repeat XM_TAIL
+						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
+						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
+					end repeat
+					store XM_CRC and 0xFFFFFFFF at symbol_table : XM_AUX * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.CheckSum
+				end if
+			end match
+		end irpv
 
 		RELOCATIONS_OFFSET = $%
 		load byte_sequence : NUMBER_OF_RELOCATIONS * sizeof IMAGE_RELOCATION from relocations:0
