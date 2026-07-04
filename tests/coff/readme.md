@@ -104,6 +104,7 @@ them at assembly time:
 | `optref_any_a/b.asm` | `comdat any`: duplicate definitions across objects deduplicate instead of erroring. |
 | `optref_exactmatch.asm` | `comdat exactmatch`: baseline single object; the aux `CheckSum` carries the CRC-32 of the section data. |
 | `optref_xmatch_a/b.asm` | `exactmatch` with byte-identical content across two objects deduplicates (equal checksums). |
+| `optref_xref_a/b.asm` | Two objects define and reference the same `exactmatch` data; the fold discards one copy, and its intra-object reference rebinds to the survivor because the backend relocates against the external symbol (not the static section symbol). |
 | `crc_vectors.asm` | Reproduces five clang-cl COMDAT sections; fasm2's aux `CheckSum` matches clang's on each (CRC cross-validation). |
 | `optref_bss.asm` | Uninitialized (BSS-style) COMDAT section. |
 | `optref_empty.asm` | Zero-length COMDAT section (and no spurious `LNK4078` attribute-mismatch warning). |

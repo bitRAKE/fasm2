@@ -268,6 +268,17 @@ namespace COFF
 		relocations:: rb NUMBER_OF_RELOCATIONS * sizeof IMAGE_RELOCATION
 	end virtual
 
+	; Per-section (section number - 1) index of the external symbol defined at
+	; offset 0 of that section, or 0 if none. A reference into a section is
+	; relocated against this external symbol rather than the static section
+	; symbol, so that if the section is a COMDAT the linker folds away, the
+	; reference rebinds to the surviving copy (a section-symbol reference to a
+	; discarded COMDAT would dangle). The offset-0 external shares the section
+	; symbol's address, so only the relocation's symbol index changes.
+	virtual at 0
+		section_ref_sym:: rb NUMBER_OF_SECTIONS * 4
+	end virtual
+
 	; per-section record for COMDAT symbol synthesis in POSTPONE:
 	; +0 dd string table offset of long name (0 = short name)
 	; +4 dq short name
@@ -597,6 +608,9 @@ macro public? declaration*
 				SYMBOL_VALUE = SYMBOL_VALUE - 1 elementof SYMBOL_VALUE
 				COMDAT_PENDING = COMDAT_PENDING and not (1 shl (SYMBOL_SECTION_INDEX-1))
 				PUBLICS_SEEN = PUBLICS_SEEN or 1 shl (SYMBOL_SECTION_INDEX-1)
+				if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL & SYMBOL_VALUE = 0
+					store SYMBOL_INDEX : 4 at section_ref_sym : (SYMBOL_SECTION_INDEX-1) * 4
+				end if
 			else if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 				SYMBOL_SECTION_INDEX = IMAGE_SYM_UNDEFINED
 				SYMBOL_VALUE = 0
@@ -678,7 +692,7 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 	    plain:
 		emit	4, value
 		exit
-		local	offset, symndx, type
+		local	offset, symndx, secnum, refsym, type
 	    dir32:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_I386_DIR32
@@ -694,6 +708,14 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 		compute type, IMAGE_REL_I386_REL32
 		jump	add_relocation
 	    add_relocation:
+		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
+		check	secnum > 0
+		jno	ref_sym_done
+		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
+		check	refsym > 0
+		jno	ref_sym_done
+		compute	symndx, refsym
+	    ref_sym_done:
 		compute offset, $%
 		emit	4, 0 scaleof value
 		check	$% > offset
@@ -717,7 +739,7 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 	    plain:
 		emit	8, value
 		exit
-		local	offset, symndx, type
+		local	offset, symndx, secnum, refsym, type
 	    dir32:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_I386_DIR32
@@ -728,6 +750,14 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 		compute type, IMAGE_REL_I386_DIR32NB
 		jump	add_relocation
 	    add_relocation:
+		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
+		check	secnum > 0
+		jno	ref_sym_done
+		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
+		check	refsym > 0
+		jno	ref_sym_done
+		compute	symndx, refsym
+	    ref_sym_done:
 		compute offset, $%
 		emit	8, 0 scaleof value
 		check	$% > offset
@@ -757,7 +787,7 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 	    plain:
 		emit	4, value
 		exit
-		local	offset, symndx, type
+		local	offset, symndx, secnum, refsym, type
 	    addr32:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_AMD64_ADDR32
@@ -773,6 +803,14 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 		compute type, IMAGE_REL_AMD64_REL32
 		jump	add_relocation
 	    add_relocation:
+		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
+		check	secnum > 0
+		jno	ref_sym_done
+		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
+		check	refsym > 0
+		jno	ref_sym_done
+		compute	symndx, refsym
+	    ref_sym_done:
 		compute offset, $%
 		emit	4, 0 scaleof value
 		check	$% > offset
@@ -796,7 +834,7 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 	    plain:
 		emit	8, value
 		exit
-		local	offset, symndx, type
+		local	offset, symndx, secnum, refsym, type
 	    addr64:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_AMD64_ADDR64
@@ -807,6 +845,14 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 		compute type, IMAGE_REL_AMD64_ADDR64NB
 		jump	add_relocation
 	    add_relocation:
+		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
+		check	secnum > 0
+		jno	ref_sym_done
+		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
+		check	refsym > 0
+		jno	ref_sym_done
+		compute	symndx, refsym
+	    ref_sym_done:
 		compute offset, $%
 		emit	8, 0 scaleof value
 		check	$% > offset

@@ -51,6 +51,7 @@ for %%L in (lld ms) do (
     )
     call :run_42 %%L "!LINKER!" "optref_any_%%L.exe" optref_any_a.obj optref_any_b.obj
     call :run_42 %%L "!LINKER!" "optref_xmatch_%%L.exe" optref_xmatch_a.obj optref_xmatch_b.obj
+    call :run_42 %%L "!LINKER!" "optref_xref_%%L.exe" optref_xref_a.obj optref_xref_b.obj
 
     "!LINKER!" linkfail_xmatch_a.obj linkfail_xmatch_b.obj /nologo /OPT:REF /SUBSYSTEM:CONSOLE /ENTRY:mainCRTStartup /OUT:linkfail_xmatch_%%L.exe >nul 2>nul
     if not errorlevel 1 (

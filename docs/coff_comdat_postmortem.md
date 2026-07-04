@@ -158,6 +158,32 @@ anchor and `define`s `(anchor, base, section#)`; the finalizer records
 folds the CRC reading `xm_area:(xm_base + i)` over the initialized bytes, then
 folds the zero-padded tail, and stores the result in the aux `CheckSum`.
 
+## Referencing folded data: external vs section relocations
+
+A COMDAT that the linker keeps is useless if references into a *discarded*
+duplicate cannot follow the fold. Consider two objects that each define the
+same `exactmatch` table and each reference it from their own code. The linker
+keeps one copy; the reference living in the discarded copy's object must
+rebind to the survivor.
+
+That works only when the reference relocates against the **external symbol**
+(`tab`) rather than the **static section symbol** (`.rdata$tab`): the external
+symbol is deduplicated across objects and redirected on a fold, while a static
+section symbol belongs to one object and dangles when its section is dropped.
+This is exactly what `clang-cl` emits for a `__declspec(selectany)` global —
+`IMAGE_REL_AMD64_REL32 tab`, not `... .rdata$tab`.
+
+fasmg resolves an in-object label reference to the section, so left alone it
+emits the section-symbol form and folded data breaks at run time. The backend
+therefore keeps a small per-section table (`section_ref_sym`) recording the
+external symbol defined at offset 0 of each section; when a relocation resolves
+against a section's static symbol, it is redirected to that external symbol
+instead. The external shares the section symbol's address (offset 0), so only
+the relocation's symbol index changes — the addend is untouched — and every
+reference into the section becomes fold-safe. `tests/coff/optref_xref_*` covers
+this; `examples/hexer` depends on it (its shared `hextab` is exactly this
+pattern).
+
 ## An unrelated gotcha worth repeating
 
 Do not write `mov eax,[rip+sym]` for a relocatable `sym`. Explicit `rip` is
