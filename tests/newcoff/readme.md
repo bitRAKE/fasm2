@@ -2,14 +2,25 @@
 
 Author: Rickey Bowers Jr. (bitRAKE). Co-developed with Claude (Anthropic).
 
+> **Modern-only, by design.** newcoff always writes the **big object
+> format**: `ANON_OBJECT_HEADER_BIGOBJ` + `IMAGE_SYMBOL_EX` — 20-byte
+> symbols, 32-bit section numbers, no 32767-section ceiling, no truncated
+> COMDAT associations. There is **no classic-COFF emission path**.
+> Consumers must understand bigobj: MSVC `link`, `lld-link`, LLVM tools,
+> and GNU binutils ≥ 2.25 all do; older third-party linkers (GoLink,
+> older Pelles `polink`, pre-2014 MinGW) do **not** — for those, the
+> untouched legacy `format MS/MS64 COFF` remains the supported path.
+> Leaning forward is the point: one emission path, sized for the next
+> twenty years of features (debug sections, wide associations, large
+> objects) rather than the last thirty of compatibility.
+
 This directory is a development harness for a from-scratch rewrite of the
-`format MS64 COFF` backend, informed by the 2026 COMDAT work on
+MS COFF backend, informed by the 2026 COMDAT work on
 [`include/format/coffms.inc`](../../include/format/coffms.inc) (EXACT_MATCH
 checksums, `/OPT:REF` support, fold-safe relocations — see
 [`docs/coff_comdat_postmortem.md`](../../docs/coff_comdat_postmortem.md) and
 [`docs/coff_comdat.md`](../../docs/coff_comdat.md)). The legacy backend stays
-untouched and fully usable; the rewrite lives beside it and is selected per
-source file.
+fully usable; the rewrite lives beside it and is selected per source file.
 
 ## The interception mechanism
 
@@ -32,10 +43,16 @@ end macro
 ```
 
 A source that does `include 'newcoff.inc'` before its FORMAT statement can
-then choose `format MS64 NEWCOFF` (the rewrite) or `format MS64 COFF`
-(forwarded, byte-for-byte legacy behaviour). One tree, both backends, A/B
-comparison for free — this is how a format can be re-engineered *in place*
-without destabilizing anything that ships.
+then choose `format MS NEWCOFF` / `format MS64 NEWCOFF` (the rewrite) or
+`format MS COFF` / `format MS64 COFF` (forwarded, byte-for-byte legacy
+behaviour). One tree, both backends, A/B comparison for free — this is how a
+format can be re-engineered *in place* without destabilizing anything that
+ships.
+
+**The machine is not a format variant.** The two intercepts differ only in
+the initial USE mode; the backend reads `x86.mode` in POSTPONE (`use32` →
+i386, `use64` → AMD64) and configures the object accordingly. No
+`Settings` plumbing, no per-machine includes.
 
 ## Why re-engineer
 
@@ -66,7 +83,7 @@ architecture, and each fight left a scar:
   dies on an undefined symbol). Incremental patching accumulates such
   corners; a rewrite retires them.
 
-## The three design rules
+## The design rules
 
 [`newcoffms.inc`](newcoffms.inc) is built on what the retrofits taught:
 
@@ -84,21 +101,26 @@ table as: every section's static symbol + section-definition aux record,
 then publics (declaration order), then synthesized COMDAT statics, then
 externs. Indices are arithmetic — section *i* is `2*i`, public *p* is
 `2*NSEC + p`, extern *e* is `2*NSEC + NPUB + e`. LNK1143 is satisfied
-structurally: `smoke.asm` declares its `public` statements *before* the
-sections they name, which the legacy backend must reject. Every section gets
-an aux record (as MSVC and clang emit), so checksums and associations have a
-uniform home.
+structurally: the smoke tests declare their `public` statements *before*
+the sections they name, which the legacy backend must reject. Every section
+gets an aux record (as MSVC and clang emit), so checksums and associations
+have a uniform home.
 
-**3. Symbolic relocation targets.** A relocation record stores *what* it
-targets — kind 0: a section index, kind 1: an extern ordinal — decoded from
-element metadata (sections carry scale `1+index`, externs scale `-1` with
-the ordinal as constant term). The symbol *index* is resolved in POSTPONE,
-in one place, which is also the one place implementing the fold-safe rule:
-a section target resolves to the section's offset-0 external symbol when
-one exists, else to the section symbol. One CALM engine (`NEWCOFF.record`)
-does all recording; `dword?`/`qword?` only classify the addressing form and
-`call` it. The legacy fix that had to be quadruplicated is eight lines,
-once.
+**3. Symbolic relocation targets — in both axes.** A relocation record
+stores *what* it targets (kind 0: a section index, kind 1: an extern
+ordinal — decoded from element metadata: sections carry scale `1+index`,
+externs scale `-1` with the ordinal as constant term) and *what it means*
+(a semantic kind: `abs32`, `rva32`, `rel32`, `abs64`, `rva64` — the
+classifiers never see an `IMAGE_REL_*` number). POSTPONE resolves both in
+one place: target → symbol index, applying the fold-safe rule (a section
+target resolves to the section's offset-0 external when one exists, so
+references into folded COMDATs rebind to the survivor); kind + machine →
+relocation type (i386 applies its 32-bit types to the low dword of 64-bit
+fields, exactly as legacy did; `rva64` on AMD64 is the one impossible
+combination and errs). One CALM engine (`NEWCOFF.record`) does all
+recording; `dword?`/`qword?` only classify the addressing form and `call`
+it. The machine-specific surface of the whole backend is one small mapping
+table in POSTPONE.
 
 Two supporting idioms carried over from the retrofit work:
 
@@ -123,17 +145,18 @@ per-field and bulk emission.
 
 | Area | State |
 | --- | --- |
+| big object container (`ANON_OBJECT_HEADER_BIGOBJ`, `IMAGE_SYMBOL_EX`) | always — the only emission path |
+| machine selection | automatic from `x86.mode` (use32 → i386, use64 → AMD64) |
 | sections, attributes, `align` | done (mirrors legacy syntax) |
 | COMDAT selections | `noduplicates` `any` `samesize` `largest` `exactmatch` `associative` + `newest` (accepted; deprecated by reproducible builds) |
 | EXACT_MATCH aux CheckSum | done, matches legacy/clang bit-for-bit |
 | `public` (external / `static` / `as` / absolute) | done |
 | `extrn` (`as`, `:size`) | done |
-| relocations | ADDR32, ADDR32NB (`RVA`), REL32, ADDR64; fold-safe offset-0 redirection |
+| relocations | semantic kinds abs32/rva32/rel32/abs64/rva64, mapped per machine in POSTPONE; fold-safe offset-0 redirection |
 | synthetic static for public-less NODUPLICATES COMDAT | done (appended in POSTPONE) |
 | weak externals (`public` of an extern value) | **not yet** — errs; needs a per-public aux count in the layout arithmetic |
 | >65535 relocations/section (`NRELOC_OVFL`) | **not yet** — errs |
-| i386 / `format MS COFF` | not yet (intercept `format?.MS?` the same way) |
-| BIGOBJ (>32767 sections), `.drectve` conveniences, `@feat.00`, debug sections | roadmap |
+| CodeView debug (`.debug$S`/`$T`), SECREL/SECTION relocs | roadmap — the records model was shaped for this: synthetic sections and their relocations can be appended in POSTPONE, where sizes and symbol indices already exist |
 
 ## Testing
 
@@ -141,10 +164,14 @@ per-field and bulk emission.
 tests\newcoff\_build.cmd        (VS dev prompt, or LLVM on PATH)
 ```
 
-- **smoke.asm** — one object exercising every relocation kind, an
-  uninitialized section, an EXACT_MATCH COMDAT, and out-of-order `public`
-  declarations. Assembled through *both* backends (`-i"SMOKE_LEGACY=1"`
-  selects the forwarded legacy path), linked with `/OPT:REF`, must exit 97.
+- **smoke.asm** — 64-bit: every relocation kind, an uninitialized section,
+  an EXACT_MATCH COMDAT, out-of-order `public` declarations. Assembled
+  through *both* backends (`-i"SMOKE_LEGACY=1"` selects the forwarded
+  legacy path), linked with `/OPT:REF`, must exit 97.
+- **smoke32.asm** — the same backend producing an i386 object purely by
+  `use32`; DIR32/DIR32NB paths, a 64-bit field relocated on its low dword.
+  Links with no import libraries at all (return from entry exits with
+  `eax`), so it runs from any prompt. Both backends, must exit 97.
 - **fold_a.asm / fold_b.asm** — two objects each defining an identical
   `.rdata$tab` EXACT_MATCH COMDAT and reading it through their own
   reference; after the fold both must observe the survivor. Must exit 97.

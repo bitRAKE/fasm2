@@ -30,6 +30,19 @@ if not "%errorlevel%"=="97" echo [FAIL] smoke_new exit %errorlevel%, expected 97
 .\smoke_legacy.exe
 if not "%errorlevel%"=="97" echo [FAIL] smoke_legacy exit %errorlevel%, expected 97 & goto :err
 
+rem --- smoke32: same backend, i386 via use32; links with no libraries --
+rem --- at all (return from entry exits with eax) ------------------------
+call "%ROOT%\fasm2.cmd" smoke32.asm smoke32_new.obj || goto :err
+call "%ROOT%\fasm2.cmd" -i"SMOKE_LEGACY=1" smoke32.asm smoke32_legacy.obj || goto :err
+
+%LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /SAFESEH:NO /ENTRY:start32 /OUT:smoke32_new.exe smoke32_new.obj || goto :err
+%LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /SAFESEH:NO /ENTRY:start32 /OUT:smoke32_legacy.exe smoke32_legacy.obj || goto :err
+
+.\smoke32_new.exe
+if not "%errorlevel%"=="97" echo [FAIL] smoke32_new exit %errorlevel%, expected 97 & goto :err
+.\smoke32_legacy.exe
+if not "%errorlevel%"=="97" echo [FAIL] smoke32_legacy exit %errorlevel%, expected 97 & goto :err
+
 rem --- fold: two objects define the same EXACT_MATCH COMDAT; each ------
 rem --- references its own copy and both rebind to the survivor ---------
 call "%ROOT%\fasm2.cmd" fold_a.asm fold_a.obj || goto :err
@@ -40,7 +53,7 @@ call "%ROOT%\fasm2.cmd" fold_b.asm fold_b.obj || goto :err
 .\fold.exe
 if not "%errorlevel%"=="97" echo [FAIL] fold exit %errorlevel%, expected 97 & goto :err
 
-echo [ok] newcoff: smoke (both backends) and exactmatch fold, exit 97
+echo [ok] newcoff: smoke x64 + x86 (both backends) and exactmatch fold, exit 97
 popd & exit /b 0
 
 :err

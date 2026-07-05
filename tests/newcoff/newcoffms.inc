@@ -28,6 +28,16 @@
 ; One CALM engine (NEWCOFF.record) does all relocation recording; dword?/
 ; qword? classify the addressing form and delegate. Compare with the four
 ; copies of the add_relocation tail in the legacy file.
+;
+; MODERN-ONLY, BY DESIGN. This backend always writes the big object format:
+; ANON_OBJECT_HEADER_BIGOBJ + IMAGE_SYMBOL_EX (20-byte symbols, 32-bit
+; section numbers - no 32767-section ceiling, no wide-association gap).
+; Consumers must understand bigobj (MSVC link, lld-link, LLVM tools,
+; binutils >= 2.25); older third-party linkers are served by the legacy
+; coffms.inc, which remains untouched. The machine is not a format variant:
+; POSTPONE reads x86.mode (use32 -> I386, use64 -> AMD64), and relocations
+; record machine-independent SEMANTIC kinds (abs32/rva32/rel32/abs64/rva64)
+; that POSTPONE maps to IMAGE_REL_* numbers for the detected machine.
 ; ============================================================================
 
 macro struct? name
@@ -64,15 +74,16 @@ struct IMAGE_RELOCATION
 	Type			dw ?
 end struct
 
-struct IMAGE_SYMBOL
+struct IMAGE_SYMBOL_EX
 	ShortName		db 8 dup ?
 	Value			dd ?
-	SectionNumber		dw ?
+	SectionNumber		dd ?
 	Type			dw ?
 	StorageClass		db ?
 	NumberOfAuxSymbols	db ?
 end struct
 
+IMAGE_FILE_MACHINE_I386 	 = 0x14C
 IMAGE_FILE_MACHINE_AMD64	 = 0x8664
 
 IMAGE_SCN_CNT_CODE		 = 0x00000020
@@ -108,6 +119,10 @@ IMAGE_REL_AMD64_ADDR32	 = 0x0002
 IMAGE_REL_AMD64_ADDR32NB = 0x0003
 IMAGE_REL_AMD64_REL32	 = 0x0004
 
+IMAGE_REL_I386_DIR32	 = 0x0006
+IMAGE_REL_I386_DIR32NB	 = 0x0007
+IMAGE_REL_I386_REL32	 = 0x0014
+
 IMAGE_SYM_UNDEFINED = 0
 IMAGE_SYM_ABSOLUTE  = -1
 
@@ -127,15 +142,25 @@ NEWCOFF::
 
 namespace NEWCOFF
 
+	; ANON_OBJECT_HEADER_BIGOBJ - always; classic COFF is legacy's job.
+	; The machine is decided in POSTPONE from x86.mode.
 	Header:
 
-	Machine 		dw IMAGE_FILE_MACHINE_AMD64
-	NumberOfSections	dw NUMBER_OF_SECTIONS
+	Sig1			dw 0		; IMAGE_FILE_MACHINE_UNKNOWN
+	Sig2			dw 0xFFFF
+	Version 		dw 2
+	Machine 		dw MACHINE
 	TimeDateStamp		dd __TIME__
+	ClassID:		dd 0xD1BAA1C7	; {D1BAA1C7-BAEE-4ba9-AF20-FAF66AA4DCB8}
+				dw 0xBAEE, 0x4BA9
+				db 0xAF, 0x20, 0xFA, 0xF6, 0x6A, 0xA4, 0xDC, 0xB8
+	SizeOfData		dd 0
+	Flags			dd 0
+	MetaDataSize		dd 0
+	MetaDataOffset		dd 0
+	NumberOfSections	dd NUMBER_OF_SECTIONS
 	PointerToSymbolTable	dd SYMBOL_TABLE_OFFSET
 	NumberOfSymbols 	dd NUMBER_OF_SYMBOLS
-	SizeOfOptionalHeader	dw 0
-	Characteristics 	dw 0	; LLVM-style: no legacy 16-bit era flags
 
 	Sections:		db NUMBER_OF_SECTIONS * sizeof IMAGE_SECTION_HEADER dup 0
 
@@ -175,13 +200,22 @@ namespace NEWCOFF
 	end virtual
 
 	; per-relocation record, 16 bytes:
-	;  +0 dd offset in section, +4 dd target, +8 dd kind, +12 dd type
-	; kind 0: target is a 0-based section index (resolved to the section's
-	;         offset-0 external if one exists, else the section symbol)
-	; kind 1: target is an extern ordinal
+	;  +0 dd offset in section, +4 dd target, +8 dd target kind, +12 dd
+	;  semantic relocation kind (machine-independent; POSTPONE maps it to
+	;  an IMAGE_REL_* number once x86.mode has decided the machine)
+	; target kind 0: a 0-based section index (resolved to the section's
+	;                offset-0 external if one exists, else the section symbol)
+	; target kind 1: an extern ordinal
 	virtual at 0
 		reloc_records:: rb NUMBER_OF_RELOCATIONS * 16
 	end virtual
+
+	; semantic relocation kinds
+	RELOC_ABS32 := 0	; absolute 32-bit address
+	RELOC_RVA32 := 1	; 32-bit image-relative (RVA)
+	RELOC_REL32 := 2	; 32-bit relative to the end of the field
+	RELOC_ABS64 := 3	; absolute 64-bit address
+	RELOC_RVA64 := 4	; 64-bit field holding an RVA
 
 	virtual at 0
 		string_table:: dd STRING_TABLE_SIZE
@@ -541,19 +575,19 @@ calminstruction dword? value
 	exit
     addr32:
 	compute relsize, 4
-	compute reltype, IMAGE_REL_AMD64_ADDR32
+	compute reltype, NEWCOFF.RELOC_ABS32
 	call	NEWCOFF.record, relsize, value, reltype
 	exit
     addr32nb:
 	compute value, value + NEWCOFF.IMAGE_BASE
 	compute relsize, 4
-	compute reltype, IMAGE_REL_AMD64_ADDR32NB
+	compute reltype, NEWCOFF.RELOC_RVA32
 	call	NEWCOFF.record, relsize, value, reltype
 	exit
     rel32:
 	compute value, value + (NEWCOFF.SECTION_BASE + $% + 4 - NEWCOFF.SECTION_OFFSET)
 	compute relsize, 4
-	compute reltype, IMAGE_REL_AMD64_REL32
+	compute reltype, NEWCOFF.RELOC_REL32
 	call	NEWCOFF.record, relsize, value, reltype
 	exit
 end calminstruction
@@ -570,19 +604,31 @@ calminstruction qword? value
 	exit
     addr64:
 	compute relsize, 8
-	compute reltype, IMAGE_REL_AMD64_ADDR64
+	compute reltype, NEWCOFF.RELOC_ABS64
 	call	NEWCOFF.record, relsize, value, reltype
 	exit
     addr64nb:
-	; the legacy backend references IMAGE_REL_AMD64_ADDR64NB here - a
-	; relocation type that does not exist in the AMD64 COFF spec
-	asm	err 'AMD64 COFF has no 64-bit RVA relocation type'
+	; legal on i386 (DIR32NB patches the low dword); POSTPONE rejects it
+	; for AMD64, where no 64-bit RVA relocation type exists (the legacy
+	; backend references an imaginary IMAGE_REL_AMD64_ADDR64NB here)
+	compute value, value + NEWCOFF.IMAGE_BASE
+	compute relsize, 8
+	compute reltype, NEWCOFF.RELOC_RVA64
+	call	NEWCOFF.record, relsize, value, reltype
 end calminstruction
 
 postpone
 	purge section?
 	section
 	namespace NEWCOFF
+
+		; the machine is a property of the code assembled, not of the
+		; FORMAT variant: read the mode in effect at the end of the source
+		if x86.mode = 64
+			MACHINE := IMAGE_FILE_MACHINE_AMD64
+		else
+			MACHINE := IMAGE_FILE_MACHINE_I386
+		end if
 
 		NUMBER_OF_SECTIONS := SECTION_INDEX
 		NUMBER_OF_RELOCATIONS := RELOC_COUNT
@@ -649,13 +695,13 @@ postpone
 			end match
 		end irpv
 
-		; ---- relocations: resolve symbolic targets and emit ----------
+		; ---- relocations: resolve symbolic targets and kinds, emit ----
 		RELOCATIONS_OFFSET = $%
 		repeat NUMBER_OF_RELOCATIONS
 			load R_OFF : 4 from reloc_records : (%-1) * 16
 			load R_TGT : 4 from reloc_records : (%-1) * 16 + 4
 			load R_KIND : 4 from reloc_records : (%-1) * 16 + 8
-			load R_TYPE : 4 from reloc_records : (%-1) * 16 + 12
+			load R_RELOC : 4 from reloc_records : (%-1) * 16 + 12
 			if R_KIND = 1
 				R_SYM = EXT_BASE + R_TGT
 			else
@@ -666,6 +712,31 @@ postpone
 					R_SYM = PUB_BASE + R_REFPUB - 1
 				else
 					R_SYM = R_TGT * 2
+				end if
+			end if
+			; semantic kind -> machine relocation type
+			if MACHINE = IMAGE_FILE_MACHINE_AMD64
+				if R_RELOC = RELOC_ABS32
+					R_TYPE = IMAGE_REL_AMD64_ADDR32
+				else if R_RELOC = RELOC_RVA32
+					R_TYPE = IMAGE_REL_AMD64_ADDR32NB
+				else if R_RELOC = RELOC_REL32
+					R_TYPE = IMAGE_REL_AMD64_REL32
+				else if R_RELOC = RELOC_ABS64
+					R_TYPE = IMAGE_REL_AMD64_ADDR64
+				else
+					err 'AMD64 COFF has no 64-bit RVA relocation type'
+					R_TYPE = 0
+				end if
+			else
+				; a 64-bit field on i386 takes the 32-bit relocation
+				; against its low dword, as the legacy backend does
+				if R_RELOC = RELOC_ABS32 | R_RELOC = RELOC_ABS64
+					R_TYPE = IMAGE_REL_I386_DIR32
+				else if R_RELOC = RELOC_RVA32 | R_RELOC = RELOC_RVA64
+					R_TYPE = IMAGE_REL_I386_DIR32NB
+				else
+					R_TYPE = IMAGE_REL_I386_REL32
 				end if
 			end if
 			dd R_OFF and 0xFFFFFFFF
@@ -684,10 +755,11 @@ postpone
 				dq SEC_NAME
 			end if
 			dd 0				; Value
-			dw %				; SectionNumber
+			dd %				; SectionNumber (32-bit in EX)
 			dw 0				; Type
 			db IMAGE_SYM_CLASS_STATIC, 1	; one aux record always
-			; aux: section definition
+			; aux: section definition (20 bytes; association is split
+			; low/high around Selection, so it reaches all sections)
 			load SEC_SIZE : 4 from section_records : (%-1) * 64 + 20
 			load SEC_NRELOC : 4 from section_records : (%-1) * 64 + 28
 			load SEC_FLAGS : 4 from section_records : (%-1) * 64 + 12
@@ -695,23 +767,23 @@ postpone
 			dd SEC_SIZE
 			dw SEC_NRELOC and 0xFFFF, 0
 			dd SEC_CRC
+			SEC_ASSOC = 0
+			SEC_SEL = 0
 			if SEC_FLAGS and IMAGE_SCN_LNK_COMDAT
 				load SEC_SEL : 4 from section_records : (%-1) * 64 + 32
 				if SEC_SEL = IMAGE_COMDAT_SELECT_ASSOCIATIVE
 					load SEC_ASSOC : 4 from section_records : (%-1) * 64 + 36
 					if SEC_ASSOC < 1 | SEC_ASSOC > % - 1
 						err 'associated section must precede the associative one'
+						SEC_ASSOC = 0
 					end if
-					dw SEC_ASSOC and 0xFFFF
-				else
-					dw 0
 				end if
-				db SEC_SEL and 0xFF
-			else
-				dw 0
-				db 0
 			end if
-			db 0, 0, 0
+			dw SEC_ASSOC and 0xFFFF		; Number, low part
+			db SEC_SEL and 0xFF		; Selection
+			db 0				; unused
+			dw (SEC_ASSOC shr 16) and 0xFFFF ; Number, high part
+			dw 0				; pad to 20 bytes
 		end repeat
 		repeat NUMBER_OF_PUBLIC_RECORDS
 			load PUB_NAMEPOS : 4 from public_records : (%-1) * 32 + 8
@@ -725,7 +797,7 @@ postpone
 			load PUB_SECNUM : 4 from public_records : (%-1) * 32 + 16
 			load PUB_CLASS : 4 from public_records : (%-1) * 32 + 20
 			dd PUB_VALUE
-			dw PUB_SECNUM and 0xFFFF
+			dd PUB_SECNUM and 0xFFFFFFFF	; 32-bit, signed (-1 absolute)
 			dw 0
 			db PUB_CLASS and 0xFF, 0
 		end repeat
@@ -738,7 +810,8 @@ postpone
 				dq EXT_NAME
 			end if
 			dd 0
-			dw 0, 0
+			dd 0				; IMAGE_SYM_UNDEFINED
+			dw 0
 			db IMAGE_SYM_CLASS_EXTERNAL, 0
 		end repeat
 
