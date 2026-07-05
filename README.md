@@ -11,7 +11,7 @@ Building on [flat assembler 2](https://github.com/tgrysztar/fasm2) with a focus 
 Typical Updating:
 ```cmd
 git fetch origin
-git rebase origin/master
+git rebase origin/win32
 git push --force-with-lease
 ```
 
