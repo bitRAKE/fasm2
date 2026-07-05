@@ -1,13 +1,23 @@
-; newcoffms.inc - ground-up MS64 COFF backend (development skeleton)
+; newcoffms.inc - ground-up MS COFF backend (development skeleton)
 ; ============================================================================
 ; A re-engineering of include/format/coffms.inc around three rules that the
 ; 2026 COMDAT retrofits taught us (see readme.md and the post-mortem in
 ; docs/coff_comdat_postmortem.md):
 ;
 ;   1. RECORDS, NOT STORES. During the pass, every entity (section, public,
-;      extern, relocation) appends one fixed-size record to a staging
-;      virtual. Nothing writes file images incrementally; the whole object
-;      layout is emitted once, in POSTPONE, from the records.
+;      extern, relocation) appends ONE STRUCT INSTANCE to an extendable
+;      virtual block (macro/struct.inc named initializers):
+;
+;          virtual section_records
+;              SECTION_RECORD flags: SECTION_FLAGS, size: SECTION_SIZE, ...
+;          end virtual
+;
+;      Records are append-once and immutable; counts and ordinals are not
+;      kept in variables but derived from block lengths,
+;      ($ - $$) / sizeof RECORD, wherever they are needed. Changing a
+;      record's shape touches the struct definition and its one
+;      initializer - no offset arithmetic anywhere. POSTPONE reads the
+;      records and emits the whole object once.
 ;
 ;   2. CANONICAL SYMBOL ORDER BY CONSTRUCTION. The symbol table is laid out
 ;      as: section symbols (each with a section-definition aux record),
@@ -20,10 +30,11 @@
 ;          extern e   -> 2*NSEC + NPUB + e
 ;
 ;   3. SYMBOLIC RELOCATION TARGETS. A relocation records WHAT it targets
-;      (section number or extern ordinal), not a symbol table index. The
-;      index is resolved in POSTPONE, in one place - which is also where a
-;      section target is redirected to its offset-0 external symbol so that
-;      references into folded COMDATs rebind to the survivor.
+;      (section number or extern ordinal) and WHAT IT MEANS (a semantic
+;      kind: abs32/rva32/rel32/abs64/rva64), never a symbol index or an
+;      IMAGE_REL_* number. POSTPONE resolves both in one place - including
+;      the fold-safe redirection of a section target to its offset-0
+;      external symbol, derived there from a scan of the public records.
 ;
 ; One CALM engine (NEWCOFF.record) does all relocation recording; dword?/
 ; qword? classify the addressing form and delegate. Compare with the four
@@ -35,25 +46,11 @@
 ; Consumers must understand bigobj (MSVC link, lld-link, LLVM tools,
 ; binutils >= 2.25); older third-party linkers are served by the legacy
 ; coffms.inc, which remains untouched. The machine is not a format variant:
-; POSTPONE reads x86.mode (use32 -> I386, use64 -> AMD64), and relocations
-; record machine-independent SEMANTIC kinds (abs32/rva32/rel32/abs64/rva64)
-; that POSTPONE maps to IMAGE_REL_* numbers for the detected machine.
+; POSTPONE reads x86.mode (use32 -> I386, use64 -> AMD64) and maps the
+; semantic relocation kinds to IMAGE_REL_* numbers for that machine.
 ; ============================================================================
 
-macro struct? name
-	macro end?.struct?!
-			end namespace
-		esc end struc
-		virtual at 0
-			name name
-			sizeof.name = $
-		end virtual
-		purge end?.struct?
-	end macro
-	esc struc name
-		label . : sizeof.name
-		namespace .
-end macro
+include 'macro/struct.inc'
 
 struct IMAGE_SECTION_HEADER
 	Name			db 8 dup ?
@@ -66,13 +63,13 @@ struct IMAGE_SECTION_HEADER
 	NumberOfRelocations	dw ?
 	NumberOfLinenumbers	dw ?
 	Characteristics 	dd ?
-end struct
+ends
 
 struct IMAGE_RELOCATION
 	VirtualAddress		dd ?
 	SymbolTableIndex	dd ?
 	Type			dw ?
-end struct
+ends
 
 struct IMAGE_SYMBOL_EX
 	ShortName		db 8 dup ?
@@ -81,7 +78,47 @@ struct IMAGE_SYMBOL_EX
 	Type			dw ?
 	StorageClass		db ?
 	NumberOfAuxSymbols	db ?
-end struct
+ends
+
+; ---------------------------------------------------------------------------
+; staging records - the single source of truth POSTPONE emits from. Every
+; instantiation passes every field, so no record byte is ever uninitialized.
+; ---------------------------------------------------------------------------
+
+struct SECTION_RECORD
+	shortname	dq ?	; zero-padded name, 0 if long
+	name_pos	dd ?	; string table offset of long name (0 = short)
+	flags		dd ?	; Characteristics
+	raw_offset	dd ?	; PointerToRawData (0 if fully uninitialized)
+	size		dd ?	; SizeOfRawData and aux Length
+	reloc_1st	dd ?	; first relocation record
+	reloc_count	dd ?
+	selection	dd ?	; COMDAT selection
+	association	dd ?	; COMDAT association (1-based section number)
+	xm_init 	dd ?	; EXACT_MATCH initialized length
+	xm_tail 	dd ?	; EXACT_MATCH zero-padded tail length
+	xm_crc		dd ?	; EXACT_MATCH CRC-32 (filled in by POSTPONE)
+ends
+
+struct PUBLIC_RECORD
+	shortname	dq ?
+	name_pos	dd ?
+	value		dd ?
+	secnum		dd ?	; 1-based; 0 undefined, -1 absolute
+	class		dd ?
+ends
+
+struct EXTERN_RECORD
+	shortname	dq ?
+	name_pos	dd ?
+ends
+
+struct RELOC_RECORD
+	offset		dd ?	; offset in section
+	target		dd ?	; section index (target_kind 0) or extern ordinal (1)
+	target_kind	dd ?
+	kind		dd ?	; semantic relocation kind, mapped per machine in POSTPONE
+ends
 
 IMAGE_FILE_MACHINE_I386 	 = 0x14C
 IMAGE_FILE_MACHINE_AMD64	 = 0x8664
@@ -142,6 +179,13 @@ NEWCOFF::
 
 namespace NEWCOFF
 
+	; semantic relocation kinds
+	RELOC_ABS32 := 0	; absolute 32-bit address
+	RELOC_RVA32 := 1	; 32-bit image-relative (RVA)
+	RELOC_REL32 := 2	; 32-bit relative to the end of the field
+	RELOC_ABS64 := 3	; absolute 64-bit address
+	RELOC_RVA64 := 4	; 64-bit field holding an RVA
+
 	; ANON_OBJECT_HEADER_BIGOBJ - always; classic COFF is legacy's job.
 	; The machine is decided in POSTPONE from x86.mode.
 	Header:
@@ -164,63 +208,26 @@ namespace NEWCOFF
 
 	Sections:		db NUMBER_OF_SECTIONS * sizeof IMAGE_SECTION_HEADER dup 0
 
-	; ------------------------------------------------------------------
-	; staging records - the single source of truth POSTPONE emits from
-	; ------------------------------------------------------------------
-
-	; per-section record, 64 bytes:
-	;  +0  dq  short name (zero padded), 0 if long
-	;  +8  dd  string table offset of long name (0 = short)
-	;  +12 dd  Characteristics
-	;  +16 dd  PointerToRawData ($% at open; 0 if fully uninitialized)
-	;  +20 dd  section length (SizeOfRawData and aux Length)
-	;  +24 dd  first relocation record
-	;  +28 dd  relocation count
-	;  +32 dd  COMDAT selection
-	;  +36 dd  COMDAT association (1-based section number)
-	;  +40 dd  offset-0 external public ordinal + 1 (0 = none) - fold-safe target
-	;  +44 dd  section has a public (COMDAT leader exists)
-	;  +48 dd  EXACT_MATCH initialized length
-	;  +52 dd  EXACT_MATCH zero-padded tail length
-	;  +56 dd  EXACT_MATCH CRC-32 (computed in POSTPONE)
+	; extendable staging blocks: appended by reopening (virtual name),
+	; sized by what was appended - no forward-referenced reservations
 	virtual at 0
-		section_records:: rb NUMBER_OF_SECTIONS * 64
+		section_records::
 	end virtual
 
-	; per-public record, 32 bytes:
-	;  +0 dq short name, +8 dd long name pos, +12 dd value,
-	;  +16 dd section number (1-based; 0 undefined, -1 absolute), +20 dd class
 	virtual at 0
-		public_records:: rb NUMBER_OF_PUBLIC_RECORDS * 32
+		public_records::
 	end virtual
 
-	; per-extern record, 16 bytes: +0 dq short name, +8 dd long name pos
 	virtual at 0
-		extern_records:: rb NUMBER_OF_EXTERNS * 16
+		extern_records::
 	end virtual
 
-	; per-relocation record, 16 bytes:
-	;  +0 dd offset in section, +4 dd target, +8 dd target kind, +12 dd
-	;  semantic relocation kind (machine-independent; POSTPONE maps it to
-	;  an IMAGE_REL_* number once x86.mode has decided the machine)
-	; target kind 0: a 0-based section index (resolved to the section's
-	;                offset-0 external if one exists, else the section symbol)
-	; target kind 1: an extern ordinal
 	virtual at 0
-		reloc_records:: rb NUMBER_OF_RELOCATIONS * 16
+		reloc_records::
 	end virtual
-
-	; semantic relocation kinds
-	RELOC_ABS32 := 0	; absolute 32-bit address
-	RELOC_RVA32 := 1	; 32-bit image-relative (RVA)
-	RELOC_REL32 := 2	; 32-bit relative to the end of the field
-	RELOC_ABS64 := 3	; absolute 64-bit address
-	RELOC_RVA64 := 4	; 64-bit field holding an RVA
 
 	virtual at 0
 		string_table:: dd STRING_TABLE_SIZE
-		STRING_POSITION = $
-		rb STRING_TABLE_SIZE - $
 	end virtual
 
 	; reflected CRC-32 nibble table (polynomial 0xEDB88320). The COMDAT
@@ -239,58 +246,58 @@ namespace NEWCOFF
 	; the one relocation engine: emits the addend, then appends a record
 	; with a SYMBOLIC target decoded from the element metadata. Section
 	; elements carry scale (1+index), extern elements carry scale -1 with
-	; the ordinal as the constant term.
+	; the ordinal as the constant term. (CALM variable names must not
+	; collide with the field names interpolated into the asm lines.)
 	calminstruction record? size*, value*, type*
-		local	offset, scale, target, kind, rec
-		compute offset, $%
+		local	roffs, scale, rtgt, rknd
+		compute roffs, $%
 		emit	size, 0 scaleof value
-		check	$% > offset
+		check	$% > roffs
 		jno	done
 		compute scale, 1 scaleof (1 metadataof value)
 		check	scale > 0
 		jyes	section_target
-		compute target, 0 scaleof (1 metadataof value)
-		compute kind, 1
+		compute rtgt, 0 scaleof (1 metadataof value)
+		compute rknd, 1
 		jump	have_target
 	    section_target:
-		compute target, scale - 1
-		compute kind, 0
+		compute rtgt, scale - 1
+		compute rknd, 0
 	    have_target:
-		compute offset, offset - NEWCOFF.SECTION_OFFSET
-		compute rec, NEWCOFF.RELOC_COUNT * 16
-		asm	store offset : 4 at NEWCOFF.reloc_records : rec
-		asm	store target : 4 at NEWCOFF.reloc_records : rec + 4
-		asm	store kind : 4 at NEWCOFF.reloc_records : rec + 8
-		asm	store type : 4 at NEWCOFF.reloc_records : rec + 12
-		compute NEWCOFF.RELOC_COUNT, NEWCOFF.RELOC_COUNT + 1
+		compute roffs, roffs - NEWCOFF.SECTION_OFFSET
+		asm	virtual NEWCOFF.reloc_records
+		asm	RELOC_RECORD offset: roffs, target: rtgt, target_kind: rknd, kind: type
+		asm	end virtual
 	    done:
 	end calminstruction
 
+	; register a symbol or section name: short names travel in the record,
+	; long ones are appended to the string table here and travel as offsets
+	macro register_name src
+		if lengthof src > 8
+			virtual string_table
+				NAME_POS = $
+				db src, 0
+			end virtual
+			NAME_SHORT = 0
+		else
+			NAME_POS = 0
+			NAME_SHORT = src
+		end if
+	end macro
+
 	macro section_start
+		virtual section_records
+			SECTION_INDEX = ($ - $$) / sizeof SECTION_RECORD
+		end virtual
 		local sym
 		element sym : relocatable * (1 + SECTION_INDEX)
 		SECTION_BASE = sym
 		org sym
 		align.assume sym, SECTION_ALIGN
-		if lengthof SECTION_NAME > 8
-			SECTION_NAME_POS = STRING_POSITION
-			store SECTION_NAME : lengthof SECTION_NAME at string_table : STRING_POSITION
-			STRING_POSITION = STRING_POSITION + lengthof SECTION_NAME + 1
-		else
-			SECTION_NAME_POS = 0
-		end if
 		SECTION_RECORDED = 0
 		if DEFINED_SECTION | defined DEFAULT_SECTION
 			SECTION_RECORDED = 1
-			if SECTION_NAME_POS > 0
-				store 0 : 8 at section_records : SECTION_INDEX * 64
-				store SECTION_NAME_POS : 4 at section_records : SECTION_INDEX * 64 + 8
-			else
-				store SECTION_NAME : 8 at section_records : SECTION_INDEX * 64
-				store 0 : 4 at section_records : SECTION_INDEX * 64 + 8
-			end if
-			store SECTION_COMDAT_SELECTION : 4 at section_records : SECTION_INDEX * 64 + 32
-			store SECTION_COMDAT_ASSOCIATION : 4 at section_records : SECTION_INDEX * 64 + 36
 			if (SECTION_FLAGS and IMAGE_SCN_LNK_COMDAT) & SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH
 				; anchor the section's ORG space so POSTPONE can read
 				; the raw bytes back in place for the checksum
@@ -303,13 +310,9 @@ namespace NEWCOFF
 		end if
 	end macro
 
-	SECTION_INDEX = 0
-	PUB_COUNT = 0
-	EXT_COUNT = 0
-	RELOC_COUNT = 0
-	SECTION_RELOC_FIRST = 0
 	define exactmatch_list
 
+	SECTION_RELOC_FIRST = 0
 	SECTION_OFFSET = $%
 	SECTION_ALIGN = 4
 	SECTION_NAME = '.flat'
@@ -327,9 +330,11 @@ macro section?
 
 		SECTION_SIZE = $% - SECTION_OFFSET
 
+		XM_INIT = 0
+		XM_TAIL = 0
 		if SECTION_RECORDED & (SECTION_FLAGS and IMAGE_SCN_LNK_COMDAT) & SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH & $%% > SECTION_OFFSET
-			store $%% - SECTION_OFFSET : 4 at section_records : SECTION_INDEX * 64 + 48
-			store $% - $%% : 4 at section_records : SECTION_INDEX * 64 + 52
+			XM_INIT = $%% - SECTION_OFFSET
+			XM_TAIL = $% - $%%
 		end if
 
 		if DEFINED_SECTION | SECTION_SIZE > 0
@@ -348,13 +353,25 @@ macro section?
 				db UNINITIALIZED_LENGTH dup 0
 			end if
 
-			store SECTION_FLAGS : 4 at section_records : SECTION_INDEX * 64 + 12
-			store SECTION_OFFSET : 4 at section_records : SECTION_INDEX * 64 + 16
-			store SECTION_SIZE : 4 at section_records : SECTION_INDEX * 64 + 20
-			store SECTION_RELOC_FIRST : 4 at section_records : SECTION_INDEX * 64 + 24
-			store RELOC_COUNT - SECTION_RELOC_FIRST : 4 at section_records : SECTION_INDEX * 64 + 28
-
-			SECTION_INDEX = SECTION_INDEX + 1
+			register_name SECTION_NAME
+			virtual reloc_records
+				RELOC_TOTAL = ($ - $$) / sizeof RELOC_RECORD
+			end virtual
+			virtual section_records
+				SECTION_RECORD \
+					shortname: NAME_SHORT,\
+					name_pos: NAME_POS,\
+					flags: SECTION_FLAGS,\
+					raw_offset: SECTION_OFFSET,\
+					size: SECTION_SIZE,\
+					reloc_1st: SECTION_RELOC_FIRST,\
+					reloc_count: RELOC_TOTAL - SECTION_RELOC_FIRST,\
+					selection: SECTION_COMDAT_SELECTION,\
+					association: SECTION_COMDAT_ASSOCIATION,\
+					xm_init: XM_INIT,\
+					xm_tail: XM_TAIL,\
+					xm_crc: 0
+			end virtual
 
 		end if
 
@@ -469,7 +486,9 @@ macro section? declaration*
 
 		section_start
 
-		SECTION_RELOC_FIRST = RELOC_COUNT
+		virtual reloc_records
+			SECTION_RELOC_FIRST = ($ - $$) / sizeof RELOC_RECORD
+		end virtual
 
 	end namespace
 end macro
@@ -497,10 +516,6 @@ macro public? declaration*
 			if 1 scaleof (1 metadataof SYMBOL_VALUE) > 0
 				SYMBOL_SECTION_NUMBER = 1 scaleof (1 metadataof SYMBOL_VALUE)
 				SYMBOL_VALUE = SYMBOL_VALUE - 1 elementof SYMBOL_VALUE
-				store 1 : 4 at section_records : (SYMBOL_SECTION_NUMBER-1) * 64 + 44
-				if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL & SYMBOL_VALUE = 0
-					store PUB_COUNT + 1 : 4 at section_records : (SYMBOL_SECTION_NUMBER-1) * 64 + 40
-				end if
 			else if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 				err 'NEWCOFF: weak externals not implemented yet (readme.md roadmap)'
 			else
@@ -510,26 +525,25 @@ macro public? declaration*
 		else
 			SYMBOL_SECTION_NUMBER = IMAGE_SYM_ABSOLUTE
 		end if
-		if lengthof SYMBOL_NAME > 8
-			store 0 : 8 at public_records : PUB_COUNT * 32
-			store STRING_POSITION : 4 at public_records : PUB_COUNT * 32 + 8
-			store SYMBOL_NAME : lengthof SYMBOL_NAME at string_table : STRING_POSITION
-			STRING_POSITION = STRING_POSITION + lengthof SYMBOL_NAME + 1
-		else
-			store SYMBOL_NAME : 8 at public_records : PUB_COUNT * 32
-			store 0 : 4 at public_records : PUB_COUNT * 32 + 8
-		end if
-		store SYMBOL_VALUE : 4 at public_records : PUB_COUNT * 32 + 12
-		store SYMBOL_SECTION_NUMBER : 4 at public_records : PUB_COUNT * 32 + 16
-		store SYMBOL_CLASS : 4 at public_records : PUB_COUNT * 32 + 20
-		PUB_COUNT = PUB_COUNT + 1
+		register_name SYMBOL_NAME
+		virtual public_records
+			PUBLIC_RECORD \
+				shortname: NAME_SHORT,\
+				name_pos: NAME_POS,\
+				value: SYMBOL_VALUE,\
+				secnum: SYMBOL_SECTION_NUMBER,\
+				class: SYMBOL_CLASS
+		end virtual
 	end namespace
 end macro
 
 macro extrn? declaration*
 	namespace NEWCOFF
+		virtual extern_records
+			EXT_ORDINAL = ($ - $$) / sizeof EXTERN_RECORD
+		end virtual
 		local sym
-		element sym : relocatable * (-1) + EXT_COUNT
+		element sym : relocatable * (-1) + EXT_ORDINAL
 		match str =as? name:size, declaration
 			label name : size at sym
 			SYMBOL_NAME = string str
@@ -543,16 +557,10 @@ macro extrn? declaration*
 			label declaration at sym
 			SYMBOL_NAME = `declaration
 		end match
-		if lengthof SYMBOL_NAME > 8
-			store 0 : 8 at extern_records : EXT_COUNT * 16
-			store STRING_POSITION : 4 at extern_records : EXT_COUNT * 16 + 8
-			store SYMBOL_NAME : lengthof SYMBOL_NAME at string_table : STRING_POSITION
-			STRING_POSITION = STRING_POSITION + lengthof SYMBOL_NAME + 1
-		else
-			store SYMBOL_NAME : 8 at extern_records : EXT_COUNT * 16
-			store 0 : 4 at extern_records : EXT_COUNT * 16 + 8
-		end if
-		EXT_COUNT = EXT_COUNT + 1
+		register_name SYMBOL_NAME
+		virtual extern_records
+			EXTERN_RECORD shortname: NEWCOFF.NAME_SHORT, name_pos: NEWCOFF.NAME_POS
+		end virtual
 	end namespace
 end macro
 
@@ -630,37 +638,67 @@ postpone
 			MACHINE := IMAGE_FILE_MACHINE_I386
 		end if
 
-		NUMBER_OF_SECTIONS := SECTION_INDEX
-		NUMBER_OF_RELOCATIONS := RELOC_COUNT
-		NUMBER_OF_EXTERNS := EXT_COUNT
-		STRING_TABLE_SIZE := STRING_POSITION
+		; counts fall out of the staging block lengths
+		virtual section_records
+			NUMBER_OF_SECTIONS := ($ - $$) / sizeof SECTION_RECORD
+		end virtual
+		virtual reloc_records
+			NUMBER_OF_RELOCATIONS := ($ - $$) / sizeof RELOC_RECORD
+		end virtual
+		virtual extern_records
+			NUMBER_OF_EXTERNS := ($ - $$) / sizeof EXTERN_RECORD
+		end virtual
+		virtual public_records
+			PUB_COUNT = ($ - $$) / sizeof PUBLIC_RECORD
+		end virtual
+
+		; per-section facts derived from the immutable public records:
+		;  +0 dd ordinal+1 of an offset-0 external public (0 = none)
+		;  +4 dd section has a public (COMDAT leader exists)
+		virtual at 0
+			section_pub_lu:: db NUMBER_OF_SECTIONS * 8 dup 0
+		end virtual
+		repeat PUB_COUNT
+			load P_SEC : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.secnum
+			if P_SEC > 0 & P_SEC <= NUMBER_OF_SECTIONS
+				store 1 : 4 at section_pub_lu : (P_SEC-1) * 8 + 4
+				load P_VAL : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.value
+				load P_CLS : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.class
+				if P_CLS = IMAGE_SYM_CLASS_EXTERNAL & P_VAL = 0
+					store % : 4 at section_pub_lu : (P_SEC-1) * 8
+				end if
+			end if
+		end repeat
 
 		; a COMDAT section that never received a public gets a synthetic
 		; static symbol named after the section (individually discardable
 		; by /OPT:REF, but no cross-object identity - so selections other
 		; than NODUPLICATES require a real public)
-		SYNTH_COUNT = 0
 		repeat NUMBER_OF_SECTIONS
-			load SEC_FLAGS : 4 from section_records : (%-1) * 64 + 12
+			load SEC_FLAGS : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.flags
 			if SEC_FLAGS and IMAGE_SCN_LNK_COMDAT
-				load SEC_HASPUB : 4 from section_records : (%-1) * 64 + 44
+				load SEC_HASPUB : 4 from section_pub_lu : (%-1) * 8 + 4
 				if SEC_HASPUB = 0
-					load SEC_SEL : 4 from section_records : (%-1) * 64 + 32
+					load SEC_SEL : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.selection
 					if SEC_SEL <> IMAGE_COMDAT_SELECT_NODUPLICATES
 						err 'COMDAT selection requires a PUBLIC symbol in the section'
 					end if
-					load SEC_NAME : 8 from section_records : (%-1) * 64
-					load SEC_NAMEPOS : 4 from section_records : (%-1) * 64 + 8
-					store SEC_NAME : 8 at public_records : (PUB_COUNT + SYNTH_COUNT) * 32
-					store SEC_NAMEPOS : 4 at public_records : (PUB_COUNT + SYNTH_COUNT) * 32 + 8
-					store 0 : 4 at public_records : (PUB_COUNT + SYNTH_COUNT) * 32 + 12
-					store % : 4 at public_records : (PUB_COUNT + SYNTH_COUNT) * 32 + 16
-					store IMAGE_SYM_CLASS_STATIC : 4 at public_records : (PUB_COUNT + SYNTH_COUNT) * 32 + 20
-					SYNTH_COUNT = SYNTH_COUNT + 1
+					load S_NAME : 8 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.shortname
+					load S_POS : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.name_pos
+					virtual public_records
+						PUBLIC_RECORD \
+							shortname: S_NAME,\
+							name_pos: S_POS,\
+							value: 0,\
+							secnum: %,\
+							class: IMAGE_SYM_CLASS_STATIC
+					end virtual
 				end if
 			end if
 		end repeat
-		NUMBER_OF_PUBLIC_RECORDS := PUB_COUNT + SYNTH_COUNT
+		virtual public_records
+			NUMBER_OF_PUBLIC_RECORDS := ($ - $$) / sizeof PUBLIC_RECORD
+		end virtual
 
 		; canonical symbol layout - indices are pure arithmetic
 		PUB_BASE = NUMBER_OF_SECTIONS * 2
@@ -672,9 +710,9 @@ postpone
 		; area in place, then the zero-padded uninitialized tail
 		irpv xm_cell, exactmatch_list
 			match xm_area =, xm_base =, xm_sec, xm_cell
-				load XM_INIT : 4 from section_records : xm_sec * 64 + 48
+				load XM_INIT : 4 from section_records : xm_sec * sizeof SECTION_RECORD + SECTION_RECORD.xm_init
 				if XM_INIT > 0
-					load XM_TAIL : 4 from section_records : xm_sec * 64 + 52
+					load XM_TAIL : 4 from section_records : xm_sec * sizeof SECTION_RECORD + SECTION_RECORD.xm_tail
 					XM_CRC = 0
 					repeat XM_INIT, i:0
 						load XM_BYTE : 1 from xm_area : (xm_base + i)
@@ -690,7 +728,7 @@ postpone
 						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
 						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
 					end repeat
-					store XM_CRC and 0xFFFFFFFF : 4 at section_records : xm_sec * 64 + 56
+					store XM_CRC and 0xFFFFFFFF : 4 at section_records : xm_sec * sizeof SECTION_RECORD + SECTION_RECORD.xm_crc
 				end if
 			end match
 		end irpv
@@ -698,16 +736,16 @@ postpone
 		; ---- relocations: resolve symbolic targets and kinds, emit ----
 		RELOCATIONS_OFFSET = $%
 		repeat NUMBER_OF_RELOCATIONS
-			load R_OFF : 4 from reloc_records : (%-1) * 16
-			load R_TGT : 4 from reloc_records : (%-1) * 16 + 4
-			load R_KIND : 4 from reloc_records : (%-1) * 16 + 8
-			load R_RELOC : 4 from reloc_records : (%-1) * 16 + 12
+			load R_OFF : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.offset
+			load R_TGT : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.target
+			load R_KIND : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.target_kind
+			load R_RELOC : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.kind
 			if R_KIND = 1
 				R_SYM = EXT_BASE + R_TGT
 			else
 				; fold-safe: prefer the section's offset-0 external, so
 				; a reference into a folded COMDAT rebinds to the survivor
-				load R_REFPUB : 4 from section_records : R_TGT * 64 + 40
+				load R_REFPUB : 4 from section_pub_lu : R_TGT * 8
 				if R_REFPUB > 0
 					R_SYM = PUB_BASE + R_REFPUB - 1
 				else
@@ -747,11 +785,11 @@ postpone
 		; ---- symbol table: sections, publics, synthetics, externs ----
 		SYMBOL_TABLE_OFFSET = $%
 		repeat NUMBER_OF_SECTIONS
-			load SEC_NAMEPOS : 4 from section_records : (%-1) * 64 + 8
+			load SEC_NAMEPOS : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.name_pos
 			if SEC_NAMEPOS > 0
 				dd 0, SEC_NAMEPOS
 			else
-				load SEC_NAME : 8 from section_records : (%-1) * 64
+				load SEC_NAME : 8 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.shortname
 				dq SEC_NAME
 			end if
 			dd 0				; Value
@@ -760,19 +798,19 @@ postpone
 			db IMAGE_SYM_CLASS_STATIC, 1	; one aux record always
 			; aux: section definition (20 bytes; association is split
 			; low/high around Selection, so it reaches all sections)
-			load SEC_SIZE : 4 from section_records : (%-1) * 64 + 20
-			load SEC_NRELOC : 4 from section_records : (%-1) * 64 + 28
-			load SEC_FLAGS : 4 from section_records : (%-1) * 64 + 12
-			load SEC_CRC : 4 from section_records : (%-1) * 64 + 56
+			load SEC_SIZE : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.size
+			load SEC_NRELOC : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.reloc_count
+			load SEC_FLAGS : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.flags
+			load SEC_CRC : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.xm_crc
 			dd SEC_SIZE
 			dw SEC_NRELOC and 0xFFFF, 0
 			dd SEC_CRC
 			SEC_ASSOC = 0
 			SEC_SEL = 0
 			if SEC_FLAGS and IMAGE_SCN_LNK_COMDAT
-				load SEC_SEL : 4 from section_records : (%-1) * 64 + 32
+				load SEC_SEL : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.selection
 				if SEC_SEL = IMAGE_COMDAT_SELECT_ASSOCIATIVE
-					load SEC_ASSOC : 4 from section_records : (%-1) * 64 + 36
+					load SEC_ASSOC : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.association
 					if SEC_ASSOC < 1 | SEC_ASSOC > % - 1
 						err 'associated section must precede the associative one'
 						SEC_ASSOC = 0
@@ -786,27 +824,27 @@ postpone
 			dw 0				; pad to 20 bytes
 		end repeat
 		repeat NUMBER_OF_PUBLIC_RECORDS
-			load PUB_NAMEPOS : 4 from public_records : (%-1) * 32 + 8
+			load PUB_NAMEPOS : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.name_pos
 			if PUB_NAMEPOS > 0
 				dd 0, PUB_NAMEPOS
 			else
-				load PUB_NAME : 8 from public_records : (%-1) * 32
+				load PUB_NAME : 8 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.shortname
 				dq PUB_NAME
 			end if
-			load PUB_VALUE : 4 from public_records : (%-1) * 32 + 12
-			load PUB_SECNUM : 4 from public_records : (%-1) * 32 + 16
-			load PUB_CLASS : 4 from public_records : (%-1) * 32 + 20
+			load PUB_VALUE : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.value
+			load PUB_SECNUM : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.secnum
+			load PUB_CLASS : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.class
 			dd PUB_VALUE
 			dd PUB_SECNUM and 0xFFFFFFFF	; 32-bit, signed (-1 absolute)
 			dw 0
 			db PUB_CLASS and 0xFF, 0
 		end repeat
 		repeat NUMBER_OF_EXTERNS
-			load EXT_NAMEPOS : 4 from extern_records : (%-1) * 16 + 8
+			load EXT_NAMEPOS : 4 from extern_records : (%-1) * sizeof EXTERN_RECORD + EXTERN_RECORD.name_pos
 			if EXT_NAMEPOS > 0
 				dd 0, EXT_NAMEPOS
 			else
-				load EXT_NAME : 8 from extern_records : (%-1) * 16
+				load EXT_NAME : 8 from extern_records : (%-1) * sizeof EXTERN_RECORD + EXTERN_RECORD.shortname
 				dq EXT_NAME
 			end if
 			dd 0
@@ -815,13 +853,16 @@ postpone
 			db IMAGE_SYM_CLASS_EXTERNAL, 0
 		end repeat
 
+		virtual string_table
+			STRING_TABLE_SIZE := $
+		end virtual
 		load byte_sequence : STRING_TABLE_SIZE from string_table : 0
 		db byte_sequence
 
 		; ---- section headers, into the block reserved at file start ---
 		repeat NUMBER_OF_SECTIONS
 			SEC_I = % - 1
-			load SEC_NAMEPOS : 4 from section_records : SEC_I * 64 + 8
+			load SEC_NAMEPOS : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.name_pos
 			if SEC_NAMEPOS > 0
 				if SEC_NAMEPOS > 9999999
 					err 'string table too large to reference long section names (offset above /9999999)'
@@ -830,14 +871,14 @@ postpone
 					store ('/' + (`pos shl 8)) : 8 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
 				end repeat
 			else
-				load SEC_NAME : 8 from section_records : SEC_I * 64
+				load SEC_NAME : 8 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.shortname
 				store SEC_NAME : 8 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
 			end if
-			load SEC_FLAGS : 4 from section_records : SEC_I * 64 + 12
-			load SEC_RAWOFF : 4 from section_records : SEC_I * 64 + 16
-			load SEC_SIZE : 4 from section_records : SEC_I * 64 + 20
-			load SEC_RELOC1 : 4 from section_records : SEC_I * 64 + 24
-			load SEC_NRELOC : 4 from section_records : SEC_I * 64 + 28
+			load SEC_FLAGS : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.flags
+			load SEC_RAWOFF : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.raw_offset
+			load SEC_SIZE : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.size
+			load SEC_RELOC1 : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.reloc_1st
+			load SEC_NRELOC : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.reloc_count
 			store SEC_SIZE : 4 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.SizeOfRawData
 			store SEC_RAWOFF : 4 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.PointerToRawData
 			if SEC_NRELOC > 0

@@ -88,13 +88,36 @@ architecture, and each fight left a scar:
 [`newcoffms.inc`](newcoffms.inc) is built on what the retrofits taught:
 
 **1. Records, not stores.** During the pass, each entity appends one
-fixed-size record to a staging virtual — `section_records` (64 bytes),
-`public_records` (32), `extern_records` (16), `reloc_records` (16). Nothing
-emits file structures mid-pass. POSTPONE reads the records and lays out the
-entire object once: relocations, symbol table, string table, then the section
-headers back-patched into the block reserved at file start. There is exactly
-one source of truth and one emission site; the four sidecar registries
-collapse into fields of the section record.
+struct instance to an *extendable* virtual block, using
+`macro/struct.inc` named initializers:
+
+```
+virtual section_records
+	SECTION_RECORD \
+		flags: NEWCOFF.SECTION_FLAGS,\
+		size: NEWCOFF.SECTION_SIZE,\
+		...
+end virtual
+```
+
+Records are append-once and immutable — the one field publics used to poke
+into their section's record (the offset-0-external registry) became a
+POSTPONE scan of the public records instead. Counts and ordinals live
+nowhere: they are derived where needed as `($ - $$) / sizeof RECORD` inside
+the reopened block, so `SECTION_INDEX`, the extern ordinal, the reloc
+watermark, and the string-table position all stopped being bookkeeping
+variables. Changing a record's shape touches the struct definition and its
+single initializer — no offset arithmetic anywhere. POSTPONE reads the
+records (`idx * sizeof SECTION_RECORD + SECTION_RECORD.field`) and lays out
+the entire object once: relocations, symbol table, string table, then the
+section headers back-patched into the block reserved at file start.
+
+One fasmg context gotcha: the struct engine re-arranges initializer tokens,
+which then resolve inside the *instance* namespace — values that live in
+the `NEWCOFF` namespace must be written fully qualified
+(`NEWCOFF.SECTION_FLAGS`), and CALM code appending a record via `asm` must
+keep its variable names distinct from the field names on the same line, or
+the interpolation rewrites the field labels too.
 
 **2. Canonical symbol order by construction.** POSTPONE emits the symbol
 table as: every section's static symbol + section-definition aux record,
@@ -133,13 +156,14 @@ Two supporting idioms carried over from the retrofit work:
   polynomial `0xEDB88320`, seed 0, *no* final inversion, zero-padded
   uninitialized tail included).
 
-One pass-discipline lesson surfaced while testing: the staging virtuals are
-sized by forward-referenced constants, so loads from them are unstable in
-early passes. Narrow emissions (`dw`, `db`) of loaded values must be masked
-(`and 0xFFFF` / `and 0xFF`) or fasmg aborts on a transient out-of-range value
-before it can converge. Bulk `load`/`db byte_sequence` dumps — the legacy
-approach — dodge this silently, which is worth knowing when choosing between
-per-field and bulk emission.
+One pass-discipline lesson surfaced while testing: a staging area sized by
+a forward-referenced constant (`rb NUMBER_OF_X * n`) reads as garbage in
+early passes, and a narrow emission (`dw`, `db`) of such a load aborts on a
+transient out-of-range value before fasmg can converge. The extendable
+blocks mostly retire the problem — they contain real appended data every
+pass — but the masks (`and 0xFFFF` / `and 0xFF`) stay on as insurance
+against cross-pass value drift. (Verified: the struct refactor reproduces
+the previous emission byte-for-byte, timestamp aside.)
 
 ## What's implemented
 
