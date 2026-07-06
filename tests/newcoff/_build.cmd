@@ -7,7 +7,7 @@ pushd "%~dp0"
 set ROOT=%~dp0..\..
 
 if /i "%~1"=="clean" (
-  del /q *.obj *.exe *.map 2>nul
+  del /q *.obj *.exe *.map *.pdb 2>nul
   popd & exit /b 0
 )
 

@@ -47,7 +47,7 @@ u8_as_hex(rcx = dst, rdx = src, r8 = len)  ->  rax = dst + 2*len
 Note what is *not* here: no harness include, no special setup. NEWCOFF is a
 first-class format — `format MS64 NEWCOFF` is the only line that differs
 from a classic COFF source. (It emits the modern *big object* container;
-see [`tests/newcoff/readme.md`](../../tests/newcoff/readme.md) for what that means and which linkers
+see [`docs/newcoffms.md`](../../docs/newcoffms.md) for what that means and which linkers
 consume it.)
 
 ## 2. COMDAT sections and `/OPT:REF`
@@ -128,7 +128,7 @@ without `NEWCOFF.DEBUG` emits none at all.
 
 ## 6. Where to go next
 
-- [`tests/newcoff/readme.md`](../../tests/newcoff/readme.md) — the NEWCOFF design: records-in-POSTPONE,
+- [`docs/newcoffms.md`](../../docs/newcoffms.md) — the NEWCOFF design: records-in-POSTPONE,
   canonical symbol order, semantic relocations, and why it is bigobj-only.
 - [`docs/newcoffcv.md`](../../docs/newcoffcv.md) — the CodeView module: markers,
   what is emitted, the debugger exploration cases, and the progression

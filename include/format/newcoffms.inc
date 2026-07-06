@@ -1,7 +1,7 @@
 ; newcoffms.inc - ground-up MS COFF backend (development skeleton)
 ; ============================================================================
 ; A re-engineering of include/format/coffms.inc around three rules that the
-; 2026 COMDAT retrofits taught us (see tests/newcoff/readme.md and
+; 2026 COMDAT retrofits taught us (see docs/newcoffms.md and
 ; docs/coff_comdat_postmortem.md):
 ;
 ;   1. RECORDS, NOT STORES. During the pass, every entity (section, public,
