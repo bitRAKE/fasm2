@@ -112,13 +112,16 @@ Modules view), run against any file, and check:
 
 ## Progression
 
+(The living forward log, with what each stage needs, is
+[`newcoff-plan.md`](newcoff-plan.md); the table below tracks the stages.)
+
 | Stage | Contents | State |
 | --- | --- | --- |
 | 1 | C13 lines (F2/F3/F4), per-section associative `.debug$S` | **done** |
 | 2 | `S_GPROC32`/`S_FRAMEPROC`/`S_END`, `S_LABEL32`, `S_OBJNAME`/`S_COMPILE3`; `.pdata`/`.xdata` from the prologue facts | **done** |
 | 3 | `S_REGREL32` locals/params (rsp-relative names from the proc macros; primitive type indices < 0x1000 need no `.debug$T`) | next |
 | 4 | `S_CONSTANT` for equates, `S_GDATA32`/`S_LDATA32` for data symbols incl. statics | planned |
-| 5 | MD5 file checksums in F4 (`file __FILE__` into a virtual + table-driven hash, the CRC-32 pattern scaled up) | planned |
+| 5 | SHA-256 file checksums in F4 (`scripts/sha256.inc` is verified; `file __FILE__` into a virtual supplies the bytes) | next |
 | 6 | `.debug$T`: `LF_STRUCTURE`/`LF_ARRAY`/... bridged from `macro/struct.inc` definitions, `S_UDT`, typed data symbols | ambitious |
 | 7 | `S_INLINESITE` modelling *macro expansions* as inline frames | speculative, uniquely fasm |
 

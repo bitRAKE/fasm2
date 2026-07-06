@@ -23,8 +23,9 @@ untouched — the 2026 COMDAT retrofits that taught us this design
 (EXACT_MATCH checksums, `/OPT:REF`, fold-safe relocations — see
 [`coff_comdat_postmortem.md`](coff_comdat_postmortem.md) and
 [`coff_comdat.md`](coff_comdat.md)) have been retired from
-it. This directory holds the test suite and the
-[`hexer`](../examples/hexer/README.md) walk-through example (in `examples/`).
+it. Forward work is tracked in [`newcoff-plan.md`](newcoff-plan.md); the
+test suite lives in [`tests/newcoff`](../tests/newcoff/readme.md), and
+[`examples/hexer`](../examples/hexer/README.md) is the walk-through.
 
 ## How it was developed: the interception harness
 
