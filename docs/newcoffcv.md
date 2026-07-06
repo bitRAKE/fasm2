@@ -51,7 +51,12 @@ a REX prefix). Nothing is annotated by hand in `examples/hexer`.
 
 - **One shared `.debug$S`** (always kept): `S_OBJNAME` + `S_COMPILE3`
   (producer identification), the F3 file-name string table and the F4 file
-  checksum table — the per-object C13 material.
+  checksum table — **SHA-256 (kind 3)** of each source's bytes, hashed at
+  assembly time through the `AreaSha256` interface
+  ([`include/macro/sha256.inc`](../include/macro/sha256.inc): the digest is
+  published as indexed sub-symbols of the area name, `msg.0`..`msg.31`, so
+  other hash functions can share the interface regardless of digest size).
+  `NEWCOFF.NOCHECKSUM=1` skips the hashing (kind none, zeroed entries).
 - **One `.debug$S` per CODE section with debug material** — line records
   from data sections are ignored — holding an F2 lines subsection and an F1
   symbols subsection (`S_GPROC32` + `S_FRAMEPROC` + `S_END` per procedure,
@@ -107,8 +112,10 @@ Modules view), run against any file, and check:
    shows *only* `u8_as_hex_base` — no ghost symbols or lines from the
    discarded avx sections.
 7. **VS or WinDbg source stepping** — with the source tree present, F10
-   should step `hexer.asm` line by line. (VS may note that checksums are
-   absent — F4 entries are kind *none* for now; see progression.)
+   should step `hexer.asm` line by line, and VS should report the source
+   as *matching* — the F4 entries carry the true SHA-256 of each file
+   (`llvm-pdbutil dump -l hexer.pdb` shows the digests; verified equal to
+   `Get-FileHash`).
 
 ## Progression
 
@@ -121,12 +128,12 @@ Modules view), run against any file, and check:
 | 2 | `S_GPROC32`/`S_FRAMEPROC`/`S_END`, `S_LABEL32`, `S_OBJNAME`/`S_COMPILE3`; `.pdata`/`.xdata` from the prologue facts | **done** |
 | 3 | `S_REGREL32` locals/params (rsp-relative names from the proc macros; primitive type indices < 0x1000 need no `.debug$T`) | next |
 | 4 | `S_CONSTANT` for equates, `S_GDATA32`/`S_LDATA32` for data symbols incl. statics | planned |
-| 5 | SHA-256 file checksums in F4 (`scripts/sha256.inc` is verified; `file __FILE__` into a virtual supplies the bytes) | next |
+| 5 | SHA-256 file checksums in F4 (`AreaSha256` interface; `file` re-reads the source bytes in POSTPONE) | **done** |
 | 6 | `.debug$T`: `LF_STRUCTURE`/`LF_ARRAY`/... bridged from `macro/struct.inc` definitions, `S_UDT`, typed data symbols | ambitious |
 | 7 | `S_INLINESITE` modelling *macro expansions* as inline frames | speculative, uniquely fasm |
 
 Known limits of the current stage: one open `cvproc` at a time (no nesting);
 unwind covers rsp-allocation + pushes (no frame-pointer chaining, which
-`static_rsp` frames never need); `S_GPROC32` uses `T_NOTYPE`; F4 checksums
-are kind none. The 8-slot `reg_nibbles` field caps `uses` lists at 8
+`static_rsp` frames never need); `S_GPROC32` uses `T_NOTYPE`. The 8-slot
+`reg_nibbles` field caps `uses` lists at 8
 registers — matching the number of nonvolatile GPRs, so nothing real hits it.

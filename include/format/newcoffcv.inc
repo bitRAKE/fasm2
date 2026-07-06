@@ -26,6 +26,8 @@
 ; the bottom tags every line of the main source file automatically.
 ; ============================================================================
 
+include 'macro/sha256.inc'
+
 ; CodeView symbol record types and constants
 S_END	     = 0x0006
 S_FRAMEPROC  = 0x1012
@@ -121,7 +123,7 @@ namespace NEWCOFF
 				USER_SECTIONS = ($ - $$) / sizeof SECTION_RECORD
 			end virtual
 			virtual cv_files
-				CV_FILE_COUNT = ($ - $$) / 4
+				CV_FILE_COUNT = ($ - $$) / 8
 			end virtual
 			virtual cv_strings
 				CV_STR_SIZE = $
@@ -159,13 +161,15 @@ namespace NEWCOFF
 			load byte_sequence : CV_STR_SIZE from cv_strings : 0
 			db byte_sequence
 			db (4 - CV_STR_SIZE) and 3 dup 0
-			; F4: checksum table (kind none, for now - see docs/newcoffcv.md)
-			dd DEBUG_S_FILECHKSMS, CV_FILE_COUNT * 8
+			; F4: file checksums - SHA-256 (kind 3) of each source's
+			; bytes, hashed in place (40-byte entries; the FileID used
+			; by F2 is the entry's byte offset, ordinal * 40).
+			; NEWCOFF.NOCHECKSUM=1 skips the hashing (kind none, zeros)
+			dd DEBUG_S_FILECHKSMS, CV_FILE_COUNT * 40
 			repeat CV_FILE_COUNT
-				load CV_FOFS : 4 from cv_files : (%-1) * 4
-				dd CV_FOFS
-				db 0, 0
-				dw 0
+				load CV_FOFS : 4 from cv_files : (%-1) * 8
+				load CV_FLEN : 4 from cv_files : (%-1) * 8 + 4
+				cv_emit_checksum CV_FOFS, CV_FLEN
 			end repeat
 			DBG_SIZE = $% - DBG_OFF
 			DBG_FLAGS = IMAGE_SCN_CNT_INITIALIZED_DATA or IMAGE_SCN_MEM_READ or IMAGE_SCN_MEM_DISCARDABLE or IMAGE_SCN_ALIGN_1BYTES
@@ -251,7 +255,7 @@ namespace NEWCOFF
 									end if
 									CV_SCAN = CV_SCAN + 1
 								end while
-								dd CV_RUNF * 8, CV_N, 12 + CV_N * 8
+								dd CV_RUNF * 40, CV_N, 12 + CV_N * 8
 								while CV_N > 0
 									load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
 									if L_SEC = SEC_I
@@ -487,6 +491,30 @@ namespace NEWCOFF
 		end if
 	end macro
 
+	; one 40-byte F4 entry: the string offset, then the SHA-256 of the
+	; file's bytes via the AreaSha256 interface (a fresh macro expansion
+	; per file supplies a fresh local area; 'file' accepts the string
+	; value loaded from the name table)
+	macro cv_emit_checksum? strofs*, strlen*
+		local src
+		load CV_HNAME : strlen from cv_strings : strofs
+		dd strofs
+		if definite NEWCOFF.NOCHECKSUM & NEWCOFF.NOCHECKSUM
+			db 0, 0 		; no checksum recorded
+			db 32 dup 0
+		else
+			virtual at 0
+				src:: file CV_HNAME
+			end virtual
+			AreaSha256 src
+			db 32, 3		; CbChecksum, ChecksumKind: SHA-256
+			repeat 32, j:0
+				db src.j
+			end repeat
+		end if
+		dw 0			; pad the entry to 40 bytes
+	end macro
+
 end namespace
 
 ; record a source-line marker at the current position; with no arguments
@@ -496,16 +524,14 @@ macro cvline? lnum:__LINE__, fname:__FILE__
 	namespace NEWCOFF
 		CV_NAME = fname
 		virtual cv_files
-			CV_FILE_COUNT = ($ - $$) / 4
-		end virtual
-		virtual cv_strings
-			CV_STR_END = $
+			CV_FILE_COUNT = ($ - $$) / 8
 		end virtual
 		CV_ORD = -1
 		repeat CV_FILE_COUNT
-			load CV_FOFS : 4 from cv_files : (%-1) * 4
-			if CV_FOFS + lengthof CV_NAME + 1 <= CV_STR_END
-				load CV_CAND : lengthof CV_NAME + 1 from cv_strings : CV_FOFS
+			load CV_FLEN : 4 from cv_files : (%-1) * 8 + 4
+			if CV_FLEN = lengthof CV_NAME
+				load CV_FOFS : 4 from cv_files : (%-1) * 8
+				load CV_CAND : CV_FLEN from cv_strings : CV_FOFS
 				if CV_CAND = CV_NAME
 					CV_ORD = % - 1
 					break
@@ -519,7 +545,7 @@ macro cvline? lnum:__LINE__, fname:__FILE__
 				db CV_NAME, 0
 			end virtual
 			virtual cv_files
-				dd CV_FOFS
+				dd CV_FOFS, lengthof CV_NAME
 			end virtual
 		end if
 		CV_OFFSET = $ - SECTION_BASE

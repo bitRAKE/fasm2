@@ -9,29 +9,20 @@ suite in [`tests/newcoff`](../tests/newcoff/readme.md) verifies it, and
 it. This document is the forward log: what is next, what it needs, and
 what order makes sense.
 
+## Done since this plan was written
+
+- **SHA-256 file checksums in F4** (kind 3). The hash library became
+  [`include/macro/sha256.inc`](../include/macro/sha256.inc) with the
+  area-indexed interface (`AreaSha256 msg` publishes digest bytes as
+  `msg.0`..`msg.31` — the freqdump.g idiom, hash-size agnostic);
+  [`scripts/sha256.inc`](../scripts/sha256.inc) asserts it against the
+  NESSIE vectors. POSTPONE re-reads each registered source with `file`
+  and hashes it; digests verified equal to `Get-FileHash`. Cost measured:
+  the full 4-object hexer debug build is ~2 s; `NEWCOFF.NOCHECKSUM=1`
+  opts out (kind none, zeroed). Two fasmg context lessons were paid for
+  en route — recorded under the guardrails below.
+
 ## Next — unblocked
-
-### 1. SHA-256 file checksums in F4
-
-The F4 entries currently carry checksum kind *none*; Visual Studio steps
-through source anyway but cannot attest that the file on disk matches the
-binary. Kind 3 (SHA-256) is the modern default.
-
-The algorithm is in hand: [`scripts/sha256.inc`](../scripts/sha256.inc)
-(verified against the NESSIE vectors — and its own harness already
-demonstrates the key move, `file __FILE__` pulling source bytes into a
-virtual for hashing). Remaining work:
-
-- refactor the one-shot script into a callable form: message area in,
-  `h1..h8` out;
-- at `cvline` file registration, remember enough to `file` the source in
-  POSTPONE (paths resolve from the working directory — the usual fasmg
-  include-resolution caveat applies);
-- widen the F4 entries (4 + 1 + 1 + 32, padded to 40) and emit kind 3
-  with the big-endian digest words;
-- gate on `NEWCOFF.DEBUG`: the compression runs interpreted per 64-byte
-  block, *per pass* — measure on a real source before deciding whether a
-  size cap or opt-out flag is warranted.
 
 ### 2. Stage 3 CodeView: named locals and parameters (`S_REGREL32`)
 
@@ -100,3 +91,12 @@ Lessons already paid for — respect them in all of the above:
 3. Records are append-once; anything that looks like mutation becomes a
    POSTPONE scan. Counts derive from `($ - $$) / sizeof RECORD`, never
    from variables.
+4. Qualified paths are not anchors: `SHA256.K0` binds to
+   `CALLER.SHA256.K0` the moment anything creates a `SHA256` member in
+   the caller's namespace — and your own writes (`SHA256.h1 = ...`) do
+   exactly that. Library macros that must run from any namespace hang
+   state off a macro-LOCAL symbol (locals carry their own context) and
+   keep globals to flat single tokens, which fall back correctly.
+5. Never open `namespace` on a macro-local label: its parent chain
+   excludes the global scope, so even directives (`repeat`, `iterate`)
+   stop resolving inside.
