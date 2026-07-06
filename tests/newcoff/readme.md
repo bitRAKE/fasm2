@@ -15,7 +15,10 @@ Author: Rickey Bowers Jr. (bitRAKE). Co-developed with Claude (Anthropic).
 > objects) rather than the last thirty of compatibility.
 
 This directory is a development harness for a from-scratch rewrite of the
-MS COFF backend, informed by the 2026 COMDAT work on
+MS COFF backend. **The end state:** `include/format/coffms.inc` reverts to
+upstream untouched, and NEWCOFF becomes where the COFF work lives - tests
+and examples migrate here. The rewrite was informed by the 2026 COMDAT
+work on
 [`include/format/coffms.inc`](../../include/format/coffms.inc) (EXACT_MATCH
 checksums, `/OPT:REF` support, fold-safe relocations — see
 [`docs/coff_comdat_postmortem.md`](../../docs/coff_comdat_postmortem.md) and
@@ -183,12 +186,12 @@ the previous emission byte-for-byte, timestamp aside.)
 | synthetic static for public-less NODUPLICATES COMDAT | done (appended in POSTPONE; associative sections are exempt — they need no leader symbol) |
 | weak externals (`public` of an extern value) | done — WEAK_EXTERNAL + alias-tag aux record; per-public symbol indices come from a prefix scan, so variable-length entries cost one table |
 | >65535 relocations/section (`NRELOC_OVFL`) | done — flag + 0xFFFF in the header, real count+1 in the VirtualAddress of an extra first relocation |
-| CodeView lines, procedures, labels; x64 unwind (`.pdata`/`.xdata`) | done — factored into [`newcoffcv.inc`](newcoffcv.inc); scope and progression in [`codeview.md`](codeview.md) |
+| CodeView lines, procedures, labels; x64 unwind (`.pdata`/`.xdata`) | done — factored into [`newcoffcv.inc`](newcoffcv.inc); scope and progression in [`newcoffcv.md`](newcoffcv.md) |
 
 ## CodeView debug information
 
 Lives in [`newcoffcv.inc`](newcoffcv.inc) with its own scope/progression
-document, [`codeview.md`](codeview.md): C13 line tables, procedure and label
+document, [`newcoffcv.md`](newcoffcv.md): C13 line tables, procedure and label
 symbols, producer identification, and x64 unwind data — all synthesized in
 POSTPONE from marker records, with debug sections COMDAT-ASSOCIATIVE to
 their code. The `tests/newcoff/hexer` build exercises it end to end

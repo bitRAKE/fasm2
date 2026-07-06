@@ -1,6 +1,6 @@
 ; code/data model
 
-include '..\newcoff.inc'
+include 'newcoff.inc'	; resolved via INCLUDE (see _build.cmd)
 format MS64 NEWCOFF
 include 'win64a.inc'
 
