@@ -88,17 +88,19 @@ architecture, and each fight left a scar:
 [`newcoffms.inc`](newcoffms.inc) is built on what the retrofits taught:
 
 **1. Records, not stores.** During the pass, each entity appends one
-struct instance to an *extendable* virtual block, using
-`macro/struct.inc` named initializers:
+struct instance to an *extendable* virtual block (`macro/struct.inc`),
+with the values in structure order:
 
 ```
-virtual section_records
-	SECTION_RECORD \
-		flags: NEWCOFF.SECTION_FLAGS,\
-		size: NEWCOFF.SECTION_SIZE,\
-		...
+virtual public_records
+	PUBLIC_RECORD NEWCOFF.NAME_SHORT, NEWCOFF.NAME_POS, NEWCOFF.SYMBOL_VALUE,\
+		NEWCOFF.SYMBOL_SECTION_NUMBER, NEWCOFF.SYMBOL_CLASS
 end virtual
 ```
+
+(Named `field: value` initializers exist too — they earn their keep on
+*partial* records where most fields default; these records always pass
+every field, so positional is the natural form.)
 
 Records are append-once and immutable — the one field publics used to poke
 into their section's record (the offset-0-external registry) became a
@@ -115,9 +117,10 @@ section headers back-patched into the block reserved at file start.
 One fasmg context gotcha: the struct engine re-arranges initializer tokens,
 which then resolve inside the *instance* namespace — values that live in
 the `NEWCOFF` namespace must be written fully qualified
-(`NEWCOFF.SECTION_FLAGS`), and CALM code appending a record via `asm` must
-keep its variable names distinct from the field names on the same line, or
-the interpolation rewrites the field labels too.
+(`NEWCOFF.SECTION_FLAGS`). A related trap for CALM code appending a record
+via `asm`: with named initializers the field-name tokens on the line are
+fair game for variable interpolation; positional initializers avoid the
+collision class outright.
 
 **2. Canonical symbol order by construction.** POSTPONE emits the symbol
 table as: every section's static symbol + section-definition aux record,

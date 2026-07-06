@@ -246,8 +246,9 @@ namespace NEWCOFF
 	; the one relocation engine: emits the addend, then appends a record
 	; with a SYMBOLIC target decoded from the element metadata. Section
 	; elements carry scale (1+index), extern elements carry scale -1 with
-	; the ordinal as the constant term. (CALM variable names must not
-	; collide with the field names interpolated into the asm lines.)
+	; the ordinal as the constant term. Positional initializers keep the
+	; asm lines free of field-name tokens that CALM interpolation could
+	; otherwise rewrite.
 	calminstruction record? size*, value*, type*
 		local	roffs, scale, rtgt, rknd
 		compute roffs, $%
@@ -266,7 +267,7 @@ namespace NEWCOFF
 	    have_target:
 		compute roffs, roffs - NEWCOFF.SECTION_OFFSET
 		asm	virtual NEWCOFF.reloc_records
-		asm	RELOC_RECORD offset: roffs, target: rtgt, target_kind: rknd, kind: type
+		asm	RELOC_RECORD roffs, rtgt, rknd, type
 		asm	end virtual
 	    done:
 	end calminstruction
@@ -559,7 +560,7 @@ macro extrn? declaration*
 		end match
 		register_name SYMBOL_NAME
 		virtual extern_records
-			EXTERN_RECORD shortname: NEWCOFF.NAME_SHORT, name_pos: NEWCOFF.NAME_POS
+			EXTERN_RECORD NEWCOFF.NAME_SHORT, NEWCOFF.NAME_POS
 		end virtual
 	end namespace
 end macro
