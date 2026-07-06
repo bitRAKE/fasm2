@@ -1,7 +1,7 @@
 ; newcoffcv.inc - CodeView debug support for the NEWCOFF backend
 ; ============================================================================
 ; Included by newcoffms.inc; scope, format background and the progression
-; plan live in tests/newcoff/newcoffcv.md. Everything here follows the backend's records
+; plan live in docs/newcoffcv.md. Everything here follows the backend's records
 ; discipline: markers append staging records during the pass, and
 ; codeview_synthesize (called from the newcoffms POSTPONE, after the machine
 ; is known and before the counts are taken) turns them into C13 '.debug$S'
@@ -159,7 +159,7 @@ namespace NEWCOFF
 			load byte_sequence : CV_STR_SIZE from cv_strings : 0
 			db byte_sequence
 			db (4 - CV_STR_SIZE) and 3 dup 0
-			; F4: checksum table (kind none, for now - see newcoffcv.md)
+			; F4: checksum table (kind none, for now - see docs/newcoffcv.md)
 			dd DEBUG_S_FILECHKSMS, CV_FILE_COUNT * 8
 			repeat CV_FILE_COUNT
 				load CV_FOFS : 4 from cv_files : (%-1) * 4

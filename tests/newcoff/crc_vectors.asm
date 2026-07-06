@@ -19,6 +19,11 @@
 ;   llvm-readobj --symbols crc_vectors.obj
 ;
 ; This is a positive run-42 test too: main calls f0 (returns 42).
+;
+; The .data$ sections are READABLE WRITEABLE, as clang emits selectany
+; data - and because the linker's '.data' output group is read+write, so
+; a read-only contribution draws LNK4078 (attribute mismatch). The
+; checksum covers section CONTENTS only; attributes do not affect it.
 
 format MS64 NEWCOFF
 
@@ -34,11 +39,11 @@ section '.text$f2' code readable executable comdat exactmatch	; clang CheckSum 0
 public f2
 f2:	db 048h,00Fh,0AFh,0CAh,048h,08Dh,041h,0FDh,0C3h
 
-section '.data$pool' data readable comdat exactmatch		; clang CheckSum 0x26CD321D
+section '.data$pool' data readable writeable comdat exactmatch		; clang CheckSum 0x26CD321D
 public pool
 pool:	dd 1,2,3,4,5
 
-section '.data$str' data readable comdat exactmatch		; clang CheckSum 0x1B85DBCF
+section '.data$str' data readable writeable comdat exactmatch		; clang CheckSum 0x1B85DBCF
 public strvec
 strvec:	db 'hello, world',0
 

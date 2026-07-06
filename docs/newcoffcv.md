@@ -2,7 +2,7 @@
 
 Author: Rickey Bowers Jr. (bitRAKE). Co-developed with Claude (Anthropic).
 
-[`newcoffcv.inc`](newcoffcv.inc) gives NEWCOFF objects CodeView (C13) debug
+[`newcoffcv.inc`](../include/format/newcoffcv.inc) gives NEWCOFF objects CodeView (C13) debug
 information and x64 unwind data, built entirely with the backend's records
 discipline: markers append staging records during the pass;
 `codeview_synthesize` — called from the newcoffms POSTPONE after the machine
@@ -45,7 +45,7 @@ close@proc	equ newcoff_debug_close
 `newcoff_debug_prologue` reads `framebytes@proc` after expanding
 `static_rsp_prologue`, so the recorded allocation is exactly what the frame
 sub'd; push offsets are reconstructed from encoding sizes (`r8`–`r15` carry
-a REX prefix). Nothing is annotated by hand in `tests/newcoff/hexer`.
+a REX prefix). Nothing is annotated by hand in `examples/hexer`.
 
 ## What is emitted
 

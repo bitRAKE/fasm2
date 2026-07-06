@@ -24,7 +24,7 @@ untouched — the 2026 COMDAT retrofits that taught us this design
 [`docs/coff_comdat_postmortem.md`](../../docs/coff_comdat_postmortem.md) and
 [`docs/coff_comdat.md`](../../docs/coff_comdat.md)) have been retired from
 it. This directory holds the test suite and the
-[`hexer`](hexer/README.md) walk-through example.
+[`hexer`](../../examples/hexer/README.md) walk-through example (in `examples/`).
 
 ## How it was developed: the interception harness
 
@@ -87,7 +87,7 @@ architecture, and each fight left a scar:
 
 ## The design rules
 
-[`newcoffms.inc`](newcoffms.inc) is built on what the retrofits taught:
+[`newcoffms.inc`](../../include/format/newcoffms.inc) is built on what the retrofits taught:
 
 **1. Records, not stores.** During the pass, each entity appends one
 struct instance to an *extendable* virtual block (`macro/struct.inc`),
@@ -185,15 +185,15 @@ the previous emission byte-for-byte, timestamp aside.)
 | synthetic static for public-less NODUPLICATES COMDAT | done (appended in POSTPONE; associative sections are exempt — they need no leader symbol) |
 | weak externals (`public` of an extern value) | done — WEAK_EXTERNAL + alias-tag aux record; per-public symbol indices come from a prefix scan, so variable-length entries cost one table |
 | >65535 relocations/section (`NRELOC_OVFL`) | done — flag + 0xFFFF in the header, real count+1 in the VirtualAddress of an extra first relocation |
-| CodeView lines, procedures, labels; x64 unwind (`.pdata`/`.xdata`) | done — factored into [`newcoffcv.inc`](newcoffcv.inc); scope and progression in [`newcoffcv.md`](newcoffcv.md) |
+| CodeView lines, procedures, labels; x64 unwind (`.pdata`/`.xdata`) | done — factored into [`newcoffcv.inc`](../../include/format/newcoffcv.inc); scope and progression in [`newcoffcv.md`](../../docs/newcoffcv.md) |
 
 ## CodeView debug information
 
-Lives in [`newcoffcv.inc`](newcoffcv.inc) with its own scope/progression
-document, [`newcoffcv.md`](newcoffcv.md): C13 line tables, procedure and label
+Lives in [`newcoffcv.inc`](../../include/format/newcoffcv.inc) with its own scope/progression
+document, [`newcoffcv.md`](../../docs/newcoffcv.md): C13 line tables, procedure and label
 symbols, producer identification, and x64 unwind data — all synthesized in
 POSTPONE from marker records, with debug sections COMDAT-ASSOCIATIVE to
-their code. The `tests/newcoff/hexer` build exercises it end to end
+their code. The `examples/hexer` build exercises it end to end
 (`NEWCOFF.DEBUG` tags every source line; the `static_rsp` prologue wrappers
 mark procedures, frames and USES registers automatically).
 

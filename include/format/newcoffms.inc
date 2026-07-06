@@ -587,7 +587,7 @@ end macro
 
 ; CodeView debug support: cvline/cvproc/cvframe/cvendp/cvlabel markers,
 ; the NEWCOFF.DEBUG per-line interceptor, and the POSTPONE synthesis of
-; '.debug$S' and '.pdata'/'.xdata' sections - see newcoffcv.md
+; '.debug$S' and '.pdata'/'.xdata' sections - see docs/newcoffcv.md
 include 'format/newcoffcv.inc'
 
 element NEWCOFF.IMAGE_BASE

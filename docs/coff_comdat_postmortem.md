@@ -202,3 +202,17 @@ with `/OPT:REF` under whichever of `lld-link` / MSVC `link` it finds; each
 positive test exits `42`, negative tests must be rejected by the assembler or
 the linker. See [`tests/coff/readme.md`](../tests/coff/readme.md) for the
 per-file table.
+
+---
+
+## Epilogue
+
+This document earned its title twice. The techniques it records were
+proven in `coffms.inc`, then distilled into a ground-up rewrite - and once
+`format MS64 NEWCOFF` (`include/format/newcoffms.inc`) carried them
+better, `coffms.inc` was reverted to upstream, untouched. What follows
+above is therefore a post-mortem in both senses: lessons from the work,
+and the record of code that served its purpose and was retired. The
+paths it references (`tests/coff`, the retrofitted `coffms.inc`) exist
+only in history; the living continuation is `tests/newcoff` and
+`docs/newcoffcv.md`.

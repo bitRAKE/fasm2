@@ -47,7 +47,7 @@ u8_as_hex(rcx = dst, rdx = src, r8 = len)  ->  rax = dst + 2*len
 Note what is *not* here: no harness include, no special setup. NEWCOFF is a
 first-class format — `format MS64 NEWCOFF` is the only line that differs
 from a classic COFF source. (It emits the modern *big object* container;
-see [`../readme.md`](../readme.md) for what that means and which linkers
+see [`tests/newcoff/readme.md`](../../tests/newcoff/readme.md) for what that means and which linkers
 consume it.)
 
 ## 2. COMDAT sections and `/OPT:REF`
@@ -77,10 +77,10 @@ every variant to choose among them at runtime, so all three stay.
 `somehex.obj` and `u8_as_hex_avx512.obj` *both* define `hextab` — same
 section name, same bytes, `comdat exactmatch`. The assembler stamps each
 copy with a CRC-32 of its contents (the same parameters clang uses,
-cross-validated in `../crc_vectors.asm`); the linker checks the checksums
+cross-validated in `tests/newcoff/crc_vectors.asm`); the linker checks the checksums
 match and keeps one copy. The map shows a single surviving `hextab`.
 Perturb one copy by a byte and the link fails — that is the *exact-match*
-guarantee, versus `any` (pick one, no questions) which `../optref_any_*`
+guarantee, versus `any` (pick one, no questions) which `tests/newcoff/optref_any_*`
 demonstrates.
 
 The subtle part: each object *references* its own copy, and the loser's
@@ -108,7 +108,7 @@ script always sets it):
 - the raw (non-proc) variants carry explicit `cvproc`/`cvendp` markers, and
   the dispatcher stub a `cvlabel`.
 
-Things to try (details and more cases in [`../newcoffcv.md`](../newcoffcv.md)):
+Things to try (details and more cases in [`docs/newcoffcv.md`](../../docs/newcoffcv.md)):
 
 1. **x64dbg**: open `hexer.exe` (dispatch build), run against a file —
    every instruction shows its `file:line`. Break inside a variant: the
@@ -128,10 +128,10 @@ without `NEWCOFF.DEBUG` emits none at all.
 
 ## 6. Where to go next
 
-- [`../readme.md`](../readme.md) — the NEWCOFF design: records-in-POSTPONE,
+- [`tests/newcoff/readme.md`](../../tests/newcoff/readme.md) — the NEWCOFF design: records-in-POSTPONE,
   canonical symbol order, semantic relocations, and why it is bigobj-only.
-- [`../newcoffcv.md`](../newcoffcv.md) — the CodeView module: markers,
+- [`docs/newcoffcv.md`](../../docs/newcoffcv.md) — the CodeView module: markers,
   what is emitted, the debugger exploration cases, and the progression
   plan (locals, data symbols, types).
-- `../smoke.asm`, `../fold_*.asm`, `../weak_*.asm`, `../cv.asm` — each
-  feature in isolation, exit-code-verified by `../_build.cmd`.
+- `tests/newcoff/` — each feature in isolation (`smoke`, `fold_*`, `weak_*`,
+  `cv`, `crc_vectors`, ...), exit-code-verified by its `_build.cmd`.
