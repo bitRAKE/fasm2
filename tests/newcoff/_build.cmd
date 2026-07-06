@@ -53,7 +53,34 @@ call "%ROOT%\fasm2.cmd" fold_b.asm fold_b.obj || goto :err
 .\fold.exe
 if not "%errorlevel%"=="97" echo [FAIL] fold exit %errorlevel%, expected 97 & goto :err
 
-echo [ok] newcoff: smoke x64 + x86 (both backends) and exactmatch fold, exit 97
+rem --- weak: b aliases 'maybe_get' weakly to a's real_get; c calls it --
+call "%ROOT%\fasm2.cmd" weak_a.asm weak_a.obj || goto :err
+call "%ROOT%\fasm2.cmd" weak_b.asm weak_b.obj || goto :err
+call "%ROOT%\fasm2.cmd" weak_c.asm weak_c.obj || goto :err
+
+%LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /OUT:weak.exe weak_c.obj weak_b.obj weak_a.obj kernel32.lib || goto :err
+
+.\weak.exe
+if not "%errorlevel%"=="97" echo [FAIL] weak exit %errorlevel%, expected 97 & goto :err
+
+rem --- cv: cvline markers become .debug$S; /DEBUG builds a PDB whose ---
+rem --- line table maps the code back to cv.asm ---------------------------
+call "%ROOT%\fasm2.cmd" cv.asm cv.obj || goto :err
+
+%LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /DEBUG:FULL /PDB:cv.pdb /OUT:cv.exe cv.obj kernel32.lib || goto :err
+
+.\cv.exe
+if not "%errorlevel%"=="97" echo [FAIL] cv exit %errorlevel%, expected 97 & goto :err
+
+rem --- ovfl: 65600 relocations in one section (IMAGE_SCN_LNK_NRELOC_OVFL)
+call "%ROOT%\fasm2.cmd" ovfl.asm ovfl.obj || goto :err
+
+%LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /OUT:ovfl.exe ovfl.obj kernel32.lib || goto :err
+
+.\ovfl.exe
+if not "%errorlevel%"=="97" echo [FAIL] ovfl exit %errorlevel%, expected 97 & goto :err
+
+echo [ok] newcoff: smoke x64 + x86, fold, weak, cv, ovfl - all exit 97
 popd & exit /b 0
 
 :err

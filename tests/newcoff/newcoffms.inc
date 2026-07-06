@@ -106,11 +106,21 @@ struct PUBLIC_RECORD
 	value		dd ?
 	secnum		dd ?	; 1-based; 0 undefined, -1 absolute
 	class		dd ?
+	aux		dd ?	; aux record count (1 for weak externals)
+	tag		dd ?	; weak external: extern ordinal of the alias tag
 ends
 
 struct EXTERN_RECORD
 	shortname	dq ?
 	name_pos	dd ?
+ends
+
+struct LINE_RECORD
+	; 'file' and 'section' are taken (directive / macro), hence the names
+	srcfile 	dd ?	; ordinal into cv_files (FileID = ordinal * 8)
+	line		dd ?
+	sect		dd ?	; 0-based section index
+	ofs		dd ?	; section-relative code offset
 ends
 
 struct RELOC_RECORD
@@ -155,9 +165,13 @@ IMAGE_REL_AMD64_ADDR64	 = 0x0001
 IMAGE_REL_AMD64_ADDR32	 = 0x0002
 IMAGE_REL_AMD64_ADDR32NB = 0x0003
 IMAGE_REL_AMD64_REL32	 = 0x0004
+IMAGE_REL_AMD64_SECTION  = 0x000A
+IMAGE_REL_AMD64_SECREL	 = 0x000B
 
 IMAGE_REL_I386_DIR32	 = 0x0006
 IMAGE_REL_I386_DIR32NB	 = 0x0007
+IMAGE_REL_I386_SECTION	 = 0x000A
+IMAGE_REL_I386_SECREL	 = 0x000B
 IMAGE_REL_I386_REL32	 = 0x0014
 
 IMAGE_SYM_UNDEFINED = 0
@@ -166,6 +180,10 @@ IMAGE_SYM_ABSOLUTE  = -1
 IMAGE_SYM_CLASS_EXTERNAL      = 2
 IMAGE_SYM_CLASS_STATIC	      = 3
 IMAGE_SYM_CLASS_WEAK_EXTERNAL = 105
+
+IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY = 1
+IMAGE_WEAK_EXTERN_SEARCH_LIBRARY   = 2
+IMAGE_WEAK_EXTERN_SEARCH_ALIAS	   = 3
 
 IMAGE_COMDAT_SELECT_NODUPLICATES = 1
 IMAGE_COMDAT_SELECT_ANY 	 = 2
@@ -185,6 +203,8 @@ namespace NEWCOFF
 	RELOC_REL32 := 2	; 32-bit relative to the end of the field
 	RELOC_ABS64 := 3	; absolute 64-bit address
 	RELOC_RVA64 := 4	; 64-bit field holding an RVA
+	RELOC_SECREL32 := 5	; 32-bit offset within the target's section
+	RELOC_SECTION := 6	; 16-bit section number of the target
 
 	; ANON_OBJECT_HEADER_BIGOBJ - always; classic COFF is legacy's job.
 	; The machine is decided in POSTPONE from x86.mode.
@@ -228,6 +248,21 @@ namespace NEWCOFF
 
 	virtual at 0
 		string_table:: dd STRING_TABLE_SIZE
+	end virtual
+
+	; CodeView staging: cvline markers, and the F3 string / F4 checksum
+	; material they reference (offset 0 of the C13 string table is the
+	; empty string by convention)
+	virtual at 0
+		line_records::
+	end virtual
+
+	virtual at 0
+		cv_strings:: db 0
+	end virtual
+
+	virtual at 0
+		cv_files::
 	end virtual
 
 	; reflected CRC-32 nibble table (polynomial 0xEDB88320). The COMDAT
@@ -358,20 +393,23 @@ macro section?
 			virtual reloc_records
 				RELOC_TOTAL = ($ - $$) / sizeof RELOC_RECORD
 			end virtual
+			; values in structure order (names are for partial records);
+			; qualified, because the struct engine re-arranges initializer
+			; tokens, which then resolve inside the instance namespace
 			virtual section_records
 				SECTION_RECORD \
-					shortname: NAME_SHORT,\
-					name_pos: NAME_POS,\
-					flags: SECTION_FLAGS,\
-					raw_offset: SECTION_OFFSET,\
-					size: SECTION_SIZE,\
-					reloc_1st: SECTION_RELOC_FIRST,\
-					reloc_count: RELOC_TOTAL - SECTION_RELOC_FIRST,\
-					selection: SECTION_COMDAT_SELECTION,\
-					association: SECTION_COMDAT_ASSOCIATION,\
-					xm_init: XM_INIT,\
-					xm_tail: XM_TAIL,\
-					xm_crc: 0
+					NEWCOFF.NAME_SHORT,\
+					NEWCOFF.NAME_POS,\
+					NEWCOFF.SECTION_FLAGS,\
+					NEWCOFF.SECTION_OFFSET,\
+					NEWCOFF.SECTION_SIZE,\
+					NEWCOFF.SECTION_RELOC_FIRST,\
+					NEWCOFF.RELOC_TOTAL - NEWCOFF.SECTION_RELOC_FIRST,\
+					NEWCOFF.SECTION_COMDAT_SELECTION,\
+					NEWCOFF.SECTION_COMDAT_ASSOCIATION,\
+					NEWCOFF.XM_INIT,\
+					NEWCOFF.XM_TAIL,\
+					0
 			end virtual
 
 		end if
@@ -513,12 +551,20 @@ macro public? declaration*
 			SYMBOL_NAME = `declaration
 			SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 		end match
+		SYMBOL_AUX = 0
+		SYMBOL_TAG = 0
 		if SYMBOL_VALUE relativeto 1 elementof SYMBOL_VALUE & 1 elementof (1 metadataof SYMBOL_VALUE) relativeto relocatable
 			if 1 scaleof (1 metadataof SYMBOL_VALUE) > 0
 				SYMBOL_SECTION_NUMBER = 1 scaleof (1 metadataof SYMBOL_VALUE)
 				SYMBOL_VALUE = SYMBOL_VALUE - 1 elementof SYMBOL_VALUE
 			else if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
-				err 'NEWCOFF: weak externals not implemented yet (readme.md roadmap)'
+				; weak external: an alias whose default resolution is the
+				; extern the value refers to; carries one aux record
+				SYMBOL_TAG = 0 scaleof (1 metadataof SYMBOL_VALUE)
+				SYMBOL_VALUE = 0
+				SYMBOL_SECTION_NUMBER = IMAGE_SYM_UNDEFINED
+				SYMBOL_CLASS = IMAGE_SYM_CLASS_WEAK_EXTERNAL
+				SYMBOL_AUX = 1
 			else
 				SYMBOL_SECTION_NUMBER = IMAGE_SYM_UNDEFINED
 				SYMBOL_VALUE = 0
@@ -528,12 +574,9 @@ macro public? declaration*
 		end if
 		register_name SYMBOL_NAME
 		virtual public_records
-			PUBLIC_RECORD \
-				shortname: NAME_SHORT,\
-				name_pos: NAME_POS,\
-				value: SYMBOL_VALUE,\
-				secnum: SYMBOL_SECTION_NUMBER,\
-				class: SYMBOL_CLASS
+			PUBLIC_RECORD NEWCOFF.NAME_SHORT, NEWCOFF.NAME_POS, NEWCOFF.SYMBOL_VALUE,\
+				NEWCOFF.SYMBOL_SECTION_NUMBER, NEWCOFF.SYMBOL_CLASS,\
+				NEWCOFF.SYMBOL_AUX, NEWCOFF.SYMBOL_TAG
 		end virtual
 	end namespace
 end macro
@@ -561,6 +604,47 @@ macro extrn? declaration*
 		register_name SYMBOL_NAME
 		virtual extern_records
 			EXTERN_RECORD NEWCOFF.NAME_SHORT, NEWCOFF.NAME_POS
+		end virtual
+	end namespace
+end macro
+
+; record a CodeView source-line marker at the current position; POSTPONE
+; synthesizes '.debug$S' line subsections from the markers (one debug
+; section per code section, ASSOCIATIVE when the code is COMDAT). With no
+; arguments the invocation site's line and file are captured.
+macro cvline? lnum:__LINE__, fname:__FILE__
+	namespace NEWCOFF
+		CV_NAME = fname
+		virtual cv_files
+			CV_FILE_COUNT = ($ - $$) / 4
+		end virtual
+		virtual cv_strings
+			CV_STR_END = $
+		end virtual
+		CV_ORD = -1
+		repeat CV_FILE_COUNT
+			load CV_FOFS : 4 from cv_files : (%-1) * 4
+			if CV_FOFS + lengthof CV_NAME + 1 <= CV_STR_END
+				load CV_CAND : lengthof CV_NAME + 1 from cv_strings : CV_FOFS
+				if CV_CAND = CV_NAME
+					CV_ORD = % - 1
+					break
+				end if
+			end if
+		end repeat
+		if CV_ORD < 0
+			CV_ORD = CV_FILE_COUNT
+			virtual cv_strings
+				CV_FOFS = $
+				db CV_NAME, 0
+			end virtual
+			virtual cv_files
+				dd CV_FOFS
+			end virtual
+		end if
+		CV_OFFSET = $ - SECTION_BASE
+		virtual line_records
+			LINE_RECORD NEWCOFF.CV_ORD, lnum, NEWCOFF.SECTION_INDEX, NEWCOFF.CV_OFFSET
 		end virtual
 	end namespace
 end macro
@@ -639,6 +723,142 @@ postpone
 			MACHINE := IMAGE_FILE_MACHINE_I386
 		end if
 
+		; ---- CodeView: synthesize '.debug$S' from the cvline markers --
+		; Debug info is where deferred emission earns its keep: sizes,
+		; section numbers and relocation targets all exist here, and a
+		; section born in POSTPONE is just one more record.
+		virtual line_records
+			NUMBER_OF_LINES = ($ - $$) / sizeof LINE_RECORD
+		end virtual
+		if NUMBER_OF_LINES > 0
+			virtual section_records
+				USER_SECTIONS = ($ - $$) / sizeof SECTION_RECORD
+			end virtual
+			virtual cv_files
+				CV_FILE_COUNT = ($ - $$) / 4
+			end virtual
+			virtual cv_strings
+				CV_STR_SIZE = $
+			end virtual
+
+			; one shared, always-kept '.debug$S' carries the per-object
+			; C13 material: file name strings (F3) + checksum table (F4)
+			virtual reloc_records
+				DBG_RELOC1 = ($ - $$) / sizeof RELOC_RECORD
+			end virtual
+			DBG_OFF = $%
+			dd 4			; CV_SIGNATURE_C13
+			dd 0xF3, CV_STR_SIZE
+			load byte_sequence : CV_STR_SIZE from cv_strings : 0
+			db byte_sequence
+			db (4 - CV_STR_SIZE) and 3 dup 0
+			dd 0xF4, CV_FILE_COUNT * 8
+			repeat CV_FILE_COUNT
+				load CV_FOFS : 4 from cv_files : (%-1) * 4
+				dd CV_FOFS
+				db 0, 0 	; no checksum recorded
+				dw 0
+			end repeat
+			DBG_SIZE = $% - DBG_OFF
+			DBG_FLAGS = IMAGE_SCN_CNT_INITIALIZED_DATA or IMAGE_SCN_MEM_READ or IMAGE_SCN_MEM_DISCARDABLE or IMAGE_SCN_ALIGN_1BYTES
+			virtual section_records
+				SECTION_RECORD '.debug$S', 0, NEWCOFF.DBG_FLAGS, NEWCOFF.DBG_OFF,\
+					NEWCOFF.DBG_SIZE, NEWCOFF.DBG_RELOC1, 0,\
+					IMAGE_COMDAT_SELECT_NODUPLICATES, 0, 0, 0, 0
+			end virtual
+
+			; one '.debug$S' of line subsections (F2) per code section
+			; with markers - ASSOCIATIVE to its section when that is a
+			; COMDAT, so the lines live and die with the code
+			repeat USER_SECTIONS
+				SEC_I = % - 1
+				CV_L = 0
+				CV_R = 0
+				CV_LASTF = -1
+				repeat NUMBER_OF_LINES
+					load L_SEC : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.sect
+					if L_SEC = SEC_I
+						CV_L = CV_L + 1
+						load L_FILE : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.srcfile
+						if L_FILE <> CV_LASTF
+							CV_R = CV_R + 1
+							CV_LASTF = L_FILE
+						end if
+					end if
+				end repeat
+				if CV_L > 0
+					load CS_FLAGS : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.flags
+					load CS_SIZE : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.size
+					virtual reloc_records
+						DBG_RELOC1 = ($ - $$) / sizeof RELOC_RECORD
+					end virtual
+					DBG_OFF = $%
+					dd 4
+					dd 0xF2, 12 + CV_R * 12 + CV_L * 8
+					; SECREL32 + SECTION bind the chunk to the code section
+					DBG_FLD = $% - DBG_OFF
+					virtual reloc_records
+						RELOC_RECORD NEWCOFF.DBG_FLD, NEWCOFF.SEC_I, 0, NEWCOFF.RELOC_SECREL32
+						RELOC_RECORD NEWCOFF.DBG_FLD + 4, NEWCOFF.SEC_I, 0, NEWCOFF.RELOC_SECTION
+					end virtual
+					dd 0		; RelocOffset (section start)
+					dw 0		; RelocSegment
+					dw 0		; flags: no column info
+					dd CS_SIZE	; code length covered
+					CV_IDX = 0
+					while CV_IDX < NUMBER_OF_LINES
+						load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
+						if L_SEC = SEC_I
+							; a run: consecutive markers of this section
+							; sharing one file (other sections interleave)
+							load CV_RUNF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.srcfile
+							CV_N = 0
+							CV_SCAN = CV_IDX
+							while CV_SCAN < NUMBER_OF_LINES
+								load L_SEC : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.sect
+								if L_SEC = SEC_I
+									load L_FILE : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.srcfile
+									if L_FILE <> CV_RUNF
+										break
+									end if
+									CV_N = CV_N + 1
+								end if
+								CV_SCAN = CV_SCAN + 1
+							end while
+							dd CV_RUNF * 8, CV_N, 12 + CV_N * 8
+							while CV_N > 0
+								load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
+								if L_SEC = SEC_I
+									load L_OFF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
+									load L_LINE : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.line
+									dd L_OFF
+									dd (L_LINE and 0xFFFFFF) or 0x80000000
+									CV_N = CV_N - 1
+								end if
+								CV_IDX = CV_IDX + 1
+							end while
+						else
+							CV_IDX = CV_IDX + 1
+						end if
+					end while
+					DBG_SIZE = $% - DBG_OFF
+					DBG_FLAGS = IMAGE_SCN_CNT_INITIALIZED_DATA or IMAGE_SCN_MEM_READ or IMAGE_SCN_MEM_DISCARDABLE or IMAGE_SCN_ALIGN_1BYTES
+					DBG_SEL = IMAGE_COMDAT_SELECT_NODUPLICATES
+					DBG_ASSOC = 0
+					if CS_FLAGS and IMAGE_SCN_LNK_COMDAT
+						DBG_FLAGS = DBG_FLAGS or IMAGE_SCN_LNK_COMDAT
+						DBG_SEL = IMAGE_COMDAT_SELECT_ASSOCIATIVE
+						DBG_ASSOC = SEC_I + 1
+					end if
+					virtual section_records
+						SECTION_RECORD '.debug$S', 0, NEWCOFF.DBG_FLAGS, NEWCOFF.DBG_OFF,\
+							NEWCOFF.DBG_SIZE, NEWCOFF.DBG_RELOC1, 2,\
+							NEWCOFF.DBG_SEL, NEWCOFF.DBG_ASSOC, 0, 0, 0
+					end virtual
+				end if
+			end repeat
+		end if
+
 		; counts fall out of the staging block lengths
 		virtual section_records
 			NUMBER_OF_SECTIONS := ($ - $$) / sizeof SECTION_RECORD
@@ -679,20 +899,16 @@ postpone
 			load SEC_FLAGS : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.flags
 			if SEC_FLAGS and IMAGE_SCN_LNK_COMDAT
 				load SEC_HASPUB : 4 from section_pub_lu : (%-1) * 8 + 4
-				if SEC_HASPUB = 0
-					load SEC_SEL : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.selection
+				load SEC_SEL : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.selection
+				if SEC_HASPUB = 0 & SEC_SEL <> IMAGE_COMDAT_SELECT_ASSOCIATIVE
+					; associative sections need no leader symbol
 					if SEC_SEL <> IMAGE_COMDAT_SELECT_NODUPLICATES
 						err 'COMDAT selection requires a PUBLIC symbol in the section'
 					end if
 					load S_NAME : 8 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.shortname
 					load S_POS : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.name_pos
 					virtual public_records
-						PUBLIC_RECORD \
-							shortname: S_NAME,\
-							name_pos: S_POS,\
-							value: 0,\
-							secnum: %,\
-							class: IMAGE_SYM_CLASS_STATIC
+						PUBLIC_RECORD NEWCOFF.S_NAME, NEWCOFF.S_POS, 0, %, IMAGE_SYM_CLASS_STATIC, 0, 0
 					end virtual
 				end if
 			end if
@@ -701,9 +917,19 @@ postpone
 			NUMBER_OF_PUBLIC_RECORDS := ($ - $$) / sizeof PUBLIC_RECORD
 		end virtual
 
-		; canonical symbol layout - indices are pure arithmetic
+		; canonical symbol layout. Weak externals carry one aux record,
+		; so per-public symbol indices come from one prefix scan
 		PUB_BASE = NUMBER_OF_SECTIONS * 2
-		EXT_BASE = PUB_BASE + NUMBER_OF_PUBLIC_RECORDS
+		virtual at 0
+			pub_index_lu:: db NUMBER_OF_PUBLIC_RECORDS * 4 dup 0
+		end virtual
+		PUB_ENTRIES = 0
+		repeat NUMBER_OF_PUBLIC_RECORDS
+			store (PUB_BASE + PUB_ENTRIES) and 0xFFFFFFFF : 4 at pub_index_lu : (%-1) * 4
+			load P_AUX : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.aux
+			PUB_ENTRIES = PUB_ENTRIES + 1 + P_AUX
+		end repeat
+		EXT_BASE = PUB_BASE + PUB_ENTRIES
 		NUMBER_OF_SYMBOLS := EXT_BASE + NUMBER_OF_EXTERNS
 
 		; EXACT_MATCH checksums: reflected CRC-32 (poly 0xEDB88320), seed 0,
@@ -735,12 +961,24 @@ postpone
 		end irpv
 
 		; ---- relocations: resolve symbolic targets and kinds, emit ----
+		; per section, so a count above 65535 can prepend the overflow
+		; placeholder (IMAGE_SCN_LNK_NRELOC_OVFL: real count+1 in the
+		; VirtualAddress of an extra first relocation)
 		RELOCATIONS_OFFSET = $%
-		repeat NUMBER_OF_RELOCATIONS
-			load R_OFF : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.offset
-			load R_TGT : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.target
-			load R_KIND : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.target_kind
-			load R_RELOC : 4 from reloc_records : (%-1) * sizeof RELOC_RECORD + RELOC_RECORD.kind
+		repeat NUMBER_OF_SECTIONS
+		    RSEC_I = % - 1
+		    load RSEC_1ST : 4 from section_records : RSEC_I * sizeof SECTION_RECORD + SECTION_RECORD.reloc_1st
+		    load RSEC_N : 4 from section_records : RSEC_I * sizeof SECTION_RECORD + SECTION_RECORD.reloc_count
+		    if RSEC_N > 65535
+			dd RSEC_N + 1, 0
+			dw 0
+		    end if
+		    repeat RSEC_N
+			R_I = RSEC_1ST + % - 1
+			load R_OFF : 4 from reloc_records : R_I * sizeof RELOC_RECORD + RELOC_RECORD.offset
+			load R_TGT : 4 from reloc_records : R_I * sizeof RELOC_RECORD + RELOC_RECORD.target
+			load R_KIND : 4 from reloc_records : R_I * sizeof RELOC_RECORD + RELOC_RECORD.target_kind
+			load R_RELOC : 4 from reloc_records : R_I * sizeof RELOC_RECORD + RELOC_RECORD.kind
 			if R_KIND = 1
 				R_SYM = EXT_BASE + R_TGT
 			else
@@ -748,7 +986,7 @@ postpone
 				; a reference into a folded COMDAT rebinds to the survivor
 				load R_REFPUB : 4 from section_pub_lu : R_TGT * 8
 				if R_REFPUB > 0
-					R_SYM = PUB_BASE + R_REFPUB - 1
+					load R_SYM : 4 from pub_index_lu : (R_REFPUB - 1) * 4
 				else
 					R_SYM = R_TGT * 2
 				end if
@@ -763,6 +1001,10 @@ postpone
 					R_TYPE = IMAGE_REL_AMD64_REL32
 				else if R_RELOC = RELOC_ABS64
 					R_TYPE = IMAGE_REL_AMD64_ADDR64
+				else if R_RELOC = RELOC_SECREL32
+					R_TYPE = IMAGE_REL_AMD64_SECREL
+				else if R_RELOC = RELOC_SECTION
+					R_TYPE = IMAGE_REL_AMD64_SECTION
 				else
 					err 'AMD64 COFF has no 64-bit RVA relocation type'
 					R_TYPE = 0
@@ -774,6 +1016,10 @@ postpone
 					R_TYPE = IMAGE_REL_I386_DIR32
 				else if R_RELOC = RELOC_RVA32 | R_RELOC = RELOC_RVA64
 					R_TYPE = IMAGE_REL_I386_DIR32NB
+				else if R_RELOC = RELOC_SECREL32
+					R_TYPE = IMAGE_REL_I386_SECREL
+				else if R_RELOC = RELOC_SECTION
+					R_TYPE = IMAGE_REL_I386_SECTION
 				else
 					R_TYPE = IMAGE_REL_I386_REL32
 				end if
@@ -781,6 +1027,7 @@ postpone
 			dd R_OFF and 0xFFFFFFFF
 			dd R_SYM and 0xFFFFFFFF
 			dw R_TYPE and 0xFFFF
+		    end repeat
 		end repeat
 
 		; ---- symbol table: sections, publics, synthetics, externs ----
@@ -804,7 +1051,11 @@ postpone
 			load SEC_FLAGS : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.flags
 			load SEC_CRC : 4 from section_records : (%-1) * sizeof SECTION_RECORD + SECTION_RECORD.xm_crc
 			dd SEC_SIZE
-			dw SEC_NRELOC and 0xFFFF, 0
+			if SEC_NRELOC > 65535
+				dw 0xFFFF, 0
+			else
+				dw SEC_NRELOC and 0xFFFF, 0
+			end if
 			dd SEC_CRC
 			SEC_ASSOC = 0
 			SEC_SEL = 0
@@ -835,10 +1086,18 @@ postpone
 			load PUB_VALUE : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.value
 			load PUB_SECNUM : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.secnum
 			load PUB_CLASS : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.class
+			load PUB_AUX : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.aux
 			dd PUB_VALUE
 			dd PUB_SECNUM and 0xFFFFFFFF	; 32-bit, signed (-1 absolute)
 			dw 0
-			db PUB_CLASS and 0xFF, 0
+			db PUB_CLASS and 0xFF, PUB_AUX and 0xFF
+			if PUB_AUX > 0
+				; weak external aux: tag symbol + search characteristics
+				load PUB_TAG : 4 from public_records : (%-1) * sizeof PUBLIC_RECORD + PUBLIC_RECORD.tag
+				dd (EXT_BASE + PUB_TAG) and 0xFFFFFFFF
+				dd IMAGE_WEAK_EXTERN_SEARCH_ALIAS
+				dd 0, 0, 0		; pad to 20 bytes
+			end if
 		end repeat
 		repeat NUMBER_OF_EXTERNS
 			load EXT_NAMEPOS : 4 from extern_records : (%-1) * sizeof EXTERN_RECORD + EXTERN_RECORD.name_pos
@@ -861,6 +1120,7 @@ postpone
 		db byte_sequence
 
 		; ---- section headers, into the block reserved at file start ---
+		OVFL_BEFORE = 0
 		repeat NUMBER_OF_SECTIONS
 			SEC_I = % - 1
 			load SEC_NAMEPOS : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.name_pos
@@ -883,11 +1143,14 @@ postpone
 			store SEC_SIZE : 4 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.SizeOfRawData
 			store SEC_RAWOFF : 4 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.PointerToRawData
 			if SEC_NRELOC > 0
+				store (RELOCATIONS_OFFSET + (SEC_RELOC1 + OVFL_BEFORE) * sizeof IMAGE_RELOCATION) and 0xFFFFFFFF : 4 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.PointerToRelocations
 				if SEC_NRELOC > 65535
-					err 'NEWCOFF: IMAGE_SCN_LNK_NRELOC_OVFL not implemented yet (readme.md roadmap)'
+					SEC_FLAGS = SEC_FLAGS or IMAGE_SCN_LNK_NRELOC_OVFL
+					store 0xFFFF : 2 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.NumberOfRelocations
+					OVFL_BEFORE = OVFL_BEFORE + 1
+				else
+					store SEC_NRELOC and 0xFFFF : 2 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.NumberOfRelocations
 				end if
-				store (RELOCATIONS_OFFSET + SEC_RELOC1 * sizeof IMAGE_RELOCATION) and 0xFFFFFFFF : 4 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.PointerToRelocations
-				store SEC_NRELOC and 0xFFFF : 2 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.NumberOfRelocations
 			end if
 			store SEC_FLAGS : 4 at NEWCOFF:Sections + SEC_I * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Characteristics
 		end repeat

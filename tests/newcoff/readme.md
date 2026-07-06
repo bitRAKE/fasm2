@@ -179,11 +179,39 @@ the previous emission byte-for-byte, timestamp aside.)
 | EXACT_MATCH aux CheckSum | done, matches legacy/clang bit-for-bit |
 | `public` (external / `static` / `as` / absolute) | done |
 | `extrn` (`as`, `:size`) | done |
-| relocations | semantic kinds abs32/rva32/rel32/abs64/rva64, mapped per machine in POSTPONE; fold-safe offset-0 redirection |
-| synthetic static for public-less NODUPLICATES COMDAT | done (appended in POSTPONE) |
-| weak externals (`public` of an extern value) | **not yet** — errs; needs a per-public aux count in the layout arithmetic |
-| >65535 relocations/section (`NRELOC_OVFL`) | **not yet** — errs |
-| CodeView debug (`.debug$S`/`$T`), SECREL/SECTION relocs | roadmap — the records model was shaped for this: synthetic sections and their relocations can be appended in POSTPONE, where sizes and symbol indices already exist |
+| relocations | semantic kinds abs32/rva32/rel32/abs64/rva64/secrel32/section, mapped per machine in POSTPONE; fold-safe offset-0 redirection |
+| synthetic static for public-less NODUPLICATES COMDAT | done (appended in POSTPONE; associative sections are exempt — they need no leader symbol) |
+| weak externals (`public` of an extern value) | done — WEAK_EXTERNAL + alias-tag aux record; per-public symbol indices come from a prefix scan, so variable-length entries cost one table |
+| >65535 relocations/section (`NRELOC_OVFL`) | done — flag + 0xFFFF in the header, real count+1 in the VirtualAddress of an extra first relocation |
+| CodeView line information (`cvline` → `.debug$S`) | done (see below) |
+| CodeView symbols/types (`S_GPROC32_ID`, `.debug$T`), file checksums | roadmap — the line machinery gives them a template |
+
+## CodeView line information
+
+`cvline` records a source-line marker at the current position (with no
+arguments, the invocation site's `__LINE__`/`__FILE__` — which fasmg
+reports for the *invocation*, even from inside a macro). POSTPONE turns
+the markers into C13 debug sections, and this is the payoff feature for
+the whole records design — everything it needs (final sizes, section
+numbers, symbol indices, string offsets) exists by then, and a section
+born in POSTPONE is just one more `SECTION_RECORD`:
+
+- one shared `.debug$S` carries the F3 file-name string table and the F4
+  checksum table (once per object, as the C13 format expects);
+- each code section with markers gets its own `.debug$S` holding an F2
+  lines subsection, bound to the code by SECREL32 + SECTION relocations —
+  and marked **COMDAT ASSOCIATIVE** to its code section when that is a
+  COMDAT, so discarded functions take their line info with them
+  (`/OPT:REF` on the cv test drops `helper` and its debug section
+  together; no dangling-relocation errors);
+- the fold-safe offset-0 redirection doubles as symbol binding: the
+  SECREL target resolves to the function's external symbol, so
+  `llvm-readobj --codeview` shows a proper `LinkageName`.
+
+Verified: `link /DEBUG:FULL` and `lld-link /DEBUG:FULL` both produce a
+PDB whose line table maps the code back to the source (`llvm-pdbutil
+dump -l`: `cv.asm`, lines 10/12/14 at offsets 0/4/9). Markers are manual
+for now; hooking them into `proc`-style macros is the natural next layer.
 
 ## Testing
 
@@ -202,6 +230,14 @@ tests\newcoff\_build.cmd        (VS dev prompt, or LLVM on PATH)
 - **fold_a.asm / fold_b.asm** — two objects each defining an identical
   `.rdata$tab` EXACT_MATCH COMDAT and reading it through their own
   reference; after the fold both must observe the survivor. Must exit 97.
+- **weak_a/b/c.asm** — `weak_b` publishes `maybe_get` as a weak external
+  whose alias tag is `weak_a`'s `real_get`; `weak_c` calls through the
+  weak name. Must exit 97.
+- **cv.asm** — `cvline` markers through `/DEBUG:FULL` to a PDB; also
+  demonstrates an unreferenced COMDAT function dragging its associative
+  `.debug$S` out of the image. Must exit 97.
+- **ovfl.asm** — 65600 relocations in one section; overflow encoding
+  accepted by both linkers. Must exit 97.
 
 Verified against `lld-link` and MSVC `link` (14.44), inspected with
 `llvm-readobj`: identical EXACT_MATCH checksums from both backends, external
