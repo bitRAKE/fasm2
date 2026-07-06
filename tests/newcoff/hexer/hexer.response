@@ -1,0 +1,9 @@
+/RELEASE
+/SUBSYSTEM:CONSOLE,6.02
+/OPT:REF
+/MAP:hexer.map
+/NODEFAULTLIB
+/DEBUG:FULL
+/PDB:hexer.pdb
+/OUT:hexer.exe
+kernel32.lib

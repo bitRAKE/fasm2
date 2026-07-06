@@ -183,35 +183,17 @@ the previous emission byte-for-byte, timestamp aside.)
 | synthetic static for public-less NODUPLICATES COMDAT | done (appended in POSTPONE; associative sections are exempt — they need no leader symbol) |
 | weak externals (`public` of an extern value) | done — WEAK_EXTERNAL + alias-tag aux record; per-public symbol indices come from a prefix scan, so variable-length entries cost one table |
 | >65535 relocations/section (`NRELOC_OVFL`) | done — flag + 0xFFFF in the header, real count+1 in the VirtualAddress of an extra first relocation |
-| CodeView line information (`cvline` → `.debug$S`) | done (see below) |
-| CodeView symbols/types (`S_GPROC32_ID`, `.debug$T`), file checksums | roadmap — the line machinery gives them a template |
+| CodeView lines, procedures, labels; x64 unwind (`.pdata`/`.xdata`) | done — factored into [`newcoffcv.inc`](newcoffcv.inc); scope and progression in [`codeview.md`](codeview.md) |
 
-## CodeView line information
+## CodeView debug information
 
-`cvline` records a source-line marker at the current position (with no
-arguments, the invocation site's `__LINE__`/`__FILE__` — which fasmg
-reports for the *invocation*, even from inside a macro). POSTPONE turns
-the markers into C13 debug sections, and this is the payoff feature for
-the whole records design — everything it needs (final sizes, section
-numbers, symbol indices, string offsets) exists by then, and a section
-born in POSTPONE is just one more `SECTION_RECORD`:
-
-- one shared `.debug$S` carries the F3 file-name string table and the F4
-  checksum table (once per object, as the C13 format expects);
-- each code section with markers gets its own `.debug$S` holding an F2
-  lines subsection, bound to the code by SECREL32 + SECTION relocations —
-  and marked **COMDAT ASSOCIATIVE** to its code section when that is a
-  COMDAT, so discarded functions take their line info with them
-  (`/OPT:REF` on the cv test drops `helper` and its debug section
-  together; no dangling-relocation errors);
-- the fold-safe offset-0 redirection doubles as symbol binding: the
-  SECREL target resolves to the function's external symbol, so
-  `llvm-readobj --codeview` shows a proper `LinkageName`.
-
-Verified: `link /DEBUG:FULL` and `lld-link /DEBUG:FULL` both produce a
-PDB whose line table maps the code back to the source (`llvm-pdbutil
-dump -l`: `cv.asm`, lines 10/12/14 at offsets 0/4/9). Markers are manual
-for now; hooking them into `proc`-style macros is the natural next layer.
+Lives in [`newcoffcv.inc`](newcoffcv.inc) with its own scope/progression
+document, [`codeview.md`](codeview.md): C13 line tables, procedure and label
+symbols, producer identification, and x64 unwind data — all synthesized in
+POSTPONE from marker records, with debug sections COMDAT-ASSOCIATIVE to
+their code. The `tests/newcoff/hexer` build exercises it end to end
+(`NEWCOFF.DEBUG` tags every source line; the `static_rsp` prologue wrappers
+mark procedures, frames and USES registers automatically).
 
 ## Testing
 

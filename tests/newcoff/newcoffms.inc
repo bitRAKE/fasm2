@@ -52,7 +52,7 @@
 
 include 'macro/struct.inc'
 
-struct IMAGE_SECTION_HEADER
+struct IMAGE_SECTION_HEADER, packed
 	Name			db 8 dup ?
 	VirtualSize		dd ?
 	VirtualAddress		dd ?
@@ -65,13 +65,13 @@ struct IMAGE_SECTION_HEADER
 	Characteristics 	dd ?
 ends
 
-struct IMAGE_RELOCATION
+struct IMAGE_RELOCATION, packed
 	VirtualAddress		dd ?
 	SymbolTableIndex	dd ?
 	Type			dw ?
 ends
 
-struct IMAGE_SYMBOL_EX
+struct IMAGE_SYMBOL_EX, packed
 	ShortName		db 8 dup ?
 	Value			dd ?
 	SectionNumber		dd ?
@@ -85,7 +85,7 @@ ends
 ; instantiation passes every field, so no record byte is ever uninitialized.
 ; ---------------------------------------------------------------------------
 
-struct SECTION_RECORD
+struct SECTION_RECORD, packed
 	shortname	dq ?	; zero-padded name, 0 if long
 	name_pos	dd ?	; string table offset of long name (0 = short)
 	flags		dd ?	; Characteristics
@@ -100,7 +100,7 @@ struct SECTION_RECORD
 	xm_crc		dd ?	; EXACT_MATCH CRC-32 (filled in by POSTPONE)
 ends
 
-struct PUBLIC_RECORD
+struct PUBLIC_RECORD, packed
 	shortname	dq ?
 	name_pos	dd ?
 	value		dd ?
@@ -110,20 +110,12 @@ struct PUBLIC_RECORD
 	tag		dd ?	; weak external: extern ordinal of the alias tag
 ends
 
-struct EXTERN_RECORD
+struct EXTERN_RECORD, packed
 	shortname	dq ?
 	name_pos	dd ?
 ends
 
-struct LINE_RECORD
-	; 'file' and 'section' are taken (directive / macro), hence the names
-	srcfile 	dd ?	; ordinal into cv_files (FileID = ordinal * 8)
-	line		dd ?
-	sect		dd ?	; 0-based section index
-	ofs		dd ?	; section-relative code offset
-ends
-
-struct RELOC_RECORD
+struct RELOC_RECORD, packed
 	offset		dd ?	; offset in section
 	target		dd ?	; section index (target_kind 0) or extern ordinal (1)
 	target_kind	dd ?
@@ -248,21 +240,6 @@ namespace NEWCOFF
 
 	virtual at 0
 		string_table:: dd STRING_TABLE_SIZE
-	end virtual
-
-	; CodeView staging: cvline markers, and the F3 string / F4 checksum
-	; material they reference (offset 0 of the C13 string table is the
-	; empty string by convention)
-	virtual at 0
-		line_records::
-	end virtual
-
-	virtual at 0
-		cv_strings:: db 0
-	end virtual
-
-	virtual at 0
-		cv_files::
 	end virtual
 
 	; reflected CRC-32 nibble table (polynomial 0xEDB88320). The COMDAT
@@ -608,46 +585,10 @@ macro extrn? declaration*
 	end namespace
 end macro
 
-; record a CodeView source-line marker at the current position; POSTPONE
-; synthesizes '.debug$S' line subsections from the markers (one debug
-; section per code section, ASSOCIATIVE when the code is COMDAT). With no
-; arguments the invocation site's line and file are captured.
-macro cvline? lnum:__LINE__, fname:__FILE__
-	namespace NEWCOFF
-		CV_NAME = fname
-		virtual cv_files
-			CV_FILE_COUNT = ($ - $$) / 4
-		end virtual
-		virtual cv_strings
-			CV_STR_END = $
-		end virtual
-		CV_ORD = -1
-		repeat CV_FILE_COUNT
-			load CV_FOFS : 4 from cv_files : (%-1) * 4
-			if CV_FOFS + lengthof CV_NAME + 1 <= CV_STR_END
-				load CV_CAND : lengthof CV_NAME + 1 from cv_strings : CV_FOFS
-				if CV_CAND = CV_NAME
-					CV_ORD = % - 1
-					break
-				end if
-			end if
-		end repeat
-		if CV_ORD < 0
-			CV_ORD = CV_FILE_COUNT
-			virtual cv_strings
-				CV_FOFS = $
-				db CV_NAME, 0
-			end virtual
-			virtual cv_files
-				dd CV_FOFS
-			end virtual
-		end if
-		CV_OFFSET = $ - SECTION_BASE
-		virtual line_records
-			LINE_RECORD NEWCOFF.CV_ORD, lnum, NEWCOFF.SECTION_INDEX, NEWCOFF.CV_OFFSET
-		end virtual
-	end namespace
-end macro
+; CodeView debug support: cvline/cvproc/cvframe/cvendp/cvlabel markers,
+; the NEWCOFF.DEBUG per-line interceptor, and the POSTPONE synthesis of
+; '.debug$S' and '.pdata'/'.xdata' sections - see codeview.md
+include 'newcoffcv.inc'
 
 element NEWCOFF.IMAGE_BASE
 RVA? equ -NEWCOFF.IMAGE_BASE+
@@ -723,141 +664,9 @@ postpone
 			MACHINE := IMAGE_FILE_MACHINE_I386
 		end if
 
-		; ---- CodeView: synthesize '.debug$S' from the cvline markers --
-		; Debug info is where deferred emission earns its keep: sizes,
-		; section numbers and relocation targets all exist here, and a
-		; section born in POSTPONE is just one more record.
-		virtual line_records
-			NUMBER_OF_LINES = ($ - $$) / sizeof LINE_RECORD
-		end virtual
-		if NUMBER_OF_LINES > 0
-			virtual section_records
-				USER_SECTIONS = ($ - $$) / sizeof SECTION_RECORD
-			end virtual
-			virtual cv_files
-				CV_FILE_COUNT = ($ - $$) / 4
-			end virtual
-			virtual cv_strings
-				CV_STR_SIZE = $
-			end virtual
-
-			; one shared, always-kept '.debug$S' carries the per-object
-			; C13 material: file name strings (F3) + checksum table (F4)
-			virtual reloc_records
-				DBG_RELOC1 = ($ - $$) / sizeof RELOC_RECORD
-			end virtual
-			DBG_OFF = $%
-			dd 4			; CV_SIGNATURE_C13
-			dd 0xF3, CV_STR_SIZE
-			load byte_sequence : CV_STR_SIZE from cv_strings : 0
-			db byte_sequence
-			db (4 - CV_STR_SIZE) and 3 dup 0
-			dd 0xF4, CV_FILE_COUNT * 8
-			repeat CV_FILE_COUNT
-				load CV_FOFS : 4 from cv_files : (%-1) * 4
-				dd CV_FOFS
-				db 0, 0 	; no checksum recorded
-				dw 0
-			end repeat
-			DBG_SIZE = $% - DBG_OFF
-			DBG_FLAGS = IMAGE_SCN_CNT_INITIALIZED_DATA or IMAGE_SCN_MEM_READ or IMAGE_SCN_MEM_DISCARDABLE or IMAGE_SCN_ALIGN_1BYTES
-			virtual section_records
-				SECTION_RECORD '.debug$S', 0, NEWCOFF.DBG_FLAGS, NEWCOFF.DBG_OFF,\
-					NEWCOFF.DBG_SIZE, NEWCOFF.DBG_RELOC1, 0,\
-					IMAGE_COMDAT_SELECT_NODUPLICATES, 0, 0, 0, 0
-			end virtual
-
-			; one '.debug$S' of line subsections (F2) per code section
-			; with markers - ASSOCIATIVE to its section when that is a
-			; COMDAT, so the lines live and die with the code
-			repeat USER_SECTIONS
-				SEC_I = % - 1
-				CV_L = 0
-				CV_R = 0
-				CV_LASTF = -1
-				repeat NUMBER_OF_LINES
-					load L_SEC : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.sect
-					if L_SEC = SEC_I
-						CV_L = CV_L + 1
-						load L_FILE : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.srcfile
-						if L_FILE <> CV_LASTF
-							CV_R = CV_R + 1
-							CV_LASTF = L_FILE
-						end if
-					end if
-				end repeat
-				if CV_L > 0
-					load CS_FLAGS : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.flags
-					load CS_SIZE : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.size
-					virtual reloc_records
-						DBG_RELOC1 = ($ - $$) / sizeof RELOC_RECORD
-					end virtual
-					DBG_OFF = $%
-					dd 4
-					dd 0xF2, 12 + CV_R * 12 + CV_L * 8
-					; SECREL32 + SECTION bind the chunk to the code section
-					DBG_FLD = $% - DBG_OFF
-					virtual reloc_records
-						RELOC_RECORD NEWCOFF.DBG_FLD, NEWCOFF.SEC_I, 0, NEWCOFF.RELOC_SECREL32
-						RELOC_RECORD NEWCOFF.DBG_FLD + 4, NEWCOFF.SEC_I, 0, NEWCOFF.RELOC_SECTION
-					end virtual
-					dd 0		; RelocOffset (section start)
-					dw 0		; RelocSegment
-					dw 0		; flags: no column info
-					dd CS_SIZE	; code length covered
-					CV_IDX = 0
-					while CV_IDX < NUMBER_OF_LINES
-						load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
-						if L_SEC = SEC_I
-							; a run: consecutive markers of this section
-							; sharing one file (other sections interleave)
-							load CV_RUNF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.srcfile
-							CV_N = 0
-							CV_SCAN = CV_IDX
-							while CV_SCAN < NUMBER_OF_LINES
-								load L_SEC : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.sect
-								if L_SEC = SEC_I
-									load L_FILE : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.srcfile
-									if L_FILE <> CV_RUNF
-										break
-									end if
-									CV_N = CV_N + 1
-								end if
-								CV_SCAN = CV_SCAN + 1
-							end while
-							dd CV_RUNF * 8, CV_N, 12 + CV_N * 8
-							while CV_N > 0
-								load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
-								if L_SEC = SEC_I
-									load L_OFF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
-									load L_LINE : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.line
-									dd L_OFF
-									dd (L_LINE and 0xFFFFFF) or 0x80000000
-									CV_N = CV_N - 1
-								end if
-								CV_IDX = CV_IDX + 1
-							end while
-						else
-							CV_IDX = CV_IDX + 1
-						end if
-					end while
-					DBG_SIZE = $% - DBG_OFF
-					DBG_FLAGS = IMAGE_SCN_CNT_INITIALIZED_DATA or IMAGE_SCN_MEM_READ or IMAGE_SCN_MEM_DISCARDABLE or IMAGE_SCN_ALIGN_1BYTES
-					DBG_SEL = IMAGE_COMDAT_SELECT_NODUPLICATES
-					DBG_ASSOC = 0
-					if CS_FLAGS and IMAGE_SCN_LNK_COMDAT
-						DBG_FLAGS = DBG_FLAGS or IMAGE_SCN_LNK_COMDAT
-						DBG_SEL = IMAGE_COMDAT_SELECT_ASSOCIATIVE
-						DBG_ASSOC = SEC_I + 1
-					end if
-					virtual section_records
-						SECTION_RECORD '.debug$S', 0, NEWCOFF.DBG_FLAGS, NEWCOFF.DBG_OFF,\
-							NEWCOFF.DBG_SIZE, NEWCOFF.DBG_RELOC1, 2,\
-							NEWCOFF.DBG_SEL, NEWCOFF.DBG_ASSOC, 0, 0, 0
-					end virtual
-				end if
-			end repeat
-		end if
+		; CodeView + unwind synthesis (newcoffcv.inc): debug sections are
+		; appended as ordinary records, before the counts are taken
+		codeview_synthesize
 
 		; counts fall out of the staging block lengths
 		virtual section_records

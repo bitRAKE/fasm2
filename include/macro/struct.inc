@@ -1,3 +1,5 @@
+if ~ definite STRUCT_INC
+STRUCT_INC := 1
 
 define struct? struct?
 
@@ -455,3 +457,5 @@ macro struct?.check name
 		name.__alignment := maxalignment
 	end if
 end macro
+
+end if ;~ definite STRUCT_INC
