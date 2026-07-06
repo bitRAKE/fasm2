@@ -201,6 +201,12 @@ mark procedures, frames and USES registers automatically).
 tests\newcoff\_build.cmd        (VS dev prompt, or LLVM on PATH)
 ```
 
+Note on include resolution: fasmg does not search relative to the
+*including* file, so `include '..\newcoff.inc'` from a subdirectory fails
+unless the harness directory is on the INCLUDE path — the hexer build
+script does `set "INCLUDE=%~dp0.."` before invoking fasm2 for exactly
+this reason.
+
 - **smoke.asm** — 64-bit: every relocation kind, an uninitialized section,
   an EXACT_MATCH COMDAT, out-of-order `public` declarations. Assembled
   through *both* backends (`-i"SMOKE_LEGACY=1"` selects the forwarded
