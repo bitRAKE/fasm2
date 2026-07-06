@@ -11,16 +11,18 @@ what order makes sense.
 
 ## Done since this plan was written
 
-- **SHA-256 file checksums in F4** (kind 3). The hash library became
-  [`include/macro/sha256.inc`](../include/macro/sha256.inc) with the
-  area-indexed interface (`AreaSha256 msg` publishes digest bytes as
-  `msg.0`..`msg.31` — the freqdump.g idiom, hash-size agnostic);
-  [`scripts/sha256.inc`](../scripts/sha256.inc) asserts it against the
-  NESSIE vectors. POSTPONE re-reads each registered source with `file`
-  and hashes it; digests verified equal to `Get-FileHash`. Cost measured:
-  the full 4-object hexer debug build is ~2 s; `NEWCOFF.NOCHECKSUM=1`
-  opts out (kind none, zeroed). Two fasmg context lessons were paid for
-  en route — recorded under the guardrails below.
+- **SHA-256 file checksums in F4** (kind 3). The hash library is
+  [`include/macro/sha256.inc`](../include/macro/sha256.inc):
+  `SHA256.calc <byte generator>` consumes any generator statement
+  (`file X`, `db ...`, a macro) directly — nothing is copied — and
+  leaves the digest in `SHA256.result` as a 32-character string, so
+  other hash functions can share the interface regardless of digest
+  size. [`scripts/sha256.inc`](../scripts/sha256.inc) asserts it against
+  the NESSIE vectors. The F4 emitter re-reads each registered source
+  with `file` and hashes it; digests verified equal to `Get-FileHash`.
+  Cost: the full 4-object hexer debug build is ~1.7 s;
+  `NEWCOFF.NOCHECKSUM=1` opts out (kind none, zeroed). The namespace
+  lessons paid for en route are guardrails 4-6 below.
 
 ## Next — unblocked
 
@@ -91,12 +93,19 @@ Lessons already paid for — respect them in all of the above:
 3. Records are append-once; anything that looks like mutation becomes a
    POSTPONE scan. Counts derive from `($ - $$) / sizeof RECORD`, never
    from variables.
-4. Qualified paths are not anchors: `SHA256.K0` binds to
-   `CALLER.SHA256.K0` the moment anything creates a `SHA256` member in
-   the caller's namespace — and your own writes (`SHA256.h1 = ...`) do
-   exactly that. Library macros that must run from any namespace hang
-   state off a macro-LOCAL symbol (locals carry their own context) and
-   keep globals to flat single tokens, which fall back correctly.
+4. **The anchor rule**: a namespace whose members are accessed with
+   dotted names from other namespaces MUST have its anchor DEFINED as a
+   real symbol (`SHA256::` before `namespace SHA256`, like `NEWCOFF::`).
+   An anchor auto-created by a bare NAMESPACE directive is invisible to
+   identifier lookup, so `SHA256.calc` from inside another namespace
+   becomes `CALLER.SHA256.calc` and fails — invocation, reads and
+   writes alike. With a defined anchor, all three resolve to the global
+   namespace from anywhere.
 5. Never open `namespace` on a macro-local label: its parent chain
    excludes the global scope, so even directives (`repeat`, `iterate`)
    stop resolving inside.
+6. Corollary via struct.inc: anonymous struct instances attach to the
+   *current parent label* — if a macro just defined a macro-local label
+   (like a hash's scratch area), the next instance is born under a
+   local and rule 5 bites. Re-anchor with a plain label first
+   (`cv_reanchor:` in the F4 emitter).

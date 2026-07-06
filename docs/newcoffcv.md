@@ -52,11 +52,12 @@ a REX prefix). Nothing is annotated by hand in `examples/hexer`.
 - **One shared `.debug$S`** (always kept): `S_OBJNAME` + `S_COMPILE3`
   (producer identification), the F3 file-name string table and the F4 file
   checksum table — **SHA-256 (kind 3)** of each source's bytes, hashed at
-  assembly time through the `AreaSha256` interface
-  ([`include/macro/sha256.inc`](../include/macro/sha256.inc): the digest is
-  published as indexed sub-symbols of the area name, `msg.0`..`msg.31`, so
-  other hash functions can share the interface regardless of digest size).
-  `NEWCOFF.NOCHECKSUM=1` skips the hashing (kind none, zeroed entries).
+  assembly time: `SHA256.calc file <name>` feeds the file straight into
+  the hash (no copy), and `db SHA256.result` emits the 32-byte digest
+  string ([`include/macro/sha256.inc`](../include/macro/sha256.inc);
+  other hash functions can share the generator-in/string-out interface
+  regardless of digest size). `NEWCOFF.NOCHECKSUM=1` skips the hashing
+  (kind none, zeroed entries).
 - **One `.debug$S` per CODE section with debug material** — line records
   from data sections are ignored — holding an F2 lines subsection and an F1
   symbols subsection (`S_GPROC32` + `S_FRAMEPROC` + `S_END` per procedure,
@@ -128,7 +129,7 @@ Modules view), run against any file, and check:
 | 2 | `S_GPROC32`/`S_FRAMEPROC`/`S_END`, `S_LABEL32`, `S_OBJNAME`/`S_COMPILE3`; `.pdata`/`.xdata` from the prologue facts | **done** |
 | 3 | `S_REGREL32` locals/params (rsp-relative names from the proc macros; primitive type indices < 0x1000 need no `.debug$T`) | next |
 | 4 | `S_CONSTANT` for equates, `S_GDATA32`/`S_LDATA32` for data symbols incl. statics | planned |
-| 5 | SHA-256 file checksums in F4 (`AreaSha256` interface; `file` re-reads the source bytes in POSTPONE) | **done** |
+| 5 | SHA-256 file checksums in F4 (`SHA256.calc` generator interface; `file` re-reads the source bytes in POSTPONE) | **done** |
 | 6 | `.debug$T`: `LF_STRUCTURE`/`LF_ARRAY`/... bridged from `macro/struct.inc` definitions, `S_UDT`, typed data symbols | ambitious |
 | 7 | `S_INLINESITE` modelling *macro expansions* as inline frames | speculative, uniquely fasm |
 

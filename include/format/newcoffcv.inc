@@ -171,6 +171,11 @@ namespace NEWCOFF
 				load CV_FLEN : 4 from cv_files : (%-1) * 8 + 4
 				cv_emit_checksum CV_FOFS, CV_FLEN
 			end repeat
+			; re-anchor the current label: SHA256.calc's macro-local
+			; pad became the parent, and anonymous struct instances
+			; born under a macro-local lose directive resolution
+			; (the namespace-of-a-local rule)
+			cv_reanchor:
 			DBG_SIZE = $% - DBG_OFF
 			DBG_FLAGS = IMAGE_SCN_CNT_INITIALIZED_DATA or IMAGE_SCN_MEM_READ or IMAGE_SCN_MEM_DISCARDABLE or IMAGE_SCN_ALIGN_1BYTES
 			virtual section_records
@@ -492,25 +497,19 @@ namespace NEWCOFF
 	end macro
 
 	; one 40-byte F4 entry: the string offset, then the SHA-256 of the
-	; file's bytes via the AreaSha256 interface (a fresh macro expansion
-	; per file supplies a fresh local area; 'file' accepts the string
-	; value loaded from the name table)
+	; file's bytes - the generator statement feeds the hash directly,
+	; nothing is copied ('file' accepts the string value loaded from the
+	; name table); SHA256.result is the 32-byte digest string
 	macro cv_emit_checksum? strofs*, strlen*
-		local src
 		load CV_HNAME : strlen from cv_strings : strofs
 		dd strofs
 		if definite NEWCOFF.NOCHECKSUM & NEWCOFF.NOCHECKSUM
 			db 0, 0 		; no checksum recorded
 			db 32 dup 0
 		else
-			virtual at 0
-				src:: file CV_HNAME
-			end virtual
-			AreaSha256 src
+			SHA256.calc file NEWCOFF.CV_HNAME
 			db 32, 3		; CbChecksum, ChecksumKind: SHA-256
-			repeat 32, j:0
-				db src.j
-			end repeat
+			db SHA256.result
 		end if
 		dw 0			; pad the entry to 40 bytes
 	end macro
