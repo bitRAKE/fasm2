@@ -12,15 +12,17 @@
 ; 32-character string (trailing zero bytes preserved), so other hash
 ; functions can share the interface regardless of digest size.
 ;
-; THE ANCHOR RULE (why the SHA256:: line exists): dotted names resolve
+; THE ANCHOR RULE (why the DEFINE line exists): dotted names resolve
 ; their first component like any identifier - current namespace, then
 ; the fallback chain - but a namespace anchor auto-created by a bare
 ; NAMESPACE directive is invisible to that lookup, so from inside any
 ; other namespace SHA256.calc would become CALLER.SHA256.calc and fail.
-; With the anchor DEFINED as a real symbol, invocation, reads and even
-; writes of SHA256.* resolve to this global namespace from anywhere.
-; (Macro bodies still resolve at the CALL site, so everything in calc
-; is spelled SHA256.* or hangs off the macro-local pad.)
+; The self-referential define makes the anchor a searchable symbol
+; (the x86 package anchors x86/SSE/AVX the same way), after which
+; invocation, reads and even writes of SHA256.* resolve to this global
+; namespace from anywhere. (Macro bodies still resolve at the CALL
+; site, so everything in calc is spelled SHA256.* or hangs off the
+; macro-local pad.)
 ;
 ; Verified against the NESSIE test vectors: scripts/sha256.inc.
 
@@ -34,9 +36,7 @@ struc rightrotate? value*,bits*,range*
 		or (((value) and ((1 shl rshift)-1)) shl (range - rshift))
 end struc
 
-virtual at 0
-	SHA256::	; the defined anchor - see THE ANCHOR RULE above
-end virtual
+define SHA256 SHA256	; searchable anchor - see THE ANCHOR RULE above
 
 namespace SHA256
 

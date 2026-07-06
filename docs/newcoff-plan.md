@@ -94,13 +94,16 @@ Lessons already paid for — respect them in all of the above:
    POSTPONE scan. Counts derive from `($ - $$) / sizeof RECORD`, never
    from variables.
 4. **The anchor rule**: a namespace whose members are accessed with
-   dotted names from other namespaces MUST have its anchor DEFINED as a
-   real symbol (`SHA256::` before `namespace SHA256`, like `NEWCOFF::`).
-   An anchor auto-created by a bare NAMESPACE directive is invisible to
-   identifier lookup, so `SHA256.calc` from inside another namespace
-   becomes `CALLER.SHA256.calc` and fails — invocation, reads and
-   writes alike. With a defined anchor, all three resolve to the global
-   namespace from anywhere.
+   dotted names from other namespaces MUST have a searchable anchor —
+   the idiom is a self-referential define, `define SHA256 SHA256`
+   (exactly how the x86 package anchors `x86`/`SSE`/`AVX`; an area
+   label like `NEWCOFF::` works too). An anchor auto-created by a bare
+   NAMESPACE directive is invisible to identifier lookup, so
+   `SHA256.calc` from inside another namespace becomes
+   `CALLER.SHA256.calc` and fails — invocation, reads and writes alike.
+   With a searchable anchor, all three resolve to the global namespace
+   from anywhere. NAMESPACE by itself is symbol sugar, not scoping —
+   until the anchor is made searchable.
 5. Never open `namespace` on a macro-local label: its parent chain
    excludes the global scope, so even directives (`repeat`, `iterate`)
    stop resolving inside.
