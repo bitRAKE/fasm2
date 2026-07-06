@@ -24,18 +24,22 @@ what order makes sense.
   `NEWCOFF.NOCHECKSUM=1` opts out (kind none, zeroed). The namespace
   lessons paid for en route are guardrails 4-6 below.
 
+- **Stage 3, `S_REGREL32` named locals/params**: `cvlocal` marker (offset
+  derived from the symbol — it must be rsp-relative; per-item `name:type`
+  with primitive CodeView indices, default `T_UQUAD`), and
+  `newcoff_debug_procs` intercepting PROC to harvest declaration
+  parameter names automatically (resolved through the proc symbol, since
+  declaration tokens carry pre-namespace context). Verified in the PDB:
+  `dst`/`src`/`len` as `unsigned __int64, register = RSP` with correct
+  offsets. En route: the per-line interceptor tags the ENDP/SECTION line
+  at offset == code size; those artifact entries are now filtered in
+  every F2 phase (llvm-readobj bounds line offsets by CodeSize - all
+  objects now pass its strict validation, which also caught this only
+  by accident of section layout before). Explicit `cvlocal` for locals
+  declared in LOCALS blocks remains manual until the proc machinery
+  exposes them.
+
 ## Next — unblocked
-
-### 2. Stage 3 CodeView: named locals and parameters (`S_REGREL32`)
-
-The payoff: watch windows show `dst`, `src`, `len` by name. With
-`static_rsp` frames every local's rsp offset is an assembly-time
-constant, so the `newcoff_debug_prologue` wrapper can emit these
-mechanically from the proc macro's locals/params — no user annotation.
-Primitive type indices below 0x1000 need no `.debug$T`: `T_INT4` 0x74,
-`T_UINT4` 0x75, `T_QUAD` 0x76, `T_UQUAD` 0x77, 64-bit pointer forms in
-the 0x06xx range. Plan: a `cvlocal name, rspofs [, type]` marker first,
-then wire the proc machinery to call it.
 
 ### 3. Data and constant symbols
 

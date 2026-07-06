@@ -9,6 +9,7 @@ include 'win64a.inc'
 if definite NEWCOFF.DEBUG & NEWCOFF.DEBUG
 	prologue@proc	equ newcoff_debug_prologue
 	close@proc	equ newcoff_debug_close
+	newcoff_debug_procs	; PROC params become named S_REGREL32 locals
 else
 	prologue@proc	equ static_rsp_prologue
 	close@proc	equ static_rsp_close procname

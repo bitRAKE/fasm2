@@ -20,6 +20,7 @@ associativity ties them to their code.
 | `cvproc name` | opens a procedure at the current position, before any prologue pushes |
 | `cvframe size [, regs]` | placed right after the prologue: rsp allocation, prologue length, pushed nonvolatile registers in push order |
 | `cvendp` | closes the procedure (length becomes known) |
+| `cvlocal n [, n:type]` | rsp-relative locals/params of the open procedure (`S_REGREL32`): the offset is derived from the symbol itself, the display name is its own name; type is a CodeView index, default `T_UQUAD` 0x77 (`T_INT4` 0x74, `T_UINT4` 0x75, `T_QUAD` 0x76, 64-bit `void*` 0x603) |
 | `cvlabel name` | names the current position (`S_LABEL32`) |
 
 With `NEWCOFF.DEBUG` defined non-zero, the unnamed-macro interceptor tags
@@ -35,11 +36,16 @@ end macro
 ```
 
 and the `static_rsp` wrappers make `proc`/`endp` mark themselves — frame
-size *and* `uses` registers, taken straight from the prologue arguments:
+size *and* `uses` registers, taken straight from the prologue arguments —
+while `newcoff_debug_procs` intercepts PROC to harvest the declaration's
+parameter names into `S_REGREL32` records automatically (each name is
+resolved through the proc symbol, since the declaration tokens carry the
+pre-namespace context):
 
 ```
 prologue@proc	equ newcoff_debug_prologue
 close@proc	equ newcoff_debug_close
+newcoff_debug_procs
 ```
 
 `newcoff_debug_prologue` reads `framebytes@proc` after expanding
@@ -127,7 +133,7 @@ Modules view), run against any file, and check:
 | --- | --- | --- |
 | 1 | C13 lines (F2/F3/F4), per-section associative `.debug$S` | **done** |
 | 2 | `S_GPROC32`/`S_FRAMEPROC`/`S_END`, `S_LABEL32`, `S_OBJNAME`/`S_COMPILE3`; `.pdata`/`.xdata` from the prologue facts | **done** |
-| 3 | `S_REGREL32` locals/params (rsp-relative names from the proc macros; primitive type indices < 0x1000 need no `.debug$T`) | next |
+| 3 | `S_REGREL32` locals/params: `cvlocal` marker + automatic PROC-parameter harvest; primitive type indices, default `T_UQUAD` | **done** |
 | 4 | `S_CONSTANT` for equates, `S_GDATA32`/`S_LDATA32` for data symbols incl. statics | planned |
 | 5 | SHA-256 file checksums in F4 (`SHA256.calc` generator interface; `file` re-reads the source bytes in POSTPONE) | **done** |
 | 6 | `.debug$T`: `LF_STRUCTURE`/`LF_ARRAY`/... bridged from `macro/struct.inc` definitions, `S_UDT`, typed data symbols | ambitious |

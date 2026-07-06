@@ -14,6 +14,9 @@
 ;   cvproc name            open a procedure at the current position
 ;   cvframe size [, regs]  after the prologue: rsp allocation + pushed regs
 ;   cvendp                 close the procedure (records its length)
+;   cvlocal n [, n:type]   rsp-relative locals/params of the open proc
+;                          (offset derived from the symbol; default type
+;                          T_UQUAD 0x77 - see newcoffcv.md for indices)
 ;   cvlabel name           name the current position (S_LABEL32)
 ;
 ; newcoff_debug_prologue / newcoff_debug_close wrap the static_rsp proc
@@ -31,6 +34,7 @@ include 'macro/sha256.inc'
 ; CodeView symbol record types and constants
 S_END	     = 0x0006
 S_FRAMEPROC  = 0x1012
+S_REGREL32   = 0x1111
 S_OBJNAME    = 0x1101
 S_LABEL32    = 0x1105
 S_GPROC32    = 0x1110
@@ -45,6 +49,11 @@ DEBUG_S_FILECHKSMS	= 0xF4
 CV_CFL_MASM	= 0x03
 CV_CFL_80386	= 0x03
 CV_CFL_X64	= 0xD0
+
+CV_AMD64_RSP	= 335	; CodeView register numbers for S_REGREL32
+CV_REG_ESP	= 21
+
+CV_T_UQUAD	= 0x77	; default cvlocal type: unsigned 64-bit
 
 struct LINE_RECORD, packed
 	; 'file' and 'section' are taken (directive / macro), hence the names
@@ -65,6 +74,14 @@ struct PROC_RECORD, packed
 	reg_count	dd ?	; nonvolatile pushes, in push order
 	reg_nibbles	dd ?	; their register numbers, 4 bits each
 	xd		dd ?	; unwind entry offset (filled by POSTPONE)
+ends
+
+struct LOCAL_RECORD, packed
+	name_ofs	dd ?
+	name_len	dd ?
+	prc		dd ?	; owning PROC_RECORD ordinal ('proc' is the macro)
+	ofs		dd ?	; rsp-relative offset
+	typind		dd ?	; CodeView type index
 ends
 
 struct LABEL_RECORD, packed
@@ -88,6 +105,10 @@ namespace NEWCOFF
 
 	virtual at 0
 		label_records::
+	end virtual
+
+	virtual at 0
+		local_records::
 	end virtual
 
 	virtual at 0
@@ -117,6 +138,9 @@ namespace NEWCOFF
 		end virtual
 		virtual label_records
 			NUMBER_OF_LABELS = ($ - $$) / sizeof LABEL_RECORD
+		end virtual
+		virtual local_records
+			NUMBER_OF_CVLOCALS = ($ - $$) / sizeof LOCAL_RECORD
 		end virtual
 		if NUMBER_OF_LINES > 0 | NUMBER_OF_PROCS > 0 | NUMBER_OF_LABELS > 0
 			virtual section_records
@@ -191,15 +215,21 @@ namespace NEWCOFF
 			repeat USER_SECTIONS
 				SEC_I = % - 1
 				load CS_FLAGS : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.flags
+				load CS_SIZE : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.size
 				CV_L = 0
 				CV_R = 0
 				CV_P = 0
 				CV_LB = 0
 				if CS_FLAGS and IMAGE_SCN_CNT_CODE
+					; markers at ofs >= size are end-of-section artifacts
+					; of the per-line interceptor (the ENDP or SECTION
+					; line itself) - debuggers bound line offsets by the
+					; code size, so they are dropped in every phase
 					CV_LASTF = -1
 					repeat NUMBER_OF_LINES
 						load L_SEC : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.sect
-						if L_SEC = SEC_I
+						load L_OFF : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.ofs
+						if L_SEC = SEC_I & L_OFF < CS_SIZE
 							CV_L = CV_L + 1
 							load L_FILE : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.srcfile
 							if L_FILE <> CV_LASTF
@@ -222,7 +252,6 @@ namespace NEWCOFF
 					end repeat
 				end if
 				if CV_L > 0 | CV_P > 0 | CV_LB > 0
-					load CS_SIZE : 4 from section_records : SEC_I * sizeof SECTION_RECORD + SECTION_RECORD.size
 					virtual reloc_records
 						DBG_RELOC1 = ($ - $$) / sizeof RELOC_RECORD
 					end virtual
@@ -243,7 +272,8 @@ namespace NEWCOFF
 						CV_IDX = 0
 						while CV_IDX < NUMBER_OF_LINES
 							load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
-							if L_SEC = SEC_I
+							load L_OFF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
+							if L_SEC = SEC_I & L_OFF < CS_SIZE
 								; a run: consecutive markers of this section
 								; sharing one file (other sections interleave)
 								load CV_RUNF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.srcfile
@@ -251,7 +281,8 @@ namespace NEWCOFF
 								CV_SCAN = CV_IDX
 								while CV_SCAN < NUMBER_OF_LINES
 									load L_SEC : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.sect
-									if L_SEC = SEC_I
+									load L_OFF : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.ofs
+									if L_SEC = SEC_I & L_OFF < CS_SIZE
 										load L_FILE : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.srcfile
 										if L_FILE <> CV_RUNF
 											break
@@ -263,8 +294,8 @@ namespace NEWCOFF
 								dd CV_RUNF * 40, CV_N, 12 + CV_N * 8
 								while CV_N > 0
 									load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
-									if L_SEC = SEC_I
-										load L_OFF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
+									load L_OFF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
+									if L_SEC = SEC_I & L_OFF < CS_SIZE
 										load L_LINE : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.line
 										dd L_OFF
 										dd (L_LINE and 0xFFFFFF) or 0x80000000
@@ -283,10 +314,18 @@ namespace NEWCOFF
 						; S_LABEL32 per label
 						F1SIZE = 0
 						repeat NUMBER_OF_PROCS
-							load P_SECT : 4 from proc_records : (%-1) * sizeof PROC_RECORD + PROC_RECORD.sect
+							FP_I = % - 1
+							load P_SECT : 4 from proc_records : FP_I * sizeof PROC_RECORD + PROC_RECORD.sect
 							if P_SECT = SEC_I
-								load P_NLEN : 4 from proc_records : (%-1) * sizeof PROC_RECORD + PROC_RECORD.name_len
+								load P_NLEN : 4 from proc_records : FP_I * sizeof PROC_RECORD + PROC_RECORD.name_len
 								F1SIZE = F1SIZE + ((40 + P_NLEN + 3) and (not 3)) + 32 + 4
+								repeat NUMBER_OF_CVLOCALS
+									load LR_PROC : 4 from local_records : (%-1) * sizeof LOCAL_RECORD + LOCAL_RECORD.prc
+									if LR_PROC = FP_I
+										load LR_NLEN : 4 from local_records : (%-1) * sizeof LOCAL_RECORD + LOCAL_RECORD.name_len
+										F1SIZE = F1SIZE + ((15 + LR_NLEN + 3) and (not 3))
+									end if
+								end repeat
 							end if
 						end repeat
 						repeat NUMBER_OF_LABELS
@@ -332,6 +371,30 @@ namespace NEWCOFF
 								dw 0
 								dd 0		; flags
 								dw 0		; record pad
+								; S_REGREL32: named rsp-relative locals
+								repeat NUMBER_OF_CVLOCALS
+									LR_I = % - 1
+									load LR_PROC : 4 from local_records : LR_I * sizeof LOCAL_RECORD + LOCAL_RECORD.prc
+									if LR_PROC = P_I
+										load LR_NOFS : 4 from local_records : LR_I * sizeof LOCAL_RECORD + LOCAL_RECORD.name_ofs
+										load LR_NLEN : 4 from local_records : LR_I * sizeof LOCAL_RECORD + LOCAL_RECORD.name_len
+										load LR_OFS : 4 from local_records : LR_I * sizeof LOCAL_RECORD + LOCAL_RECORD.ofs
+										load LR_TY : 4 from local_records : LR_I * sizeof LOCAL_RECORD + LOCAL_RECORD.typind
+										CV_PAD = (0 - (15 + LR_NLEN)) and 3
+										dw 13 + LR_NLEN + CV_PAD, S_REGREL32
+										dd LR_OFS and 0xFFFFFFFF
+										dd LR_TY and 0xFFFFFFFF
+										if MACHINE = IMAGE_FILE_MACHINE_AMD64
+											dw CV_AMD64_RSP
+										else
+											dw CV_REG_ESP
+										end if
+										load byte_sequence : LR_NLEN from cv_names : LR_NOFS
+										db byte_sequence
+										db 0
+										db CV_PAD dup 0
+									end if
+								end repeat
 								dw 2, S_END
 							end if
 						end repeat
@@ -648,6 +711,88 @@ macro cvendp?
 		end virtual
 		CV_PROC_OPEN = 0
 	end namespace
+end macro
+
+; rsp-relative locals/params of the open procedure: the offset is derived
+; from the symbol itself (it must be rsp-relative, as static_rsp locals
+; and params are), the display name is the symbol's own name. Items may
+; carry a CodeView type index (default T_UQUAD): cvlocal len, dst:0x603
+macro cvlocal? args&
+	namespace NEWCOFF
+		if ~ CV_PROC_OPEN
+			err 'cvlocal: no open procedure (cvproc first)'
+		end if
+	end namespace
+	iterate item, args
+		match nm:ty, item
+			cvlocal_one nm, `nm, ty, 1
+		else
+			cvlocal_one item, `item, CV_T_UQUAD, 1
+		end match
+	end iterate
+end macro
+
+; strict=0 skips silently when the symbol is absent or not rsp-relative
+; (used by the automatic proc-parameter harvest, which sees declaration
+; tokens that are not always parameters)
+macro cvlocal_one? ref*, namestr*, ty*, strict*
+	namespace NEWCOFF
+		CV_LOK = 0
+		if defined ref
+			if ref relativeto rsp
+				CV_LOK = 1
+			end if
+		end if
+		if CV_LOK
+			CV_LNAME = namestr
+			virtual cv_names
+				CV_LNOFS = $
+				db CV_LNAME
+			end virtual
+			CV_LNLEN = lengthof CV_LNAME
+			CV_LOFS = ref - rsp
+			virtual proc_records
+				CV_LPROC = ($ - $$) / sizeof PROC_RECORD
+			end virtual
+			virtual local_records
+				LOCAL_RECORD NEWCOFF.CV_LNOFS, NEWCOFF.CV_LNLEN, NEWCOFF.CV_LPROC,\
+					NEWCOFF.CV_LOFS, ty
+			end virtual
+		else if strict
+			err 'cvlocal: symbol is not rsp-relative'
+		end if
+	end namespace
+end macro
+
+; harvest parameter names from a PROC declaration's comma list. The
+; declaration tokens were read BEFORE the proc namespace opened, so they
+; carry the caller's global context - each name is resolved through the
+; proc symbol instead (prnt.nm), which is defined and searchable
+macro cv_proc_params? prnt*, params&
+	match any, params
+		iterate p, params
+			match nm:sz, p
+				cvlocal_one prnt.nm, `nm, CV_T_UQUAD, 0
+			else
+				cvlocal_one prnt.p, `p, CV_T_UQUAD, 0
+			end match
+		end iterate
+	end match
+end macro
+
+; install the PROC interception: after the proc machinery has defined the
+; parameters (and the debug prologue has opened the cvproc), each name
+; from the declaration is recorded as an S_REGREL32 local automatically
+macro newcoff_debug_procs?
+	macro proc?! decl&
+		proc decl
+		match pname =uses? regs =, params, decl
+			cv_proc_params pname, params
+		else match pname =uses? regs, decl
+		else match pname params, decl
+			cv_proc_params pname, params
+		end match
+	end macro
 end macro
 
 ; name the current position (S_LABEL32) - jump targets, dispatch stubs
