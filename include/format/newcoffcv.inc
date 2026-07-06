@@ -1,7 +1,7 @@
 ; newcoffcv.inc - CodeView debug support for the NEWCOFF backend
 ; ============================================================================
 ; Included by newcoffms.inc; scope, format background and the progression
-; plan live in newcoffcv.md. Everything here follows the backend's records
+; plan live in tests/newcoff/newcoffcv.md. Everything here follows the backend's records
 ; discipline: markers append staging records during the pass, and
 ; codeview_synthesize (called from the newcoffms POSTPONE, after the machine
 ; is known and before the counts are taken) turns them into C13 '.debug$S'

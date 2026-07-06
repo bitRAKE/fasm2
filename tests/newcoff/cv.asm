@@ -1,6 +1,5 @@
 ; cv: CodeView line information - cvline markers become '.debug$S'
 ; sections synthesized in POSTPONE (associative to the COMDAT code)
-include 'newcoff.inc'
 format MS64 NEWCOFF
 extrn '__imp_ExitProcess' as ExitProcess:qword
 

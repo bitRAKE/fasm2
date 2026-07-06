@@ -80,7 +80,37 @@ call "%ROOT%\fasm2.cmd" ovfl.asm ovfl.obj || goto :err
 .\ovfl.exe
 if not "%errorlevel%"=="97" echo [FAIL] ovfl exit %errorlevel%, expected 97 & goto :err
 
-echo [ok] newcoff: smoke x64 + x86, fold, weak, cv, ovfl - all exit 97
+rem --- crc_vectors: byte-for-byte clang COMDAT sections; the checksums --
+rem --- must match the values clang-cl wrote (see the source comments) ----
+call "%ROOT%\fasm2.cmd" crc_vectors.asm crc_vectors.obj || goto :err
+
+%LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /ENTRY:mainCRTStartup /OUT:crc_vectors.exe crc_vectors.obj || goto :err
+
+.\crc_vectors.exe
+if not "%errorlevel%"=="42" echo [FAIL] crc_vectors exit %errorlevel%, expected 42 & goto :err
+
+set "READOBJ="
+where llvm-readobj >nul 2>nul && set "READOBJ=llvm-readobj"
+if not defined READOBJ if exist "C:\Program Files\LLVM\bin\llvm-readobj.exe" set "READOBJ=C:\Program Files\LLVM\bin\llvm-readobj.exe"
+if defined READOBJ (
+  "%READOBJ%" --symbols crc_vectors.obj > crc_sym.txt
+  for %%C in (0x7F8535B7 0xD940D5A4 0x186DBB85 0x26CD321D 0x1B85DBCF) do (
+    findstr /C:"%%C" crc_sym.txt >nul || echo [FAIL] crc_vectors: clang checksum %%C missing && findstr /C:"%%C" crc_sym.txt >nul || goto :err
+  )
+  del crc_sym.txt
+  echo [ok]   crc_vectors checksums match clang-cl
+)
+
+rem --- any: duplicate COMDAT ANY definitions, linker picks one ----------
+call "%ROOT%\fasm2.cmd" optref_any_a.asm optref_any_a.obj || goto :err
+call "%ROOT%\fasm2.cmd" optref_any_b.asm optref_any_b.obj || goto :err
+
+%LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /OUT:optref_any.exe optref_any_a.obj optref_any_b.obj || goto :err
+
+.\optref_any.exe
+if not "%errorlevel%"=="42" echo [FAIL] optref_any exit %errorlevel%, expected 42 & goto :err
+
+echo [ok] newcoff: smoke x64 + x86, fold, weak, cv, ovfl, crc, any - all pass
 popd & exit /b 0
 
 :err

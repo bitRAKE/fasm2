@@ -1,6 +1,6 @@
 ; COMDAT ANY, object A: duplicate definition is allowed, linker picks one.
 
-format MS64 COFF
+format MS64 NEWCOFF
 
 section '.text$any' code readable executable comdat any
 public any_fn

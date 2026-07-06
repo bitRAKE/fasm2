@@ -1,5 +1,4 @@
 ; fold_b: defines the same tab (folds with t2a's), compares both references
-include 'newcoff.inc'
 format MS64 NEWCOFF
 extrn get_a
 extrn '__imp_ExitProcess' as ExitProcess:qword

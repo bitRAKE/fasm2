@@ -5,7 +5,6 @@
 ; Linked with no libraries at all (returning from the entry point exits the
 ; process with eax), so the 32-bit test needs no x86 import libraries on
 ; hand. Both must exit 97 ('a').
-include 'newcoff.inc'
 
 if definite SMOKE_LEGACY
 	format MS COFF		; forwarded to the legacy handler
@@ -17,9 +16,12 @@ else
 	public tab
 end if
 
-section '.rdata$tab' data readable comdat exactmatch align 16
 if definite SMOKE_LEGACY
+	; upstream coffms: no COMDAT, and section names cap at 8 chars
+	section '.rdata$t' data readable align 16
 	public tab
+else
+	section '.rdata$tab' data readable comdat exactmatch align 16
 end if
 tab db '0123456789abcdef'
 
@@ -27,9 +29,11 @@ section '.data' data readable writeable
 	tabptr	dd tab			; DIR32 -> external 'tab' (fold-safe)
 	tabq	dq tab			; 64-bit field: DIR32 on the low dword
 
-section '.text$start' code readable executable comdat align 16
 if definite SMOKE_LEGACY
+	section '.text$s' code readable executable align 16
 	public start32 as '_start32'
+else
+	section '.text$start' code readable executable comdat align 16
 end if
 start32:
 	mov	eax, [tabptr]		; DIR32 -> '.data' section symbol

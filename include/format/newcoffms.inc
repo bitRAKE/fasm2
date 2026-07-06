@@ -1,7 +1,7 @@
 ; newcoffms.inc - ground-up MS COFF backend (development skeleton)
 ; ============================================================================
 ; A re-engineering of include/format/coffms.inc around three rules that the
-; 2026 COMDAT retrofits taught us (see readme.md and the post-mortem in
+; 2026 COMDAT retrofits taught us (see tests/newcoff/readme.md and
 ; docs/coff_comdat_postmortem.md):
 ;
 ;   1. RECORDS, NOT STORES. During the pass, every entity (section, public,
@@ -588,7 +588,7 @@ end macro
 ; CodeView debug support: cvline/cvproc/cvframe/cvendp/cvlabel markers,
 ; the NEWCOFF.DEBUG per-line interceptor, and the POSTPONE synthesis of
 ; '.debug$S' and '.pdata'/'.xdata' sections - see newcoffcv.md
-include 'newcoffcv.inc'
+include 'format/newcoffcv.inc'
 
 element NEWCOFF.IMAGE_BASE
 RVA? equ -NEWCOFF.IMAGE_BASE+

@@ -1,5 +1,4 @@
 ; fold_a: defines tab (exactmatch) and a function returning tab[10] via its own reference
-include 'newcoff.inc'
 format MS64 NEWCOFF
 public get_a
 section '.rdata$tab' data readable comdat exactmatch align 16

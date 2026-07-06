@@ -323,6 +323,12 @@ macro format?.MS? variant
 		COFF.Settings.Characteristics = IMAGE_FILE_32BIT_MACHINE or IMAGE_FILE_LINE_NUMS_STRIPPED or IMAGE_FILE_BYTES_REVERSED_LO
 		__include 'format/coffms.inc'
 		use32
+	else match =NEWCOFF?, variant
+		if ~ definite format
+			format binary as 'obj'
+		end if
+		__include 'format/newcoffms.inc'
+		use32
 	else
 		err 'invalid argument'
 	end match
@@ -336,6 +342,12 @@ macro format?.MS64? variant
 		COFF.Settings.Machine = IMAGE_FILE_MACHINE_AMD64
 		COFF.Settings.Characteristics = IMAGE_FILE_32BIT_MACHINE or IMAGE_FILE_LINE_NUMS_STRIPPED or IMAGE_FILE_BYTES_REVERSED_LO
 		__include 'format/coffms.inc'
+		use64
+	else match =NEWCOFF?, variant
+		if ~ definite format
+			format binary as 'obj'
+		end if
+		__include 'format/newcoffms.inc'
 		use64
 	else
 		err 'invalid argument'

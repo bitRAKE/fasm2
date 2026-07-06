@@ -3,7 +3,6 @@
 ;   fasm2 smoke.asm smoke_new.obj                     -> new backend
 ;   fasm2 -i"SMOKE_LEGACY=1" smoke.asm smoke_legacy.obj -> legacy, via forwarding
 ; Both link (with /OPT:REF) and exit with code 97 ('a').
-include 'newcoff.inc'
 
 if definite SMOKE_LEGACY
 	format MS64 COFF	; forwarded to the legacy handler
@@ -20,9 +19,12 @@ end if
 
 extrn '__imp_ExitProcess' as ExitProcess:qword
 
-section '.rdata$tab' data readable comdat exactmatch align 16
 if definite SMOKE_LEGACY
+	; upstream coffms: no COMDAT, and section names cap at 8 chars
+	section '.rdata$t' data readable align 16
 	public tab
+else
+	section '.rdata$tab' data readable comdat exactmatch align 16
 end if
 tab db '0123456789abcdef'
 
@@ -33,9 +35,11 @@ section '.bss' readable writeable align 16
 	scratch dq ?			; uninitialized: no file space
 	rb 56
 
-section '.text$start' code readable executable comdat align 16
 if definite SMOKE_LEGACY
+	section '.text$s' code readable executable align 16
 	public mainCRTStartup
+else
+	section '.text$start' code readable executable comdat align 16
 end if
 mainCRTStartup:
 	sub	rsp, 40

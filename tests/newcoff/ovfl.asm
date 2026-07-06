@@ -1,6 +1,5 @@
 ; ovfl: more than 65535 relocations in one section exercises
 ; IMAGE_SCN_LNK_NRELOC_OVFL (real count+1 in an extra first relocation)
-include 'newcoff.inc'
 format MS64 NEWCOFF
 extrn '__imp_ExitProcess' as ExitProcess:qword
 

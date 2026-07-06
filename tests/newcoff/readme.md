@@ -14,29 +14,29 @@ Author: Rickey Bowers Jr. (bitRAKE). Co-developed with Claude (Anthropic).
 > twenty years of features (debug sections, wide associations, large
 > objects) rather than the last thirty of compatibility.
 
-This directory is a development harness for a from-scratch rewrite of the
-MS COFF backend. **The end state:** `include/format/coffms.inc` reverts to
-upstream untouched, and NEWCOFF becomes where the COFF work lives - tests
-and examples migrate here. The rewrite was informed by the 2026 COMDAT
-work on
-[`include/format/coffms.inc`](../../include/format/coffms.inc) (EXACT_MATCH
-checksums, `/OPT:REF` support, fold-safe relocations — see
+NEWCOFF is a first-class format: the backend lives in
+[`include/format/newcoffms.inc`](../../include/format/newcoffms.inc) (with
+the CodeView module beside it), `format.inc` dispatches `format MS NEWCOFF`
+/ `format MS64 NEWCOFF` to it natively, and
+[`include/format/coffms.inc`](../../include/format/coffms.inc) is upstream,
+untouched — the 2026 COMDAT retrofits that taught us this design
+(EXACT_MATCH checksums, `/OPT:REF`, fold-safe relocations — see
 [`docs/coff_comdat_postmortem.md`](../../docs/coff_comdat_postmortem.md) and
-[`docs/coff_comdat.md`](../../docs/coff_comdat.md)). The legacy backend stays
-fully usable; the rewrite lives beside it and is selected per source file.
+[`docs/coff_comdat.md`](../../docs/coff_comdat.md)) have been retired from
+it. This directory holds the test suite and the
+[`hexer`](hexer/README.md) walk-through example.
 
-## The interception mechanism
+## How it was developed: the interception harness
 
-fasmg macro definitions *stack*: a new `macro format?.MS64?` shadows the one
-installed by `fasm2.inc`, and invoking the macro's own name inside its body
-reaches the previous definition. [`newcoff.inc`](newcoff.inc) exploits this:
+The rewrite was grown *beside* a fully working legacy backend, selected per
+source file, by exploiting the fact that fasmg macro definitions *stack*: a
+new `macro format?.MS64?` shadows the one installed by `fasm2.inc`, and
+invoking the macro's own name inside its body reaches the previous
+definition:
 
 ```
 macro format?.MS64? variant
 	match =NEWCOFF?, variant
-		if ~ definite format
-			format binary as 'obj'
-		end if
 		include 'newcoffms.inc'	; the rewrite
 		use64
 	else
@@ -45,12 +45,11 @@ macro format?.MS64? variant
 end macro
 ```
 
-A source that does `include 'newcoff.inc'` before its FORMAT statement can
-then choose `format MS NEWCOFF` / `format MS64 NEWCOFF` (the rewrite) or
-`format MS COFF` / `format MS64 COFF` (forwarded, byte-for-byte legacy
-behaviour). One tree, both backends, A/B comparison for free — this is how a
-format can be re-engineered *in place* without destabilizing anything that
-ships.
+One tree, both backends, A/B comparison for free — byte-compared at every
+refactor. The harness is retired now that `format.inc` dispatches NEWCOFF
+natively (a three-line match arm per bitness), but the technique is the
+recommended way to re-engineer any format in place without destabilizing
+what ships.
 
 **The machine is not a format variant.** The two intercepts differ only in
 the initial USE mode; the backend reads `x86.mode` in POSTPONE (`use32` →
@@ -204,16 +203,16 @@ mark procedures, frames and USES registers automatically).
 tests\newcoff\_build.cmd        (VS dev prompt, or LLVM on PATH)
 ```
 
-Note on include resolution: fasmg does not search relative to the
-*including* file, so `include '..\newcoff.inc'` from a subdirectory fails
-unless the harness directory is on the INCLUDE path — the hexer build
-script does `set "INCLUDE=%~dp0.."` before invoking fasm2 for exactly
-this reason.
+(Aside for harness-style setups: fasmg does not search includes relative
+to the *including* file — only the working directory and the INCLUDE
+environment variable. With NEWCOFF in `include/format` this no longer
+matters here.)
 
 - **smoke.asm** — 64-bit: every relocation kind, an uninitialized section,
   an EXACT_MATCH COMDAT, out-of-order `public` declarations. Assembled
-  through *both* backends (`-i"SMOKE_LEGACY=1"` selects the forwarded
-  legacy path), linked with `/OPT:REF`, must exit 97.
+  through *both* backends (`-i"SMOKE_LEGACY=1"` selects the upstream
+  legacy backend, COMDAT-free and 8-char section names), linked with
+  `/OPT:REF`, must exit 97.
 - **smoke32.asm** — the same backend producing an i386 object purely by
   `use32`; DIR32/DIR32NB paths, a 64-bit field relocated on its low dword.
   Links with no import libraries at all (return from entry exits with
@@ -229,6 +228,11 @@ this reason.
   `.debug$S` out of the image. Must exit 97.
 - **ovfl.asm** — 65600 relocations in one section; overflow encoding
   accepted by both linkers. Must exit 97.
+- **crc_vectors.asm** — byte-for-byte reproductions of clang-cl COMDAT
+  sections; the EXACT_MATCH checksums must equal the values clang wrote
+  (verified with `llvm-readobj` when available). Runs 42.
+- **optref_any_a/b.asm** — duplicate `comdat any` definitions across two
+  objects; the linker picks one. Runs 42.
 
 Verified against `lld-link` and MSVC `link` (14.44), inspected with
 `llvm-readobj`: identical EXACT_MATCH checksums from both backends, external

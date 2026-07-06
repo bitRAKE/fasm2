@@ -20,7 +20,7 @@
 ;
 ; This is a positive run-42 test too: main calls f0 (returns 42).
 
-format MS64 COFF
+format MS64 NEWCOFF
 
 section '.text$f0' code readable executable comdat exactmatch	; clang CheckSum 0x7F8535B7
 public f0

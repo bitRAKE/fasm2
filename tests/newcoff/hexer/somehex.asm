@@ -12,7 +12,6 @@
 ;   u8_as_hex_<isa>(rcx=dst, rdx=src, r8=len) -> rax = dst + 2*len
 ; ============================================================================
 
-include 'newcoff.inc'
 format MS64 NEWCOFF
 include 'u8_as_hex.inc'
 

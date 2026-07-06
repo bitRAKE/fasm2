@@ -1,92 +1,67 @@
-# hexer — a COMDAT / `/OPT:REF` demonstration
+# hexer — a walk-through of NEWCOFF, feature by feature
 
 Author: Rickey Bowers Jr. (bitRAKE). Co-developed with Claude (Anthropic).
 
-A small console program that writes a file's bytes as hexadecimal. Its real
-purpose is to exercise the MS64 COFF COMDAT features of `format MS64 COFF`:
+hexer is a small console program — it writes a file's bytes as hexadecimal —
+built to show, one at a time, what `format MS64 NEWCOFF` gives you: COMDAT
+sections, linker dead-code removal, identical-data folding, runtime CPU
+dispatch, and source-level debugging in x64dbg / WinDbg / Visual Studio.
+If you are new to NEWCOFF, build this and follow the sections below in order.
 
-- **`exactmatch` COMDAT** — two library objects each define the *same* `hextab`
-  lookup table; the linker folds the identical copies into one.
-- **`/OPT:REF` dead-section removal** — every ISA variant lives in its own
-  COMDAT, so a build that resolves `u8_as_hex` to one variant discards the rest.
-- **runtime dispatch** — a separate object detects the CPU and re-routes a
-  stable entry point to the widest supported variant on first use.
+## 0. Build it
 
-It is a Win64 example: build from a Visual Studio developer prompt (for
-`link.exe` and the SDK import libraries). `lld-link` is used automatically if
-`link` is not found.
+From a Visual Studio developer prompt (for `link.exe` and the SDK import
+libraries; `lld-link` is picked up automatically if `link` is absent):
 
-## Files
+```cmd
+tests\newcoff\hexer\_build.cmd            :: default: dispatch build
+tests\newcoff\hexer\_build.cmd base       :: u8_as_hex := u8_as_hex_base
+tests\newcoff\hexer\_build.cmd avx2
+tests\newcoff\hexer\_build.cmd avx512
+tests\newcoff\hexer\_build.cmd clean
 
-| File | Object | Contents |
-| --- | --- | --- |
-| `windows.inc` | — | thin shim: `format MS64 COFF`, `win64a.inc`, stable proc frames |
-| `u8_as_hex.inc` | — | the shared `exactmatch` `hextab`, included by both libraries |
-| `somehex.asm` | `somehex.obj` | `u8_as_hex_base`, `u8_as_hex_avx2` — one COMDAT each |
-| `u8_as_hex_avx512.asm` | `u8_as_hex_avx512.obj` | `u8_as_hex_avx512`, and a second copy of `hextab` |
-| `dispatch.asm` | `dispatch.obj` | CPUID detection + the `u8_as_hex` self-routing dispatcher |
-| `hexer.asm` | `hexer.obj` | the console front end |
+hexer.exe hexer.exe                       :: hex-dump anything
+```
 
-The library objects (`somehex`, `u8_as_hex_avx512`) include only
-`u8_as_hex.inc`: `format MS64 COFF` is all they need — it even sets the output
-`.obj` extension, so `fasm2 somehex.asm` names the object for you.
+Every build is a debug build: the script passes `-iNEWCOFF.DEBUG:=1` and the
+linker gets `/DEBUG:FULL`, producing `hexer.pdb` alongside the exe.
 
-The front end uses **one** external symbol, `u8_as_hex`. Every variant honours
-the same prototype, so they are interchangeable:
+## 1. The pieces
+
+| File | Contents |
+| --- | --- |
+| `windows.inc` | the model shim: `format MS64 NEWCOFF`, `win64a.inc`, stable `static_rsp` proc frames — and, under `NEWCOFF.DEBUG`, the self-marking prologue wrappers |
+| `u8_as_hex.inc` | the shared `hextab` lookup table in an EXACT_MATCH COMDAT |
+| `somehex.asm` | `u8_as_hex_base` (scalar) and `u8_as_hex_avx2` — one COMDAT section each |
+| `u8_as_hex_avx512.asm` | `u8_as_hex_avx512`, plus a *second copy* of `hextab` |
+| `dispatch.asm` | CPUID/XGETBV detection + the self-routing `u8_as_hex` dispatcher |
+| `hexer.asm` | the console front end — uses exactly **one** external symbol, `u8_as_hex` |
+
+Every variant honours one prototype, which is what makes them
+interchangeable:
 
 ```
 u8_as_hex(rcx = dst, rdx = src, r8 = len)  ->  rax = dst + 2*len
 ```
 
-`_base` is a scalar nibble lookup; `_avx2`/`_avx512` do 32/64 bytes per pass with
-`vpshufb` against the broadcast `hextab` and a lane-corrected interleave, with a
-scalar tail. All three produce identical output (verified byte-for-byte).
+Note what is *not* here: no harness include, no special setup. NEWCOFF is a
+first-class format — `format MS64 NEWCOFF` is the only line that differs
+from a classic COFF source. (It emits the modern *big object* container;
+see [`../readme.md`](../readme.md) for what that means and which linkers
+consume it.)
 
-## Building
+## 2. COMDAT sections and `/OPT:REF`
 
-```cmd
-examples\hexer\_build.cmd            :: default: dispatch build
-examples\hexer\_build.cmd base       :: u8_as_hex := u8_as_hex_base
-examples\hexer\_build.cmd avx2
-examples\hexer\_build.cmd avx512
-examples\hexer\_build.cmd dispatch
-examples\hexer\_build.cmd clean
-```
-
-Both libraries are always assembled and linked, so the `hextab` fold always
-happens. A **single-ISA** build passes a string on the command line —
+Each ISA variant lives in a COMDAT section named after it
+(`.text$u8_as_hex_base`, …). A **single-ISA build** aliases the front end's
+one import at assembly time —
 
 ```cmd
 fasm2 -i"HEXER_ISA='avx2'" hexer.asm
 ```
 
-— and `hexer.asm` aliases its lone `u8_as_hex` import to `u8_as_hex_avx2`; no
-`dispatch.obj` is linked, so the other variants are unreferenced. The
-**dispatch** build defines no `HEXER_ISA`, imports the real `u8_as_hex` from
-`dispatch.obj`, and that object references every variant to choose among them.
-
-The image uses a dynamic base (the default — no `/FIXED`), so it is relocatable
-and ASLR-compatible. Run it on any file:
-
-```cmd
-hexer.exe hexer.exe
-```
-
-## The self-routing dispatcher
-
-`dispatch.obj` needs no separate init call. `u8_as_hex` is a `jmp
-[u8_as_hex_impl]`, and `u8_as_hex_impl` starts pointing at the detector. The
-first call lands in the detector, which runs CPUID + `XGETBV` (checking both the
-feature bits and the XCR0 state bits), stores the chosen variant into
-`u8_as_hex_impl`, and tail-calls it with the original arguments. Every later
-call jumps straight to the selected variant.
-
-## Seeing the COMDAT behaviour
-
-Each build writes `hexer.map`. Two things to look for:
-
-**`/OPT:REF` discards unreferenced variants.** In a single-ISA build the unused
-variants' sections drop to zero length. From `_build.cmd base`:
+— so only that variant is referenced, and `/OPT:REF` throws the others
+away. See it in `hexer.map` after `_build.cmd base`:
 
 ```
 .text$u8_as_hex_avx2    CODE   00000000H   <- discarded
@@ -94,23 +69,69 @@ variants' sections drop to zero length. From `_build.cmd base`:
 .text$u8_as_hex_base    CODE   0000003bH   <- kept (referenced)
 ```
 
-The `dispatch` build keeps all three, because `dispatch.obj` references them
-all.
+The **dispatch** build defines no `HEXER_ISA`; `dispatch.obj` references
+every variant to choose among them at runtime, so all three stay.
 
-**`exactmatch` folds the duplicate table.** `somehex.obj` and
-`u8_as_hex_avx512.obj` both define `.rdata$hextab` with identical bytes and
-equal CRC-32 checksums, so the map lists a single surviving `hextab`. Perturb
-one copy and the link fails with a duplicate-symbol error — that is what
-`exactmatch` protects against, versus `any` (pick one) or `noduplicates`
-(never allowed twice).
+## 3. EXACT_MATCH folding
 
-## A note on the shared table
+`somehex.obj` and `u8_as_hex_avx512.obj` *both* define `hextab` — same
+section name, same bytes, `comdat exactmatch`. The assembler stamps each
+copy with a CRC-32 of its contents (the same parameters clang uses,
+cross-validated in `../crc_vectors.asm`); the linker checks the checksums
+match and keeps one copy. The map shows a single surviving `hextab`.
+Perturb one copy by a byte and the link fails — that is the *exact-match*
+guarantee, versus `any` (pick one, no questions) which `../optref_any_*`
+demonstrates.
 
-For the fold to be *usable*, a reference into a folded COMDAT must survive the
-fold. Each library references its own `hextab`; when the linker discards one
-copy, that object's reference has to rebind to the survivor. That works because
-the MS COFF backend relocates a reference against the section's external symbol
-(`hextab`), not the static section symbol — the same thing `clang-cl` does for
-`__declspec(selectany)` data. See
-[`docs/coff_comdat_postmortem.md`](../../docs/coff_comdat_postmortem.md) and the
-`tests/coff/optref_xref_*` regression test.
+The subtle part: each object *references* its own copy, and the loser's
+reference must rebind to the survivor. NEWCOFF relocates references
+against the section's offset-0 external symbol precisely so this works.
+
+## 4. Runtime dispatch
+
+`dispatch.obj` needs no init call. `u8_as_hex` is a `jmp [u8_as_hex_impl]`,
+and `u8_as_hex_impl` starts out pointing at the *detector*. The first call
+runs CPUID + `XGETBV` (feature bits *and* XCR0 state bits), stores the
+widest supported variant into `u8_as_hex_impl`, and tail-calls it with the
+original arguments. Every later call jumps straight through.
+
+## 5. Source-level debugging
+
+This is where NEWCOFF earns the "new". With `NEWCOFF.DEBUG` set (the build
+script always sets it):
+
+- **every line** of each main source file is tagged automatically (an
+  unnamed-macro interceptor calls `cvline` per line);
+- **every `proc`/`endp`** marks itself via the `static_rsp` wrappers in
+  `windows.inc` — procedure symbols *plus* frame size and `uses` registers,
+  from which real x64 **unwind info** (`.pdata`/`.xdata`) is synthesized;
+- the raw (non-proc) variants carry explicit `cvproc`/`cvendp` markers, and
+  the dispatcher stub a `cvlabel`.
+
+Things to try (details and more cases in [`../newcoffcv.md`](../newcoffcv.md)):
+
+1. **x64dbg**: open `hexer.exe` (dispatch build), run against a file —
+   every instruction shows its `file:line`. Break inside a variant: the
+   call stack reads `u8_as_hex_*` ← `mainCRTStartup` *by name*, and
+   step-out returns cleanly — real unwind data, not stack heuristics.
+2. **Visual Studio**: open the exe as a project (File → Open → Project),
+   set a breakpoint by function name (`u8_as_hex_init`), F5, and step
+   through the assembly *as source*.
+3. Break in `u8_as_hex_init` (first call only!) after the prologue and
+   walk the stack through the pushed `rbx` + 32-byte allocation.
+4. Rebuild with `_build.cmd base` and confirm the debugger sees *only*
+   the base variant — the discarded COMDATs took their debug sections
+   with them (they are COMDAT-associative to the code they describe).
+
+Debug info costs nothing at runtime — it lives in the PDB — and a build
+without `NEWCOFF.DEBUG` emits none at all.
+
+## 6. Where to go next
+
+- [`../readme.md`](../readme.md) — the NEWCOFF design: records-in-POSTPONE,
+  canonical symbol order, semantic relocations, and why it is bigobj-only.
+- [`../newcoffcv.md`](../newcoffcv.md) — the CodeView module: markers,
+  what is emitted, the debugger exploration cases, and the progression
+  plan (locals, data symbols, types).
+- `../smoke.asm`, `../fold_*.asm`, `../weak_*.asm`, `../cv.asm` — each
+  feature in isolation, exit-code-verified by `../_build.cmd`.

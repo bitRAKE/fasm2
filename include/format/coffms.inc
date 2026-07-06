@@ -27,16 +27,6 @@ struct IMAGE_SECTION_HEADER
 	Characteristics 	dd ?
 end struct
 
-struct IMAGE_AUX_SECTION
-	Length			dd ?
-	NumberOfRelocations	dw ?
-	NumberOfLinenumbers	dw ?
-	CheckSum		dd ?
-	Number			dw ?
-	Selection		db ?
-	Unused			db 3 dup ?
-end struct
-
 struct IMAGE_RELOCATION
 	VirtualAddress		dd ?
 	SymbolTableIndex	dd ?
@@ -215,13 +205,6 @@ IMAGE_SYM_CLASS_SECTION 	 = 104
 IMAGE_SYM_CLASS_WEAK_EXTERNAL	 = 105
 IMAGE_SYM_CLASS_CLR_TOKEN	 = 107
 
-IMAGE_COMDAT_SELECT_NODUPLICATES = 1
-IMAGE_COMDAT_SELECT_ANY 	 = 2
-IMAGE_COMDAT_SELECT_SAME_SIZE	 = 3
-IMAGE_COMDAT_SELECT_EXACT_MATCH  = 4
-IMAGE_COMDAT_SELECT_ASSOCIATIVE  = 5
-IMAGE_COMDAT_SELECT_LARGEST	 = 6
-
 IMAGE_WEAK_EXTERN_SEARCH_NOLIBRARY = 1
 IMAGE_WEAK_EXTERN_SEARCH_LIBRARY   = 2
 IMAGE_WEAK_EXTERN_SEARCH_ALIAS	   = 3
@@ -268,50 +251,6 @@ namespace COFF
 		relocations:: rb NUMBER_OF_RELOCATIONS * sizeof IMAGE_RELOCATION
 	end virtual
 
-	; Per-section (section number - 1) index of the external symbol defined at
-	; offset 0 of that section, or 0 if none. A reference into a section is
-	; relocated against this external symbol rather than the static section
-	; symbol, so that if the section is a COMDAT the linker folds away, the
-	; reference rebinds to the surviving copy (a section-symbol reference to a
-	; discarded COMDAT would dangle). The offset-0 external shares the section
-	; symbol's address, so only the relocation's symbol index changes.
-	virtual at 0
-		section_ref_sym:: rb NUMBER_OF_SECTIONS * 4
-	end virtual
-
-	; per-section record for COMDAT symbol synthesis in POSTPONE:
-	; +0 dd string table offset of long name (0 = short name)
-	; +4 dq short name
-	; +12 db selection
-	virtual at 0
-		comdat_symbols:: rb NUMBER_OF_SECTIONS * 16
-	end virtual
-
-	; reflected CRC-32 nibble table (polynomial 0xEDB88320). The COMDAT
-	; aux CheckSum used by IMAGE_COMDAT_SELECT_EXACT_MATCH is this CRC of
-	; the section's raw data, seeded with 0 and with NO final inversion -
-	; unlike the PNG/zlib CRC which seeds with -1 and inverts the result.
-	virtual at 0
-		crc32_table::
-		dd 0x00000000,0x1DB71064,0x3B6E20C8,0x26D930AC
-		dd 0x76DC4190,0x6B6B51F4,0x4DB26158,0x5005713C
-		dd 0xEDB88320,0xF00F9344,0xD6D6A3E8,0xCB61B38C
-		dd 0x9B64C2B0,0x86D3D2D4,0xA00AE278,0xBDBDF21C
-	end virtual
-
-	; EXACT_MATCH bookkeeping. The CRC-32 is computed once per section in
-	; POSTPONE, reading the section's raw bytes back from the output area in
-	; place (its own ORG space, reached through the exactmatch_list anchor).
-	; The list records, per exactmatch section, the resolved base element
-	; and section number; the numeric descriptor lives in xm_meta:
-	;   +0 dd initialized length
-	;   +4 dd zero-padded uninitialized tail length
-	;   +8 dd aux symbol index (0 = section is not exactmatch)
-	define exactmatch_list
-	virtual at 0
-		xm_meta:: rb NUMBER_OF_SECTIONS * 16
-	end virtual
-
 	element relocatable?
 
 	macro section_start
@@ -320,53 +259,11 @@ namespace COFF
 		SECTION_BASE = sym
 		org sym
 		align.assume sym, SECTION_ALIGN
-		if lengthof SECTION_NAME > 8
-			SECTION_NAME_POS = STRING_POSITION
-			store SECTION_NAME : lengthof SECTION_NAME at string_table:STRING_POSITION
-			STRING_POSITION = STRING_POSITION + lengthof SECTION_NAME + 1
-		else
-			SECTION_NAME_POS = 0
-		end if
-		SECTION_SYMBOL_INDEX = -1
 		if DEFINED_SECTION | defined DEFAULT_SECTION
-			if lengthof SECTION_NAME > 8
-				store 0 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Zeroes
-				store SECTION_NAME_POS at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Offset
-			else
-				store SECTION_NAME : 8 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.ShortName
-			end if
+			store SECTION_NAME : 8 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.ShortName
 			store IMAGE_SYM_CLASS_STATIC at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.StorageClass
 			store 1+SECTION_INDEX at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber
-			if SECTION_FLAGS and IMAGE_SCN_LNK_COMDAT
-				if PUBLICS_SEEN and (1 shl SECTION_INDEX)
-					; the linker requires the section symbol to be the first
-					; symbol carrying this section number (MSVC: LNK1143)
-					err 'PUBLIC symbol for a COMDAT section must be declared after its SECTION statement'
-				end if
-				SECTION_SYMBOL_INDEX = SYMBOL_INDEX
-				store 1 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.NumberOfAuxSymbols
-				SYMBOL_INDEX = SYMBOL_INDEX + 2
-				if SECTION_COMDAT_SELECTION <> IMAGE_COMDAT_SELECT_ASSOCIATIVE
-					COMDAT_PENDING = COMDAT_PENDING or 1 shl SECTION_INDEX
-					store SECTION_NAME_POS : 4 at comdat_symbols : SECTION_INDEX * 16
-					if SECTION_NAME_POS = 0
-						store SECTION_NAME : 8 at comdat_symbols : SECTION_INDEX * 16 + 4
-					end if
-					store SECTION_COMDAT_SELECTION : 1 at comdat_symbols : SECTION_INDEX * 16 + 12
-				end if
-			else
-				SYMBOL_INDEX = SYMBOL_INDEX + 1
-			end if
-			if SECTION_SYMBOL_INDEX >= 0 & SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH
-				; anchor the section's ORG space and remember its resolved
-				; base element so POSTPONE can read the raw bytes back in
-				; place; the numeric descriptor is filled in at finalization
-				local xm_area
-				xm_area::
-				repeat 1, si:SECTION_INDEX
-					define exactmatch_list xm_area, sym, si
-				end repeat
-			end if
+			SYMBOL_INDEX = SYMBOL_INDEX + 1
 		end if
 	end macro
 
@@ -374,10 +271,6 @@ namespace COFF
 	SECTION_INDEX = 0
 	SECTION_RELOCATION_INDEX = RELOCATION_INDEX
 	SYMBOL_INDEX = 0
-	COMDAT_PENDING = 0
-	PUBLICS_SEEN = 0
-	SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
-	SECTION_COMDAT_ASSOCIATION = 0
 
 	SECTION_OFFSET = $%
 	SECTION_ALIGN = 4
@@ -394,24 +287,13 @@ macro section?
 
 		SECTION_SIZE = $% - SECTION_OFFSET
 
-		; EXACT_MATCH: record the numeric descriptor for POSTPONE, which
-		; reads the raw bytes back in place and folds the CRC-32. A fully
-		; uninitialized section ($%% = SECTION_OFFSET) writes no raw data to
-		; the file, so it is left with aux index 0 and its checksum stays 0,
-		; as MSVC computes it.
-		if SECTION_SYMBOL_INDEX >= 0 & SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH & $%% > SECTION_OFFSET
-			store $%% - SECTION_OFFSET : 4 at xm_meta : SECTION_INDEX * 16
-			store $% - $%% : 4 at xm_meta : SECTION_INDEX * 16 + 4
-			store SECTION_SYMBOL_INDEX + 1 : 4 at xm_meta : SECTION_INDEX * 16 + 8
-		end if
-
 		if DEFINED_SECTION | SECTION_SIZE > 0
 
 			if ~ DEFINED_SECTION
 				DEFAULT_SECTION := 1
 			end if
 
-			if SECTION_SIZE > 0 & $%% = SECTION_OFFSET
+			if $%% = SECTION_OFFSET
 				SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_CNT_UNINITIALIZED_DATA
 				SECTION_OFFSET = 0
 				section $
@@ -437,30 +319,7 @@ macro section?
 				end if
 			end if
 
-			if lengthof SECTION_NAME > 8
-				if SECTION_NAME_POS > 9999999
-					err 'string table too large to reference long section names (offset above /9999999)'
-				end if
-				repeat 1, pos:SECTION_NAME_POS
-					store ('/' + (`pos shl 8)) : 8 at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
-				end repeat
-			else
-				store SECTION_NAME : 8 at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
-			end if
-			if SECTION_SYMBOL_INDEX >= 0
-				store SECTION_SIZE at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Length
-				if RELOCATION_INDEX - SECTION_RELOCATION_INDEX <= 65535
-					store RELOCATION_INDEX - SECTION_RELOCATION_INDEX at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.NumberOfRelocations
-				end if
-				if SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ASSOCIATIVE
-					if SECTION_COMDAT_ASSOCIATION < 1 | SECTION_COMDAT_ASSOCIATION > SECTION_INDEX
-						err 'associated symbol is not in a preceding section'
-					end if
-					store SECTION_COMDAT_ASSOCIATION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Number
-				end if
-				store SECTION_COMDAT_SELECTION at symbol_table : (SECTION_SYMBOL_INDEX + 1) * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.Selection
-			end if
-
+			store SECTION_NAME : 8 at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Name
 			store SECTION_OFFSET at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.PointerToRawData
 			store SECTION_SIZE at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.SizeOfRawData
 			store SECTION_FLAGS at COFF:Sections + SECTION_INDEX * sizeof IMAGE_SECTION_HEADER + IMAGE_SECTION_HEADER.Characteristics
@@ -481,8 +340,6 @@ macro section? declaration*
 		SECTION_FLAGS = 0
 		SECTION_OFFSET = $%
 		SECTION_ALIGN = 4
-		SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
-		SECTION_COMDAT_ASSOCIATION = 0
 
 		match name attributes, declaration
 
@@ -497,18 +354,6 @@ macro section? declaration*
 				define seq
 			else
 				define seq attributes
-			end match
-			match flags =comdat? =associative? target, seq
-				SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_COMDAT
-				SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ASSOCIATIVE
-				SECTION_COMDAT_ASSOCIATION = 1 scaleof (1 metadataof (target))
-				define seq flags
-			end match
-			match =comdat? =associative? target, seq
-				SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_COMDAT
-				SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ASSOCIATIVE
-				SECTION_COMDAT_ASSOCIATION = 1 scaleof (1 metadataof (target))
-				define seq
 			end match
 			while 1
 				match car cdr, seq
@@ -542,25 +387,10 @@ macro section? declaration*
 					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_REMOVE
 				else match =linkinfo?, attribute
 					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_INFO
-				else match =comdat?, attribute
-					SECTION_FLAGS = SECTION_FLAGS or IMAGE_SCN_LNK_COMDAT
-				else match =noduplicates?, attribute
-					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_NODUPLICATES
-				else match =any?, attribute
-					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_ANY
-				else match =samesize?, attribute
-					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_SAME_SIZE
-				else match =largest?, attribute
-					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_LARGEST
-				else match =exactmatch?, attribute
-					SECTION_COMDAT_SELECTION = IMAGE_COMDAT_SELECT_EXACT_MATCH
 				else
 					err 'unknown attribute "',`attribute,'"'
 				end match
 			end irpv
-			if SECTION_COMDAT_SELECTION <> IMAGE_COMDAT_SELECT_NODUPLICATES & ~ (SECTION_FLAGS and IMAGE_SCN_LNK_COMDAT)
-				err 'COMDAT selection attribute requires "comdat"'
-			end if
 
 		else
 
@@ -602,23 +432,15 @@ macro public? declaration*
 			SYMBOL_NAME = `declaration
 			SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 		end match
-		if SYMBOL_VALUE relativeto 1 elementof SYMBOL_VALUE & 1 elementof (1 metadataof SYMBOL_VALUE) relativeto relocatable
+		if SYMBOL_VALUE relativeto 1 elementof SYMBOL_VALUE & 1 elementof (1 metadataof SYMBOL_VALUE) relativeto relocatable & SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
 			if 1 scaleof (1 metadataof SYMBOL_VALUE) > 0
 				SYMBOL_SECTION_INDEX = 1 scaleof (1 metadataof SYMBOL_VALUE)
 				SYMBOL_VALUE = SYMBOL_VALUE - 1 elementof SYMBOL_VALUE
-				COMDAT_PENDING = COMDAT_PENDING and not (1 shl (SYMBOL_SECTION_INDEX-1))
-				PUBLICS_SEEN = PUBLICS_SEEN or 1 shl (SYMBOL_SECTION_INDEX-1)
-				if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL & SYMBOL_VALUE = 0
-					store SYMBOL_INDEX : 4 at section_ref_sym : (SYMBOL_SECTION_INDEX-1) * 4
-				end if
-			else if SYMBOL_CLASS = IMAGE_SYM_CLASS_EXTERNAL
+			else
 				SYMBOL_SECTION_INDEX = IMAGE_SYM_UNDEFINED
 				SYMBOL_VALUE = 0
 				SYMBOL_CLASS = IMAGE_SYM_CLASS_WEAK_EXTERNAL
 				SYMBOL_TAG = 0 scaleof (1 metadataof SYMBOL_VALUE)
-			else
-				SYMBOL_SECTION_INDEX = IMAGE_SYM_UNDEFINED
-				SYMBOL_VALUE = 0
 			end if
 		else
 			SYMBOL_SECTION_INDEX = IMAGE_SYM_ABSOLUTE
@@ -692,7 +514,7 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 	    plain:
 		emit	4, value
 		exit
-		local	offset, symndx, secnum, refsym, type
+		local	offset, symndx, type
 	    dir32:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_I386_DIR32
@@ -708,14 +530,6 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 		compute type, IMAGE_REL_I386_REL32
 		jump	add_relocation
 	    add_relocation:
-		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
-		check	secnum > 0
-		jno	ref_sym_done
-		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
-		check	refsym > 0
-		jno	ref_sym_done
-		compute	symndx, refsym
-	    ref_sym_done:
 		compute offset, $%
 		emit	4, 0 scaleof value
 		check	$% > offset
@@ -739,7 +553,7 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 	    plain:
 		emit	8, value
 		exit
-		local	offset, symndx, secnum, refsym, type
+		local	offset, symndx, type
 	    dir32:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_I386_DIR32
@@ -750,14 +564,6 @@ if COFF.MACHINE = IMAGE_FILE_MACHINE_I386
 		compute type, IMAGE_REL_I386_DIR32NB
 		jump	add_relocation
 	    add_relocation:
-		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
-		check	secnum > 0
-		jno	ref_sym_done
-		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
-		check	refsym > 0
-		jno	ref_sym_done
-		compute	symndx, refsym
-	    ref_sym_done:
 		compute offset, $%
 		emit	8, 0 scaleof value
 		check	$% > offset
@@ -787,7 +593,7 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 	    plain:
 		emit	4, value
 		exit
-		local	offset, symndx, secnum, refsym, type
+		local	offset, symndx, type
 	    addr32:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_AMD64_ADDR32
@@ -803,14 +609,6 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 		compute type, IMAGE_REL_AMD64_REL32
 		jump	add_relocation
 	    add_relocation:
-		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
-		check	secnum > 0
-		jno	ref_sym_done
-		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
-		check	refsym > 0
-		jno	ref_sym_done
-		compute	symndx, refsym
-	    ref_sym_done:
 		compute offset, $%
 		emit	4, 0 scaleof value
 		check	$% > offset
@@ -834,7 +632,7 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 	    plain:
 		emit	8, value
 		exit
-		local	offset, symndx, secnum, refsym, type
+		local	offset, symndx, type
 	    addr64:
 		compute symndx, 0 scaleof (1 metadataof value)
 		compute type, IMAGE_REL_AMD64_ADDR64
@@ -845,14 +643,6 @@ else if COFF.MACHINE = IMAGE_FILE_MACHINE_AMD64
 		compute type, IMAGE_REL_AMD64_ADDR64NB
 		jump	add_relocation
 	    add_relocation:
-		load	secnum, COFF.symbol_table : symndx * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber, 2
-		check	secnum > 0
-		jno	ref_sym_done
-		load	refsym, COFF.section_ref_sym : (secnum - 1) * 4, 4
-		check	refsym > 0
-		jno	ref_sym_done
-		compute	symndx, refsym
-	    ref_sym_done:
 		compute offset, $%
 		emit	8, 0 scaleof value
 		check	$% > offset
@@ -874,68 +664,10 @@ postpone
 	section
 	namespace COFF
 
-		; a COMDAT section without any PUBLIC gets a synthetic static symbol
-		; named after the section, appended at the end of the symbol table;
-		; static symbols have no cross-object identity, so this only makes
-		; the section individually discardable by /OPT:REF - which is why
-		; selections other than the default NODUPLICATES (whose purpose is
-		; cross-object matching by external symbol name) reject it instead
-		repeat SECTION_INDEX
-			if COMDAT_PENDING and (1 shl (%-1))
-				load SYNTH_SELECTION : 1 from comdat_symbols : (%-1) * 16 + 12
-				if SYNTH_SELECTION <> IMAGE_COMDAT_SELECT_NODUPLICATES
-					err 'COMDAT selection requires a PUBLIC symbol declared after the SECTION statement'
-				end if
-				load SYNTH_NAME_POS : 4 from comdat_symbols : (%-1) * 16
-				if SYNTH_NAME_POS > 0
-					store 0 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Zeroes
-					store SYNTH_NAME_POS at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.Offset
-				else
-					load SYNTH_NAME : 8 from comdat_symbols : (%-1) * 16 + 4
-					store SYNTH_NAME : 8 at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.ShortName
-				end if
-				store % at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.SectionNumber
-				store IMAGE_SYM_CLASS_STATIC at symbol_table : SYMBOL_INDEX * sizeof IMAGE_SYMBOL + IMAGE_SYMBOL.StorageClass
-				SYMBOL_INDEX = SYMBOL_INDEX + 1
-			end if
-		end repeat
-
 		NUMBER_OF_SECTIONS := SECTION_INDEX
 		STRING_TABLE_SIZE := STRING_POSITION
 		NUMBER_OF_SYMBOLS := SYMBOL_INDEX
 		NUMBER_OF_RELOCATIONS := RELOCATION_INDEX
-
-		; compute each EXACT_MATCH section's aux CheckSum once, reading the
-		; section's raw bytes back from the output area in place (its own ORG
-		; space, reached through the remembered anchor and base element):
-		; reflected CRC-32 (poly 0xEDB88320) seeded 0 with NO final inversion,
-		; over the initialized bytes then the zero-padded tail (see crc32_table).
-		; irpv iterates nothing when no exactmatch section was recorded.
-		irpv xm_cell, exactmatch_list
-			match xm_area =, xm_base =, xm_sec, xm_cell
-				load XM_AUX : 4 from xm_meta : xm_sec * 16 + 8
-				if XM_AUX > 0
-					load XM_INIT : 4 from xm_meta : xm_sec * 16
-					load XM_TAIL : 4 from xm_meta : xm_sec * 16 + 4
-					XM_CRC = 0
-					repeat XM_INIT, i:0
-						load XM_BYTE : 1 from xm_area : (xm_base + i)
-						XM_CRC = XM_CRC xor XM_BYTE
-						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-					end repeat
-					repeat XM_TAIL
-						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-						load XM_FOLD : 4 from crc32_table : (XM_CRC and 15) shl 2
-						XM_CRC = (XM_CRC shr 4) xor XM_FOLD
-					end repeat
-					store XM_CRC and 0xFFFFFFFF at symbol_table : XM_AUX * sizeof IMAGE_SYMBOL + IMAGE_AUX_SECTION.CheckSum
-				end if
-			end match
-		end irpv
 
 		RELOCATIONS_OFFSET = $%
 		load byte_sequence : NUMBER_OF_RELOCATIONS * sizeof IMAGE_RELOCATION from relocations:0

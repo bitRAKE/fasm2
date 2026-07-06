@@ -13,7 +13,6 @@
 ; 64 source bytes -> 128 hex chars per pass; scalar remainder for the tail.
 ; ============================================================================
 
-include 'newcoff.inc'
 format MS64 NEWCOFF
 include 'u8_as_hex.inc'
 

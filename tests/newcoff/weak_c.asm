@@ -1,5 +1,4 @@
 ; weak_c: calls through the weak name; the linker resolves it to the tag
-include 'newcoff.inc'
 format MS64 NEWCOFF
 extrn maybe_get
 extrn '__imp_ExitProcess' as ExitProcess:qword
