@@ -1,8 +1,9 @@
 ; SHA-256 self-test: the library (include/macro/sha256.inc) against the
 ; NESSIE vectors and FIPS 180 'abc'.
-;	(from a repo prompt)  fasm2 scripts\sha256.inc nul
+;	fasm2 sha256.asm nul
 ;
 ; fasmg implementation by bitRAKE (Rickey Bowers Jr.);
+; https://board.flatassembler.net/topic.php?p=218296#218296
 ; test vectors @ https://www.cosic.esat.kuleuven.be/nessie/testvectors/hash/sha/index.html
 
 include 'macro/sha256.inc'
@@ -21,7 +22,7 @@ macro sha_verify? w1*,w2*,w3*,w4*,w5*,w6*,w7*,w8*
 	assert SHA256.result = exp.str
 end macro
 
-SHA256.calc	; <empty>
+SHA256.calc db '' ; <empty>
 sha_verify 0xE3B0C442,0x98FC1C14,0x9AFBF4C8,0x996FB924,0x27AE41E4,0x649B934C,0xA495991B,0x7852B855
 
 SHA256.calc db 'abc'

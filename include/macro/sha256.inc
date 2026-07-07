@@ -1,6 +1,6 @@
-; SHA-256 as a generic byte-generator consumer (fasmg implementation by
-; bitRAKE (Rickey Bowers Jr.); interface co-developed with Claude
-; (Anthropic))
+; SHA-256 as a generic byte-generator consumer
+; fasmg implementation by bitRAKE (Rickey Bowers Jr.)
+; https://board.flatassembler.net/topic.php?p=218296#218296
 ;
 ;	SHA256.calc file 'source.asm'		; any byte generator:
 ;	SHA256.calc db 'abc'			; file / db / a macro / ...
@@ -24,17 +24,17 @@
 ; site, so everything in calc is spelled SHA256.* or hangs off the
 ; macro-local pad.)
 ;
-; Verified against the NESSIE test vectors: scripts/sha256.inc.
+; Verified against the NESSIE test vectors: tests/sha256.inc.
 
 if ~ definite SHA256_INC
 SHA256_INC := 1
 
-struc rightrotate? value*,bits*,range*
-	local rshift
-	rshift = bits mod range
-	. = (((value) and ((1 shl range)-1)) shr rshift) \
-		or (((value) and ((1 shl rshift)-1)) shl (range - rshift))
-end struc
+calminstruction (name) rightrotate value*,bits*,range*
+        compute bits,bits mod range
+        compute value,(((value) and ((1 shl range)-1)) shr bits) \
+                or (((value) and ((1 shl bits)-1)) shl (range - bits))
+        publish name,value
+end calminstruction
 
 define SHA256 SHA256	; searchable anchor - see THE ANCHOR RULE above
 
