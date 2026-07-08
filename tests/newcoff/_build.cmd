@@ -72,6 +72,19 @@ call "%ROOT%\fasm2.cmd" cv.asm cv.obj || goto :err
 .\cv.exe
 if not "%errorlevel%"=="97" echo [FAIL] cv exit %errorlevel%, expected 97 & goto :err
 
+set "PDBUTIL="
+where llvm-pdbutil >nul 2>nul && set "PDBUTIL=llvm-pdbutil"
+if not defined PDBUTIL if exist "C:\Program Files\LLVM\bin\llvm-pdbutil.exe" set "PDBUTIL=C:\Program Files\LLVM\bin\llvm-pdbutil.exe"
+if defined PDBUTIL (
+  "%PDBUTIL%" dump -symbols cv.pdb > cv_symbols.txt
+  findstr /C:"S_REGREL32" cv_symbols.txt >nul || echo [FAIL] cv: S_REGREL32 records missing && goto :err
+  findstr /R /C:"`seed`" cv_symbols.txt >nul || echo [FAIL] cv: PROC parameter seed missing from PDB && goto :err
+  findstr /C:"saved_seed" cv_symbols.txt >nul || echo [FAIL] cv: LOCALS symbol saved_seed missing from PDB && goto :err
+  findstr /C:"exit_code" cv_symbols.txt >nul || echo [FAIL] cv: LOCALS symbol exit_code missing from PDB && goto :err
+  del cv_symbols.txt
+  echo [ok]   cv locals harvested into CodeView
+)
+
 rem --- ovfl: 65600 relocations in one section (IMAGE_SCN_LNK_NRELOC_OVFL)
 call "%ROOT%\fasm2.cmd" ovfl.asm ovfl.obj || goto :err
 

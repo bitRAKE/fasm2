@@ -29,15 +29,18 @@ what order makes sense.
   with primitive CodeView indices, default `T_UQUAD`), and
   `newcoff_debug_procs` intercepting PROC to harvest declaration
   parameter names automatically (resolved through the proc symbol, since
-  declaration tokens carry pre-namespace context). Verified in the PDB:
-  `dst`/`src`/`len` as `unsigned __int64, register = RSP` with correct
+  declaration tokens carry pre-namespace context). It also installs
+  a NEWCOFF-owned proc64 wrapper
+  ([`include/format/newcoffproc64.inc`](../include/format/newcoffproc64.inc)),
+  so labels declared in `locals ... endl` blocks are recorded automatically
+  after the virtual local declaration creates the symbol, without modifying
+  shared `macro/proc64.inc`. Verified in the PDB: PROC params and LOCALS
+  declarations appear as `S_REGREL32`, `register = RSP`, with correct
   offsets. En route: the per-line interceptor tags the ENDP/SECTION line
   at offset == code size; those artifact entries are now filtered in
   every F2 phase (llvm-readobj bounds line offsets by CodeSize - all
   objects now pass its strict validation, which also caught this only
-  by accident of section layout before). Explicit `cvlocal` for locals
-  declared in LOCALS blocks remains manual until the proc machinery
-  exposes them.
+  by accident of section layout before).
 
 ## Next — unblocked
 
@@ -63,6 +66,20 @@ the debugger. Needs a type-index allocator (0x1000+) with dedup, and
 record padding discipline (leaf records 4-aligned, `LF_PAD` bytes).
 Design before code: this is its own module (`newcofftp.inc`?) with the
 same records-in-POSTPONE shape.
+
+Keep the two type spaces distinct in the design:
+
+- predefined CodeView simple types are indices below `0x1000`; the low
+  byte is the simple kind and pointer forms OR in a mode byte
+  (`0x603` = 64-bit near pointer to `void`);
+- `.debug$T` records allocate user/type-builder indices from `0x1000`
+  upward.
+
+That split lets stage-3 locals use named aliases such as `CV_T_UINT4` and
+`CV_T_64PVOID` today, while future abstractions can map assembly concepts
+(`STARTUPINFO`, `PROCESS_INFORMATION`, `HANDLE`, pointer-to-struct, array
+fields, SDK typedef aliases) either to a predefined simple type or to a
+deduplicated `.debug$T` record.
 
 ### 5. Unwind beyond static frames
 

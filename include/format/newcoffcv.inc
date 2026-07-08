@@ -26,7 +26,9 @@
 ;   close@proc    equ newcoff_debug_close
 ;
 ; When NEWCOFF.DEBUG is defined non-zero, the unnamed-macro interceptor at
-; the bottom tags every line of the main source file automatically.
+; the bottom tags every line of the main source file automatically. With
+; newcoff_debug_procs installed, PROC parameters and LOCALS declarations
+; become S_REGREL32 entries without explicit cvlocal markers.
 ; ============================================================================
 
 include 'macro/sha256.inc'
@@ -53,7 +55,13 @@ CV_CFL_X64	= 0xD0
 CV_AMD64_RSP	= 335	; CodeView register numbers for S_REGREL32
 CV_REG_ESP	= 21
 
+; Curated CodeView simple type aliases. Indices below 0x1000 are predefined
+; simple types; pointer spellings combine a mode byte with a kind byte.
+CV_T_INT4	= 0x74
+CV_T_UINT4	= 0x75
+CV_T_QUAD	= 0x76
 CV_T_UQUAD	= 0x77	; default cvlocal type: unsigned 64-bit
+CV_T_64PVOID	= 0x603	; NearPointer64 | Void
 
 struct LINE_RECORD, packed
 	; 'file' and 'section' are taken (directive / macro), hence the names
@@ -124,6 +132,7 @@ namespace NEWCOFF
 	end virtual
 
 	CV_PROC_OPEN = 0
+	CV_IN_PROC_LOCALS = 0
 
 	; ------------------------------------------------------------------
 	; POSTPONE synthesis - invoked by newcoffms after the machine is
@@ -716,7 +725,8 @@ end macro
 ; rsp-relative locals/params of the open procedure: the offset is derived
 ; from the symbol itself (it must be rsp-relative, as static_rsp locals
 ; and params are), the display name is the symbol's own name. Items may
-; carry a CodeView type index (default T_UQUAD): cvlocal len, dst:0x603
+; carry a CodeView type index (default T_UQUAD):
+; cvlocal len, flags:CV_T_UINT4, dst:CV_T_64PVOID
 macro cvlocal? args&
 	namespace NEWCOFF
 		if ~ CV_PROC_OPEN
@@ -780,20 +790,8 @@ macro cv_proc_params? prnt*, params&
 	end match
 end macro
 
-; install the PROC interception: after the proc machinery has defined the
-; parameters (and the debug prologue has opened the cvproc), each name
-; from the declaration is recorded as an S_REGREL32 local automatically
-macro newcoff_debug_procs?
-	macro proc?! decl&
-		proc decl
-		match pname =uses? regs =, params, decl
-			cv_proc_params pname, params
-		else match pname =uses? regs, decl
-		else match pname params, decl
-			cv_proc_params pname, params
-		end match
-	end macro
-end macro
+; NEWCOFF-specific proc64 wrapper: automatic PROC parameter and LOCALS harvesting
+include 'format/newcoffproc64.inc'
 
 ; name the current position (S_LABEL32) - jump targets, dispatch stubs
 macro cvlabel? name*
@@ -836,7 +834,7 @@ end macro
 
 if definite NEWCOFF.DEBUG & NEWCOFF.DEBUG
 	macro ? &line& ; tag every line!
-		if __FILE__ = __SOURCE__
+		if __FILE__ = __SOURCE__ & NEWCOFF.CV_IN_PROC_LOCALS = 0
 			cvline
 		end if
 		line

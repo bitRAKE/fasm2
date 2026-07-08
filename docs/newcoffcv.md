@@ -12,6 +12,12 @@ debug section is just more records, so nothing here needed new machinery:
 are `RELOC_RECORD`s with the existing semantic kinds, and COMDAT
 associativity ties them to their code.
 
+The proc64-specific debug wrapper lives separately in
+[`newcoffproc64.inc`](../include/format/newcoffproc64.inc). That file owns
+the NEWCOFF-only `proc` copy needed to harvest parameters and `locals`
+declarations without changing the shared `macro/proc64.inc` used by other
+formats.
+
 ## The markers
 
 | Marker | Records |
@@ -20,8 +26,18 @@ associativity ties them to their code.
 | `cvproc name` | opens a procedure at the current position, before any prologue pushes |
 | `cvframe size [, regs]` | placed right after the prologue: rsp allocation, prologue length, pushed nonvolatile registers in push order |
 | `cvendp` | closes the procedure (length becomes known) |
-| `cvlocal n [, n:type]` | rsp-relative locals/params of the open procedure (`S_REGREL32`): the offset is derived from the symbol itself, the display name is its own name; type is a CodeView index, default `T_UQUAD` 0x77 (`T_INT4` 0x74, `T_UINT4` 0x75, `T_QUAD` 0x76, 64-bit `void*` 0x603) |
+| `cvlocal n [, n:type]` | rsp-relative locals/params of the open procedure (`S_REGREL32`): the offset is derived from the symbol itself, the display name is its own name; type is a CodeView index, default `CV_T_UQUAD`; named primitive aliases include `CV_T_INT4`, `CV_T_UINT4`, `CV_T_QUAD`, `CV_T_UQUAD`, and `CV_T_64PVOID` |
 | `cvlabel name` | names the current position (`S_LABEL32`) |
+
+The current implementation intentionally exposes only a curated subset of
+CodeView simple type aliases. CodeView type indices below `0x1000` are
+predefined "simple" types; the low byte is the simple kind and pointer
+spellings OR in a mode byte. For example, `CV_T_64PVOID = 0x603` is
+`NearPointer64 | Void`. This is the right substrate for today's `S_REGREL32`
+locals, but it is not the whole type system. Future `.debug$T` work should
+keep these predefined aliases separate from allocator-produced type records
+starting at `0x1000`, then layer higher-level assembly concepts (`struct`
+definitions, pointers to structs, arrays, handles, SDK aliases) on top.
 
 With `NEWCOFF.DEBUG` defined non-zero, the unnamed-macro interceptor tags
 **every line of the main source file** automatically:
@@ -40,7 +56,11 @@ size *and* `uses` registers, taken straight from the prologue arguments —
 while `newcoff_debug_procs` intercepts PROC to harvest the declaration's
 parameter names into `S_REGREL32` records automatically (each name is
 resolved through the proc symbol, since the declaration tokens carry the
-pre-namespace context):
+pre-namespace context). The same installation also hooks proc64 `locals`
+blocks: each declaration line is recorded after the virtual local label is
+created, so `locals ... endl` entries become rsp-relative `S_REGREL32`
+symbols without a manual `cvlocal`. This behavior is scoped to the
+`newcoffproc64.inc` wrapper; the generic `proc64.inc` macros are unchanged.
 
 ```
 prologue@proc	equ newcoff_debug_prologue
@@ -133,14 +153,15 @@ Modules view), run against any file, and check:
 | --- | --- | --- |
 | 1 | C13 lines (F2/F3/F4), per-section associative `.debug$S` | **done** |
 | 2 | `S_GPROC32`/`S_FRAMEPROC`/`S_END`, `S_LABEL32`, `S_OBJNAME`/`S_COMPILE3`; `.pdata`/`.xdata` from the prologue facts | **done** |
-| 3 | `S_REGREL32` locals/params: `cvlocal` marker + automatic PROC-parameter harvest; primitive type indices, default `T_UQUAD` | **done** |
+| 3 | `S_REGREL32` locals/params: `cvlocal` marker + automatic PROC-parameter harvest + automatic proc64 `locals` harvest; primitive type indices, default `T_UQUAD` | **done** |
 | 4 | `S_CONSTANT` for equates, `S_GDATA32`/`S_LDATA32` for data symbols incl. statics | planned |
 | 5 | SHA-256 file checksums in F4 (`SHA256.calc` generator interface; `file` re-reads the source bytes in POSTPONE) | **done** |
-| 6 | `.debug$T`: `LF_STRUCTURE`/`LF_ARRAY`/... bridged from `macro/struct.inc` definitions, `S_UDT`, typed data symbols | ambitious |
+| 6 | `.debug$T`: allocator-owned type records from `0x1000` upward (`LF_STRUCTURE`/`LF_ARRAY`/`LF_POINTER`/...) bridged from `macro/struct.inc` definitions and SDK aliases; `S_UDT`; typed data symbols | ambitious |
 | 7 | `S_INLINESITE` modelling *macro expansions* as inline frames | speculative, uniquely fasm |
 
 Known limits of the current stage: one open `cvproc` at a time (no nesting);
-unwind covers rsp-allocation + pushes (no frame-pointer chaining, which
-`static_rsp` frames never need); `S_GPROC32` uses `T_NOTYPE`. The 8-slot
-`reg_nibbles` field caps `uses` lists at 8
+automatic `locals` harvest currently records proc64 declaration labels with
+the default type index; unwind covers rsp-allocation + pushes (no
+frame-pointer chaining, which `static_rsp` frames never need);
+`S_GPROC32` uses `T_NOTYPE`. The 8-slot `reg_nibbles` field caps `uses` lists at 8
 registers — matching the number of nonvolatile GPRs, so nothing real hits it.
