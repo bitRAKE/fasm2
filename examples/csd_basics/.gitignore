@@ -1,0 +1,17 @@
+# keep generated outputs local while this example grows
+*
+!*/
+!.gitignore
+!_build.cmd
+!*.asm
+!*.inc
+!*.rc
+!*.manifest
+!*.md
+!*.cmd
+!*.ps1
+!*.tsv
+18_dpi_manifest_matrix/generated/*.exe
+18_dpi_manifest_matrix/generated/*.res
+18_dpi_manifest_matrix/extracted/*
+18_dpi_manifest_matrix/reports/runtime_*.tsv
