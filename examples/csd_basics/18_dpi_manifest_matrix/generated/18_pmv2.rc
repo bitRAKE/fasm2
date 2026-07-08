@@ -1,0 +1,5 @@
+#include <windows.h>
+
+LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
+
+1 RT_MANIFEST "..\\manifests\\pmv2.manifest"

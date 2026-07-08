@@ -1,0 +1,5 @@
+#include <windows.h>
+
+LANGUAGE LANG_ENGLISH, SUBLANG_DEFAULT
+
+1 RT_MANIFEST "13_caption_tabs.manifest"

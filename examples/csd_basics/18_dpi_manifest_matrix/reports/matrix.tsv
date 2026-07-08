@@ -1,0 +1,5 @@
+variant	manifest_dpiAware	manifest_dpiAwareness	subsystem	startup_dpi	wm_dpichanged	suggested_rect_applied	notes
+unaware			6.00 subsystem version; 2 subsystem (Windows GUI)		not_run		mt extracted manifest; dumpbin headers captured; runtime log not present
+system	true		6.00 subsystem version; 2 subsystem (Windows GUI)		not_run		mt extracted manifest; dumpbin headers captured; runtime log not present
+pmv1	true/pm		6.00 subsystem version; 2 subsystem (Windows GUI)		not_run		mt extracted manifest; dumpbin headers captured; runtime log not present
+pmv2	true/pm	PerMonitorV2, PerMonitor	6.00 subsystem version; 2 subsystem (Windows GUI)		not_run		mt extracted manifest; dumpbin headers captured; runtime log not present

@@ -1,0 +1,12 @@
+ADDON_WINDOWS_RESOURCE equ 'generated\18_pmv1.res'
+CSD_MATRIX_VARIANT_TEXT equ 'pmv1'
+CSD_MATRIX_APP_NAME equ 'CSD 18 - DPI matrix PMv1'
+CSD_MATRIX_CLASS_NAME equ 'Fasm2CsdMatrixPmv1'
+CSD_MATRIX_TITLE_TEXT equ '18  DPI manifest matrix - PMv1'
+CSD_MATRIX_LOG_PATH equ 'reports\runtime_pmv1.tsv'
+
+include 'addon/windows.inc'
+include '..\..\..\font_icons\font_icons.inc'
+include 'addon\csd\caption.inc'
+include 'addon\csd\dpi.inc'
+include '..\matrix_app.inc'

@@ -1,0 +1,12 @@
+ADDON_WINDOWS_RESOURCE equ 'generated\18_system.res'
+CSD_MATRIX_VARIANT_TEXT equ 'system'
+CSD_MATRIX_APP_NAME equ 'CSD 18 - DPI matrix system'
+CSD_MATRIX_CLASS_NAME equ 'Fasm2CsdMatrixSystem'
+CSD_MATRIX_TITLE_TEXT equ '18  DPI manifest matrix - system'
+CSD_MATRIX_LOG_PATH equ 'reports\runtime_system.tsv'
+
+include 'addon/windows.inc'
+include '..\..\..\font_icons\font_icons.inc'
+include 'addon\csd\caption.inc'
+include 'addon\csd\dpi.inc'
+include '..\matrix_app.inc'

@@ -1,0 +1,3 @@
+#include <winuser.h>
+
+1 RT_MANIFEST "19_backdrop_viewer.manifest"
