@@ -23,7 +23,7 @@ tests\newcoff\hexer\_build.cmd clean
 hexer.exe hexer.exe                       :: hex-dump anything
 ```
 
-Every build is a debug build: the script passes `-iNEWCOFF.DEBUG:=1` and the
+Every build is a verbose debug build: the script passes `-iNEWCOFF.DEBUG:=6` and the
 linker gets `/DEBUG:FULL`, producing `hexer.pdb` alongside the exe.
 
 ## 1. The pieces
@@ -97,11 +97,12 @@ original arguments. Every later call jumps straight through.
 
 ## 5. Source-level debugging
 
-This is where NEWCOFF earns the "new". With `NEWCOFF.DEBUG` set (the build
-script always sets it):
+This is where NEWCOFF earns the "new". With `NEWCOFF.DEBUG > 5` (the build
+script always sets level 6):
 
-- **every line** of each main source file is tagged automatically (an
-  unnamed-macro interceptor calls `cvline` per line);
+- every source line that **emits bytes** is tagged automatically, including
+  lines in contributing include files; zero-byte lines are discarded and
+  equal offsets are coalesced before CodeView emission;
 - **every `proc`/`endp`** marks itself via the `static_rsp` wrappers in
   `windows.inc` — procedure symbols *plus* frame size and `uses` registers,
   from which real x64 **unwind info** (`.pdata`/`.xdata`) is synthesized;

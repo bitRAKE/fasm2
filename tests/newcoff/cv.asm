@@ -1,8 +1,8 @@
-; cv: CodeView line information and symbols - cvline markers become
-; '.debug$S' sections synthesized in POSTPONE (associative to the COMDAT
-; code), proc locals are harvested without manual cvlocal, and opt-in
-; constants/data markers become named debugger symbols.
-NEWCOFF.DEBUG := 1
+; cv: verbose automatic CodeView lines are committed only for source lines
+; that emit bytes, coalesced in POSTPONE, and include contributing files.
+; Proc locals are harvested without manual cvlocal, and opt-in constants/data
+; markers become named debugger symbols.
+NEWCOFF.DEBUG := 6
 format MS64 NEWCOFF
 include 'win64a.inc'
 extrn '__imp_ExitProcess' as ExitProcess:qword
@@ -19,13 +19,13 @@ section '.text$start' code readable executable comdat align 16
 public mainCRTStartup
 mainCRTStartup:
 cvproc mainCRTStartup
-	cvline
+	; Deliberate raw collision: the byte-backed automatic record must win.
+	cvline 999, 'cv.asm'
 	sub	rsp, 40
+	include 'cv_lines.inc'
 cvframe 40
-	cvline
 	mov	ecx, CV_EXIT_CODE - 1
 	call	debug_locals
-cvline
 	add	eax, [cv_local_delta]
 	cmp	eax, [cv_global_exit_code]
 	cmove	eax, [cv_global_exit_code]
@@ -47,7 +47,6 @@ endp
 section '.text$other' code readable executable comdat align 16
 public helper
 helper:
-	cvline
 	ret
 
 section '.data' data readable writeable align 4

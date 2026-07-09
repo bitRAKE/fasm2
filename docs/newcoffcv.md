@@ -42,17 +42,26 @@ keep these predefined aliases separate from allocator-produced type records
 starting at `0x1000`, then layer higher-level assembly concepts (`struct`
 definitions, pointers to structs, arrays, handles, SDK aliases) on top.
 
-With `NEWCOFF.DEBUG` defined non-zero, the unnamed-macro interceptor tags
-**every line of the main source file** automatically:
+`NEWCOFF.DEBUG` levels 1 through 5 leave line selection explicit through
+`cvline`. At levels greater than 5, the unnamed-macro interceptor enables the
+verbose automatic tracker across **all contributing source files**. A marker
+is deferred until the next source line; it is committed only when the pending
+line actually grew the current section:
 
 ```
 macro ? &line&
-	if __FILE__ = __SOURCE__
-		cvline
-	end if
+	newcoff_debug_line_begin __LINE__, __FILE__
 	line
 end macro
 ```
+
+Section close flushes the final pending line. Lines expanded in unrelated
+`virtual` address spaces are ignored, and POSTPONE canonicalizes the staging
+stream before F2 emission: automatic records must cover bytes, while adjacent
+records at an equal section/offset coalesce with the last marker winning.
+Directives, declarations, labels, and comments therefore do not crowd out the
+source line that emitted the instruction. Explicit `cvline` remains an escape
+hatch at every debug level.
 
 and the `static_rsp` wrappers make `proc`/`endp` mark themselves — frame
 size *and* `uses` registers, taken straight from the prologue arguments —
@@ -87,8 +96,8 @@ a REX prefix). Nothing is annotated by hand in `examples/hexer`.
   ([`include/macro/sha256.inc`](../include/macro/sha256.inc); other hash
   functions can share the generator-in/string-out interface regardless of
   digest size). `NEWCOFF.NOCHECKSUM=1` skips the hashing (kind none, zeroed).
-- **One `.debug$S` per CODE section with debug material** — line records
-  from data sections are ignored — holding an F2 lines subsection and an F1
+- **One `.debug$S` per CODE section with debug material** — byte-backed,
+  coalesced line records from data sections are ignored — holding an F2 lines subsection and an F1
   symbols subsection (`S_GPROC32` + `S_FRAMEPROC` + `S_END` per procedure,
   scope pointers left 0 for the linker to rewrite; `S_LABEL32` per label).
   Bound to the code by SECREL32 + SECTION relocations; **COMDAT ASSOCIATIVE**
@@ -126,8 +135,8 @@ Build `tests\newcoff\hexer\_build.cmd dispatch`, open `hexer.exe` in the
 debugger (x64dbg: make sure the PDB loads — check the symbol status in the
 Modules view), run against any file, and check:
 
-1. **Lines everywhere** — every instruction in the disassembly annotated
-   with `file:line` (the per-line interceptor at work). Includes lines in
+1. **Lines everywhere** — every byte-emitting source line represented in the
+   disassembly as `file:line` (the verbose tracker at work). Includes lines in
    `somehex.asm`/`u8_as_hex_avx512.asm`/`dispatch.asm`, each against its own
    file.
 2. **Named frames** — break inside `u8_as_hex_base` (dispatch build on a

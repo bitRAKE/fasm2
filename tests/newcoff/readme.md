@@ -33,11 +33,13 @@ matters here.)
 - **weak_a/b/c.asm** — `weak_b` publishes `maybe_get` as a weak external
   whose alias tag is `weak_a`'s `real_get`; `weak_c` calls through the
   weak name. Must exit 97.
-- **cv.asm** — `cvline` markers through `/DEBUG:FULL` to a PDB, plus
-  automatic `S_REGREL32` harvest for PROC parameters and `locals`
-  declarations, opt-in `S_CONSTANT`, and `S_GDATA32`/`S_LDATA32` data
-  symbols. Also demonstrates an unreferenced COMDAT function dragging its
-  associative `.debug$S` out of the image. Must exit 97.
+- **cv.asm / cv_lines.inc** — verbose automatic line tracking through
+  `/DEBUG:FULL` to a PDB: only byte-emitting lines survive, equal offsets are
+  coalesced, and an included source is checksummed and represented. The test
+  also covers automatic `S_REGREL32` harvest for PROC parameters and `locals`
+  declarations, opt-in `S_CONSTANT`, and `S_GDATA32`/`S_LDATA32` data symbols.
+  An unreferenced COMDAT function drags its associative `.debug$S` out of the
+  image. Must exit 97.
 - **ovfl.asm** — 65600 relocations in one section; overflow encoding
   accepted by both linkers. Must exit 97.
 - **crc_vectors.asm** — byte-for-byte reproductions of clang-cl COMDAT

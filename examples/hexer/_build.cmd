@@ -5,7 +5,7 @@ rem   _build.cmd clean
 setlocal enabledelayedexpansion
 pushd "%~dp0"
 set ROOT=%~dp0..\..
-set FASM2=call "%ROOT%\fasm2.cmd" -iNEWCOFF.DEBUG:=1
+set FASM2=call "%ROOT%\fasm2.cmd" -iNEWCOFF.DEBUG:=6
 set MODE=%~1
 if "%MODE%"=="" set MODE=dispatch
 

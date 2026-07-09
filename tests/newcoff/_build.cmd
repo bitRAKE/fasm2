@@ -63,8 +63,8 @@ call "%ROOT%\fasm2.cmd" weak_c.asm weak_c.obj || goto :err
 .\weak.exe
 if not "%errorlevel%"=="97" echo [FAIL] weak exit %errorlevel%, expected 97 & goto :err
 
-rem --- cv: cvline/local/const/data markers become .debug$S; /DEBUG -----
-rem --- builds a PDB whose line table maps the code back to cv.asm -------
+rem --- cv: byte-backed/coalesced lines + local/const/data .debug$S -----
+rem --- PDB maps code to cv.asm and contributing cv_lines.inc ------------
 call "%ROOT%\fasm2.cmd" cv.asm cv.obj || goto :err
 
 %LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /DEBUG:FULL /PDB:cv.pdb /OUT:cv.exe cv.obj kernel32.lib || goto :err
@@ -78,6 +78,7 @@ if not defined PDBUTIL if exist "C:\Program Files\LLVM\bin\llvm-pdbutil.exe" set
 if defined PDBUTIL (
   "%PDBUTIL%" dump -symbols cv.pdb > cv_symbols.txt
   "%PDBUTIL%" dump -globals cv.pdb > cv_globals.txt
+  "%PDBUTIL%" dump -l cv.pdb > cv_lines.txt
   findstr /C:"S_REGREL32" cv_symbols.txt >nul || echo [FAIL] cv: S_REGREL32 records missing && goto :err
   findstr /R /C:"`seed`" cv_symbols.txt >nul || echo [FAIL] cv: PROC parameter seed missing from PDB && goto :err
   findstr /C:"saved_seed" cv_symbols.txt >nul || echo [FAIL] cv: LOCALS symbol saved_seed missing from PDB && goto :err
@@ -88,7 +89,8 @@ if defined PDBUTIL (
   findstr /C:"cv_global_exit_code" cv_globals.txt >nul || echo [FAIL] cv: global data symbol missing from PDB && goto :err
   findstr /C:"S_LDATA32" cv_symbols.txt >nul || echo [FAIL] cv: S_LDATA32 records missing && goto :err
   findstr /C:"cv_local_delta" cv_symbols.txt >nul || echo [FAIL] cv: local data symbol missing from PDB && goto :err
-  del cv_symbols.txt cv_globals.txt
+  powershell -NoProfile -ExecutionPolicy Bypass -File check_cv_lines.ps1 cv_lines.txt || goto :err
+  del cv_symbols.txt cv_globals.txt cv_lines.txt
   echo [ok]   cv locals, constants and data symbols harvested into CodeView
 )
 

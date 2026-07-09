@@ -195,8 +195,9 @@ document, [`newcoffcv.md`](newcoffcv.md): C13 line tables, procedure and label
 symbols, producer identification, and x64 unwind data — all synthesized in
 POSTPONE from marker records, with debug sections COMDAT-ASSOCIATIVE to
 their code. The `examples/hexer` build exercises it end to end
-(`NEWCOFF.DEBUG` tags every source line; the `static_rsp` prologue wrappers
-mark procedures, frames and USES registers automatically).
+(`NEWCOFF.DEBUG > 5` records byte-emitting lines from all contributing source
+files; the `static_rsp` prologue wrappers mark procedures, frames and USES
+registers automatically).
 
 ## Testing
 

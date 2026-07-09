@@ -36,11 +36,10 @@ what order makes sense.
   after the virtual local declaration creates the symbol, without modifying
   shared `macro/proc64.inc`. Verified in the PDB: PROC params and LOCALS
   declarations appear as `S_REGREL32`, `register = RSP`, with correct
-  offsets. En route: the per-line interceptor tags the ENDP/SECTION line
-  at offset == code size; those artifact entries are now filtered in
-  every F2 phase (llvm-readobj bounds line offsets by CodeSize - all
-  objects now pass its strict validation, which also caught this only
-  by accident of section layout before).
+  offsets. The original eager per-line interceptor also tagged ENDP/SECTION
+  at offset == code size. The current `NEWCOFF.DEBUG > 5` tracker defers each
+  line until it proves byte emission and coalesces equal offsets; the F2
+  bounds checks remain as defense for explicit `cvline` markers.
 
 - **Stage 4, data and constant symbols**: opt-in `cvconst` emits
   `S_CONSTANT` for integer equates; `cvdata`/`cvldata` emit `S_LDATA32`,

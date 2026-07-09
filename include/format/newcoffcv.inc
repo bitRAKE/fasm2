@@ -28,8 +28,10 @@
 ;   prologue@proc equ newcoff_debug_prologue
 ;   close@proc    equ newcoff_debug_close
 ;
-; When NEWCOFF.DEBUG is defined non-zero, the unnamed-macro interceptor at
-; the bottom tags every line of the main source file automatically. With
+; NEWCOFF.DEBUG levels 1..5 retain explicit cvline behavior. At levels >5,
+; the unnamed-macro interceptor at the bottom tracks every source file, but
+; defers each marker until the line has actually emitted bytes. POSTPONE
+; coalesces equal section/offset records (last wins). With
 ; newcoff_debug_procs installed, PROC parameters and LOCALS declarations
 ; become S_REGREL32 entries without explicit cvlocal markers.
 ; ============================================================================
@@ -78,6 +80,7 @@ struct LINE_RECORD, packed
 	line		dd ?
 	sect		dd ?	; 0-based section index
 	ofs		dd ?	; section-relative code offset
+	endofs		dd ?	; automatic line's exclusive end; -1 = explicit cvline
 ends
 
 struct PROC_RECORD, packed
@@ -134,6 +137,10 @@ namespace NEWCOFF
 	end virtual
 
 	virtual at 0
+		line_emit_records::
+	end virtual
+
+	virtual at 0
 		proc_records::
 	end virtual
 
@@ -167,6 +174,7 @@ namespace NEWCOFF
 
 	CV_PROC_OPEN = 0
 	CV_IN_PROC_LOCALS = 0
+	CV_LINE_PENDING = 0
 
 	; ------------------------------------------------------------------
 	; POSTPONE synthesis - invoked by newcoffms after the machine is
@@ -174,6 +182,38 @@ namespace NEWCOFF
 	; ------------------------------------------------------------------
 	macro codeview_synthesize
 		virtual line_records
+			RAW_NUMBER_OF_LINES = ($ - $$) / sizeof LINE_RECORD
+		end virtual
+		; Produce the canonical line stream. Automatic records must cover
+		; bytes; explicit cvline records remain an intentional escape hatch.
+		; Equal adjacent section/offset records are necessarily separated by
+		; no emitted bytes, so retain the last one. This also collapses an
+		; explicit marker followed by the automatic record for the same bytes.
+		repeat RAW_NUMBER_OF_LINES
+			CV_RAW_I = % - 1
+			load L_FILE : 4 from line_records : CV_RAW_I * sizeof LINE_RECORD + LINE_RECORD.srcfile
+			load L_LINE : 4 from line_records : CV_RAW_I * sizeof LINE_RECORD + LINE_RECORD.line
+			load L_SEC : 4 from line_records : CV_RAW_I * sizeof LINE_RECORD + LINE_RECORD.sect
+			load L_OFF : 4 from line_records : CV_RAW_I * sizeof LINE_RECORD + LINE_RECORD.ofs
+			load L_END : 4 from line_records : CV_RAW_I * sizeof LINE_RECORD + LINE_RECORD.endofs
+			CV_LINE_KEEP = 0
+			if L_END = -1 | L_END > L_OFF
+				CV_LINE_KEEP = 1
+			end if
+			if CV_RAW_I + 1 < RAW_NUMBER_OF_LINES
+				load L_NEXT_SEC : 4 from line_records : (CV_RAW_I + 1) * sizeof LINE_RECORD + LINE_RECORD.sect
+				load L_NEXT_OFF : 4 from line_records : (CV_RAW_I + 1) * sizeof LINE_RECORD + LINE_RECORD.ofs
+				if L_NEXT_SEC = L_SEC & L_NEXT_OFF = L_OFF
+					CV_LINE_KEEP = 0
+				end if
+			end if
+			if CV_LINE_KEEP
+				virtual line_emit_records
+					LINE_RECORD NEWCOFF.L_FILE, NEWCOFF.L_LINE, NEWCOFF.L_SEC, NEWCOFF.L_OFF, NEWCOFF.L_END
+				end virtual
+			end if
+		end repeat
+		virtual line_emit_records
 			NUMBER_OF_LINES = ($ - $$) / sizeof LINE_RECORD
 		end virtual
 		virtual proc_records
@@ -312,17 +352,16 @@ namespace NEWCOFF
 				CV_LB = 0
 				CV_D = 0
 				if CS_FLAGS and IMAGE_SCN_CNT_CODE
-					; markers at ofs >= size are end-of-section artifacts
-					; of the per-line interceptor (the ENDP or SECTION
-					; line itself) - debuggers bound line offsets by the
-					; code size, so they are dropped in every phase
+					; Explicit markers at ofs >= size have no addressable
+					; byte. Automatic records are already byte-backed, but
+					; keep the bounds check in every phase for cvline.
 					CV_LASTF = -1
 					repeat NUMBER_OF_LINES
-						load L_SEC : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.sect
-						load L_OFF : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.ofs
+						load L_SEC : 4 from line_emit_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.sect
+						load L_OFF : 4 from line_emit_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.ofs
 						if L_SEC = SEC_I & L_OFF < CS_SIZE
 							CV_L = CV_L + 1
-							load L_FILE : 4 from line_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.srcfile
+							load L_FILE : 4 from line_emit_records : (%-1) * sizeof LINE_RECORD + LINE_RECORD.srcfile
 							if L_FILE <> CV_LASTF
 								CV_R = CV_R + 1
 								CV_LASTF = L_FILE
@@ -368,19 +407,19 @@ namespace NEWCOFF
 						dd CS_SIZE	; code length covered
 						CV_IDX = 0
 						while CV_IDX < NUMBER_OF_LINES
-							load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
-							load L_OFF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
+							load L_SEC : 4 from line_emit_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
+							load L_OFF : 4 from line_emit_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
 							if L_SEC = SEC_I & L_OFF < CS_SIZE
 								; a run: consecutive markers of this section
 								; sharing one file (other sections interleave)
-								load CV_RUNF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.srcfile
+								load CV_RUNF : 4 from line_emit_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.srcfile
 								CV_N = 0
 								CV_SCAN = CV_IDX
 								while CV_SCAN < NUMBER_OF_LINES
-									load L_SEC : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.sect
-									load L_OFF : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.ofs
+									load L_SEC : 4 from line_emit_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.sect
+									load L_OFF : 4 from line_emit_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.ofs
 									if L_SEC = SEC_I & L_OFF < CS_SIZE
-										load L_FILE : 4 from line_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.srcfile
+										load L_FILE : 4 from line_emit_records : CV_SCAN * sizeof LINE_RECORD + LINE_RECORD.srcfile
 										if L_FILE <> CV_RUNF
 											break
 										end if
@@ -390,10 +429,10 @@ namespace NEWCOFF
 								end while
 								dd CV_RUNF * 40, CV_N, 12 + CV_N * 8
 								while CV_N > 0
-									load L_SEC : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
-									load L_OFF : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
+									load L_SEC : 4 from line_emit_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.sect
+									load L_OFF : 4 from line_emit_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.ofs
 									if L_SEC = SEC_I & L_OFF < CS_SIZE
-										load L_LINE : 4 from line_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.line
+										load L_LINE : 4 from line_emit_records : CV_IDX * sizeof LINE_RECORD + LINE_RECORD.line
 										dd L_OFF
 										dd (L_LINE and 0xFFFFFF) or 0x80000000
 										CV_N = CV_N - 1
@@ -708,10 +747,9 @@ namespace NEWCOFF
 
 end namespace
 
-; record a source-line marker at the current position; with no arguments
-; the invocation site's line and file are captured (fasmg reports the
-; invocation for __LINE__/__FILE__ even from inside a macro)
-macro cvline? lnum:__LINE__, fname:__FILE__
+; Append one source-line marker. Automatic tracking supplies the byte span;
+; endofs=-1 preserves cvline as an explicit position marker.
+macro cvline_record? lnum*, fname*, sect*, ofs*, endofs*
 	namespace NEWCOFF
 		CV_NAME = fname
 		virtual cv_files
@@ -739,10 +777,48 @@ macro cvline? lnum:__LINE__, fname:__FILE__
 				dd CV_FOFS, lengthof CV_NAME
 			end virtual
 		end if
-		CV_OFFSET = $ - SECTION_BASE
 		virtual line_records
-			LINE_RECORD NEWCOFF.CV_ORD, lnum, NEWCOFF.SECTION_INDEX, NEWCOFF.CV_OFFSET
+			LINE_RECORD NEWCOFF.CV_ORD, lnum, sect, ofs, endofs
 		end virtual
+	end namespace
+end macro
+
+; record an explicit source-line marker at the current position; with no
+; arguments the invocation site's line and file are captured (fasmg reports
+; the invocation for __LINE__/__FILE__ even from inside a macro)
+macro cvline? lnum:__LINE__, fname:__FILE__
+	namespace NEWCOFF
+		CV_OFFSET = $ - SECTION_BASE
+	end namespace
+	cvline_record lnum, fname, NEWCOFF.SECTION_INDEX, NEWCOFF.CV_OFFSET, -1
+end macro
+
+; Verbose automatic line tracking is deferred by one source line. At the
+; next intercepted line (or section close), commit only if the pending line
+; grew the same section. This records included sources without filling the
+; PDB with directives, labels, declarations, or other zero-byte lines.
+macro newcoff_debug_line_flush?
+	namespace NEWCOFF
+		if CV_LINE_PENDING & $ relativeto SECTION_BASE
+			CV_LINE_END = $ - SECTION_BASE
+			if CV_LINE_END > CV_LINE_START
+				cvline_record CV_LINE_NUMBER, CV_LINE_FILE, CV_LINE_SECTION, CV_LINE_START, CV_LINE_END
+			end if
+			CV_LINE_PENDING = 0
+		end if
+	end namespace
+end macro
+
+macro newcoff_debug_line_begin? lnum*, fname*
+	newcoff_debug_line_flush
+	namespace NEWCOFF
+		if $ relativeto SECTION_BASE
+			CV_LINE_NUMBER = lnum
+			CV_LINE_FILE = fname
+			CV_LINE_SECTION = SECTION_INDEX
+			CV_LINE_START = $ - SECTION_BASE
+			CV_LINE_PENDING = 1
+		end if
 	end namespace
 end macro
 
@@ -1011,10 +1087,12 @@ macro newcoff_debug_close procname,flag,parmbytes,localbytes,reglist
 	static_rsp_close procname,flag,parmbytes,localbytes,reglist
 end macro
 
-if definite NEWCOFF.DEBUG & NEWCOFF.DEBUG
-	macro ? &line& ; tag every line!
-		if __FILE__ = __SOURCE__ & NEWCOFF.CV_IN_PROC_LOCALS = 0
-			cvline
+if definite NEWCOFF.DEBUG & NEWCOFF.DEBUG > 5
+	macro ? &line&
+		if NEWCOFF.CV_IN_PROC_LOCALS = 0
+			newcoff_debug_line_begin __LINE__, __FILE__
+		else
+			newcoff_debug_line_flush
 		end if
 		line
 	end macro

@@ -340,6 +340,12 @@ end namespace
 
 macro section?
 	namespace NEWCOFF
+		; The verbose CodeView line tracker defers a marker until it knows
+		; that the source line emitted bytes.  Closing a section is the
+		; final opportunity to commit its pending line (including EOF).
+		if definite NEWCOFF.DEBUG & NEWCOFF.DEBUG > 5
+			newcoff_debug_line_flush
+		end if
 
 		SECTION_SIZE = $% - SECTION_OFFSET
 
@@ -586,7 +592,7 @@ macro extrn? declaration*
 end macro
 
 ; CodeView debug support: cvline/cvproc/cvframe/cvendp/cvlabel markers,
-; the NEWCOFF.DEBUG per-line interceptor, and the POSTPONE synthesis of
+; the NEWCOFF.DEBUG>5 byte-backed line tracker, and POSTPONE synthesis of
 ; '.debug$S' and '.pdata'/'.xdata' sections - see docs/newcoffcv.md
 include 'format/newcoffcv.inc'
 
