@@ -42,21 +42,20 @@ what order makes sense.
   objects now pass its strict validation, which also caught this only
   by accident of section layout before).
 
-## Next — unblocked
+- **Stage 4, data and constant symbols**: opt-in `cvconst` emits
+  `S_CONSTANT` for integer equates; `cvdata`/`cvldata` emit `S_LDATA32`,
+  and `cvgdata` emits `S_GDATA32` for data at the current position.
+  Data symbols use SECREL32 + SECTION relocations and primitive CodeView
+  type indices (default `T_UQUAD`, `CV_T_UINT4` in the test). Verified in
+  `tests/newcoff/cv.asm`: `llvm-pdbutil dump -globals` shows
+  `CV_EXIT_CODE` and `cv_global_exit_code`, while `dump -symbols` shows
+  the module-local `cv_local_delta`. A sizing bug caught by `link`
+  (`debugging information corrupt`) is now guarded by the PDB checks:
+  data records include their null terminator in the padded record length.
 
-### 3. Data and constant symbols
+## Next — needs a subsystem
 
-- `S_CONSTANT` (0x1107) — equates by name in the debugger
-  (`CHUNK = 0x10000` visible in watch). Opt-in `cvconst` marker;
-  sweeping *all* equates would be noise.
-- `S_GDATA32` / `S_LDATA32` (0x110D/0x110C) — data symbols with SECREL
-  binding and primitive types. Publics already reach the PDB through the
-  linker; the gain is *statics* and typed display. A `cvdata` marker,
-  possibly folded into `public`/label wrappers later.
-
-## Later — needs a subsystem
-
-### 4. `.debug$T`: real types from `macro/struct.inc`
+### 5. `.debug$T`: real types from `macro/struct.inc`
 
 The seductive one: `struct` definitions already know every field name,
 offset and size — a bridge can emit `LF_FIELDLIST`/`LF_STRUCTURE`
@@ -81,7 +80,7 @@ That split lets stage-3 locals use named aliases such as `CV_T_UINT4` and
 fields, SDK typedef aliases) either to a predefined simple type or to a
 deduplicated `.debug$T` record.
 
-### 5. Unwind beyond static frames
+### 6. Unwind beyond static frames
 
 Current codes cover rsp allocation + nonvolatile pushes — everything
 `static_rsp` frames produce. If other frame styles arrive:

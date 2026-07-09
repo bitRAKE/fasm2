@@ -63,8 +63,8 @@ call "%ROOT%\fasm2.cmd" weak_c.asm weak_c.obj || goto :err
 .\weak.exe
 if not "%errorlevel%"=="97" echo [FAIL] weak exit %errorlevel%, expected 97 & goto :err
 
-rem --- cv: cvline markers become .debug$S; /DEBUG builds a PDB whose ---
-rem --- line table maps the code back to cv.asm ---------------------------
+rem --- cv: cvline/local/const/data markers become .debug$S; /DEBUG -----
+rem --- builds a PDB whose line table maps the code back to cv.asm -------
 call "%ROOT%\fasm2.cmd" cv.asm cv.obj || goto :err
 
 %LK% /NOLOGO /SUBSYSTEM:CONSOLE /OPT:REF /NODEFAULTLIB /DEBUG:FULL /PDB:cv.pdb /OUT:cv.exe cv.obj kernel32.lib || goto :err
@@ -77,12 +77,19 @@ where llvm-pdbutil >nul 2>nul && set "PDBUTIL=llvm-pdbutil"
 if not defined PDBUTIL if exist "C:\Program Files\LLVM\bin\llvm-pdbutil.exe" set "PDBUTIL=C:\Program Files\LLVM\bin\llvm-pdbutil.exe"
 if defined PDBUTIL (
   "%PDBUTIL%" dump -symbols cv.pdb > cv_symbols.txt
+  "%PDBUTIL%" dump -globals cv.pdb > cv_globals.txt
   findstr /C:"S_REGREL32" cv_symbols.txt >nul || echo [FAIL] cv: S_REGREL32 records missing && goto :err
   findstr /R /C:"`seed`" cv_symbols.txt >nul || echo [FAIL] cv: PROC parameter seed missing from PDB && goto :err
   findstr /C:"saved_seed" cv_symbols.txt >nul || echo [FAIL] cv: LOCALS symbol saved_seed missing from PDB && goto :err
   findstr /C:"exit_code" cv_symbols.txt >nul || echo [FAIL] cv: LOCALS symbol exit_code missing from PDB && goto :err
-  del cv_symbols.txt
-  echo [ok]   cv locals harvested into CodeView
+  findstr /C:"S_CONSTANT" cv_globals.txt >nul || echo [FAIL] cv: S_CONSTANT records missing && goto :err
+  findstr /C:"CV_EXIT_CODE" cv_globals.txt >nul || echo [FAIL] cv: constant CV_EXIT_CODE missing from PDB && goto :err
+  findstr /C:"S_GDATA32" cv_globals.txt >nul || echo [FAIL] cv: S_GDATA32 records missing && goto :err
+  findstr /C:"cv_global_exit_code" cv_globals.txt >nul || echo [FAIL] cv: global data symbol missing from PDB && goto :err
+  findstr /C:"S_LDATA32" cv_symbols.txt >nul || echo [FAIL] cv: S_LDATA32 records missing && goto :err
+  findstr /C:"cv_local_delta" cv_symbols.txt >nul || echo [FAIL] cv: local data symbol missing from PDB && goto :err
+  del cv_symbols.txt cv_globals.txt
+  echo [ok]   cv locals, constants and data symbols harvested into CodeView
 )
 
 rem --- ovfl: 65600 relocations in one section (IMAGE_SCN_LNK_NRELOC_OVFL)

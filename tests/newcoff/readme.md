@@ -35,8 +35,9 @@ matters here.)
   weak name. Must exit 97.
 - **cv.asm** — `cvline` markers through `/DEBUG:FULL` to a PDB, plus
   automatic `S_REGREL32` harvest for PROC parameters and `locals`
-  declarations. Also demonstrates an unreferenced COMDAT function dragging
-  its associative `.debug$S` out of the image. Must exit 97.
+  declarations, opt-in `S_CONSTANT`, and `S_GDATA32`/`S_LDATA32` data
+  symbols. Also demonstrates an unreferenced COMDAT function dragging its
+  associative `.debug$S` out of the image. Must exit 97.
 - **ovfl.asm** — 65600 relocations in one section; overflow encoding
   accepted by both linkers. Must exit 97.
 - **crc_vectors.asm** — byte-for-byte reproductions of clang-cl COMDAT

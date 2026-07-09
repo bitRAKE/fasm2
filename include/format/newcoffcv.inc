@@ -18,6 +18,9 @@
 ;                          (offset derived from the symbol; default type
 ;                          T_UQUAD 0x77 - see newcoffcv.md for indices)
 ;   cvlabel name           name the current position (S_LABEL32)
+;   cvconst name [, type]  name an integer equate (S_CONSTANT)
+;   cvdata name [, type]   name data at the current position (S_LDATA32)
+;   cvldata/cvgdata        explicit local/global data symbol variants
 ;
 ; newcoff_debug_prologue / newcoff_debug_close wrap the static_rsp proc
 ; frame so PROC/ENDP mark themselves - including frame size and USES
@@ -39,8 +42,14 @@ S_FRAMEPROC  = 0x1012
 S_REGREL32   = 0x1111
 S_OBJNAME    = 0x1101
 S_LABEL32    = 0x1105
+S_CONSTANT   = 0x1107
+S_LDATA32    = 0x110C
+S_GDATA32    = 0x110D
 S_GPROC32    = 0x1110
 S_COMPILE3   = 0x113C
+
+LF_LONG      = 0x8003
+LF_ULONG     = 0x8004
 
 CV_SIGNATURE_C13	= 4
 DEBUG_S_SYMBOLS 	= 0xF1
@@ -99,6 +108,23 @@ struct LABEL_RECORD, packed
 	ofs		dd ?
 ends
 
+struct CONST_RECORD, packed
+	name_ofs	dd ?
+	name_len	dd ?
+	value		dd ?
+	typind		dd ?
+	signed		dd ?
+ends
+
+struct DATA_RECORD, packed
+	name_ofs	dd ?
+	name_len	dd ?
+	sect		dd ?
+	ofs		dd ?
+	typind		dd ?
+	rectyp		dd ?	; S_LDATA32 or S_GDATA32
+ends
+
 namespace NEWCOFF
 
 	; CodeView staging: markers append here; the F3 string table starts
@@ -117,6 +143,14 @@ namespace NEWCOFF
 
 	virtual at 0
 		local_records::
+	end virtual
+
+	virtual at 0
+		const_records::
+	end virtual
+
+	virtual at 0
+		data_records::
 	end virtual
 
 	virtual at 0
@@ -151,7 +185,13 @@ namespace NEWCOFF
 		virtual local_records
 			NUMBER_OF_CVLOCALS = ($ - $$) / sizeof LOCAL_RECORD
 		end virtual
-		if NUMBER_OF_LINES > 0 | NUMBER_OF_PROCS > 0 | NUMBER_OF_LABELS > 0
+		virtual const_records
+			NUMBER_OF_CONSTS = ($ - $$) / sizeof CONST_RECORD
+		end virtual
+		virtual data_records
+			NUMBER_OF_DATA = ($ - $$) / sizeof DATA_RECORD
+		end virtual
+		if NUMBER_OF_LINES > 0 | NUMBER_OF_PROCS > 0 | NUMBER_OF_LABELS > 0 | NUMBER_OF_CONSTS > 0 | NUMBER_OF_DATA > 0
 			virtual section_records
 				USER_SECTIONS = ($ - $$) / sizeof SECTION_RECORD
 			end virtual
@@ -163,7 +203,8 @@ namespace NEWCOFF
 			end virtual
 
 			; one shared, always-kept '.debug$S': producer identification
-			; (F1) and the per-object file tables (F3 strings, F4 checksums)
+			; (F1), constants, and the per-object file tables (F3 strings,
+			; F4 checksums)
 			virtual reloc_records
 				DBG_RELOC1 = ($ - $$) / sizeof RELOC_RECORD
 			end virtual
@@ -174,7 +215,18 @@ namespace NEWCOFF
 			CV_TNAME = 'fasm2 newcoff'
 			CV_OTOTAL = 9 + lengthof CV_ONAME
 			CV_OPAD = (0 - CV_OTOTAL) and 3
-			dd DEBUG_S_SYMBOLS, CV_OTOTAL + CV_OPAD + 40
+			CV_F1SIZE = CV_OTOTAL + CV_OPAD + 40
+			repeat NUMBER_OF_CONSTS
+				load C_NLEN : 4 from const_records : (%-1) * sizeof CONST_RECORD + CONST_RECORD.name_len
+				load C_VAL : 4 from const_records : (%-1) * sizeof CONST_RECORD + CONST_RECORD.value
+				load C_NEG : 4 from const_records : (%-1) * sizeof CONST_RECORD + CONST_RECORD.signed
+				if C_NEG = 0 & C_VAL < 0x8000
+					CV_F1SIZE = CV_F1SIZE + ((11 + C_NLEN + 3) and (not 3))
+				else
+					CV_F1SIZE = CV_F1SIZE + ((15 + C_NLEN + 3) and (not 3))
+				end if
+			end repeat
+			dd DEBUG_S_SYMBOLS, CV_F1SIZE
 			dw CV_OTOTAL + CV_OPAD - 2, S_OBJNAME
 			dd 0			; signature
 			db CV_ONAME, 0
@@ -189,6 +241,35 @@ namespace NEWCOFF
 			dw 2, 0, 0, 0		; front end version
 			dw 2, 0, 0, 0		; back end version
 			db CV_TNAME, 0		; 13+1 chars: record ends 4-aligned
+			; S_CONSTANT: module-scope integer equates
+			repeat NUMBER_OF_CONSTS
+				C_I = % - 1
+				load C_NOFS : 4 from const_records : C_I * sizeof CONST_RECORD + CONST_RECORD.name_ofs
+				load C_NLEN : 4 from const_records : C_I * sizeof CONST_RECORD + CONST_RECORD.name_len
+				load C_VAL : 4 from const_records : C_I * sizeof CONST_RECORD + CONST_RECORD.value
+				load C_TY : 4 from const_records : C_I * sizeof CONST_RECORD + CONST_RECORD.typind
+				load C_NEG : 4 from const_records : C_I * sizeof CONST_RECORD + CONST_RECORD.signed
+				if C_NEG = 0 & C_VAL < 0x8000
+					CV_PAD = (0 - (11 + C_NLEN)) and 3
+					dw 9 + C_NLEN + CV_PAD, S_CONSTANT
+					dd C_TY and 0xFFFFFFFF
+					dw C_VAL and 0xFFFF
+				else
+					CV_PAD = (0 - (15 + C_NLEN)) and 3
+					dw 13 + C_NLEN + CV_PAD, S_CONSTANT
+					dd C_TY and 0xFFFFFFFF
+					if C_NEG
+						dw LF_LONG
+					else
+						dw LF_ULONG
+					end if
+					dd C_VAL and 0xFFFFFFFF
+				end if
+				load byte_sequence : C_NLEN from cv_names : C_NOFS
+				db byte_sequence
+				db 0
+				db CV_PAD dup 0
+			end repeat
 			; F3: file name strings
 			dd DEBUG_S_STRINGTABLE, CV_STR_SIZE
 			load byte_sequence : CV_STR_SIZE from cv_strings : 0
@@ -229,6 +310,7 @@ namespace NEWCOFF
 				CV_R = 0
 				CV_P = 0
 				CV_LB = 0
+				CV_D = 0
 				if CS_FLAGS and IMAGE_SCN_CNT_CODE
 					; markers at ofs >= size are end-of-section artifacts
 					; of the per-line interceptor (the ENDP or SECTION
@@ -260,7 +342,13 @@ namespace NEWCOFF
 						end if
 					end repeat
 				end if
-				if CV_L > 0 | CV_P > 0 | CV_LB > 0
+				repeat NUMBER_OF_DATA
+					load D_SECT : 4 from data_records : (%-1) * sizeof DATA_RECORD + DATA_RECORD.sect
+					if D_SECT = SEC_I
+						CV_D = CV_D + 1
+					end if
+				end repeat
+				if CV_L > 0 | CV_P > 0 | CV_LB > 0 | CV_D > 0
 					virtual reloc_records
 						DBG_RELOC1 = ($ - $$) / sizeof RELOC_RECORD
 					end virtual
@@ -317,10 +405,10 @@ namespace NEWCOFF
 							end if
 						end while
 					end if
-					if CV_P > 0 | CV_LB > 0
+					if CV_P > 0 | CV_LB > 0 | CV_D > 0
 						; F1: S_GPROC32 + S_FRAMEPROC + S_END per procedure
 						; (scope pointers 0; the linker rewrites them),
-						; S_LABEL32 per label
+						; S_LABEL32 per label, S_GDATA32/S_LDATA32 per data symbol
 						F1SIZE = 0
 						repeat NUMBER_OF_PROCS
 							FP_I = % - 1
@@ -342,6 +430,13 @@ namespace NEWCOFF
 							if L_SECT = SEC_I
 								load L_NLEN : 4 from label_records : (%-1) * sizeof LABEL_RECORD + LABEL_RECORD.name_len
 								F1SIZE = F1SIZE + ((12 + L_NLEN + 3) and (not 3))
+							end if
+						end repeat
+						repeat NUMBER_OF_DATA
+							load D_SECT : 4 from data_records : (%-1) * sizeof DATA_RECORD + DATA_RECORD.sect
+							if D_SECT = SEC_I
+								load D_NLEN : 4 from data_records : (%-1) * sizeof DATA_RECORD + DATA_RECORD.name_len
+								F1SIZE = F1SIZE + ((15 + D_NLEN + 3) and (not 3))
 							end if
 						end repeat
 						dd DEBUG_S_SYMBOLS, F1SIZE
@@ -425,6 +520,31 @@ namespace NEWCOFF
 								dw 0
 								db 0		; flags
 								load byte_sequence : L_NLEN from cv_names : L_NOFS
+								db byte_sequence
+								db 0
+								db CV_PAD dup 0
+							end if
+						end repeat
+						repeat NUMBER_OF_DATA
+							D_I = % - 1
+							load D_SECT : 4 from data_records : D_I * sizeof DATA_RECORD + DATA_RECORD.sect
+							if D_SECT = SEC_I
+								load D_NOFS : 4 from data_records : D_I * sizeof DATA_RECORD + DATA_RECORD.name_ofs
+								load D_NLEN : 4 from data_records : D_I * sizeof DATA_RECORD + DATA_RECORD.name_len
+								load D_OFS : 4 from data_records : D_I * sizeof DATA_RECORD + DATA_RECORD.ofs
+								load D_TY : 4 from data_records : D_I * sizeof DATA_RECORD + DATA_RECORD.typind
+								load D_KIND : 4 from data_records : D_I * sizeof DATA_RECORD + DATA_RECORD.rectyp
+								CV_PAD = (0 - (15 + D_NLEN)) and 3
+								dw 13 + D_NLEN + CV_PAD, D_KIND and 0xFFFF
+								dd D_TY and 0xFFFFFFFF
+								DBG_FLD = $% - DBG_OFF
+								virtual reloc_records
+									RELOC_RECORD NEWCOFF.DBG_FLD, NEWCOFF.SEC_I, 0, NEWCOFF.RELOC_SECREL32
+									RELOC_RECORD NEWCOFF.DBG_FLD + 4, NEWCOFF.SEC_I, 0, NEWCOFF.RELOC_SECTION
+								end virtual
+								dd D_OFS
+								dw 0
+								load byte_sequence : D_NLEN from cv_names : D_NOFS
 								db byte_sequence
 								db 0
 								db CV_PAD dup 0
@@ -811,6 +931,65 @@ macro cvlabel? name*
 			LABEL_RECORD NEWCOFF.CV_LNOFS, NEWCOFF.CV_LNLEN, NEWCOFF.SECTION_INDEX, NEWCOFF.CV_LOFS
 		end virtual
 	end namespace
+end macro
+
+; integer equate marker (S_CONSTANT). The constant value is taken from the
+; symbol passed in, and the display name is the symbol's own name.
+macro cvconst? name*, ty:CV_T_UINT4
+	namespace NEWCOFF
+		if name eqtype ''
+			CV_CNAME = name
+		else
+			CV_CNAME = `name
+		end if
+		CV_CVAL = name
+		CV_CNEG = 0
+		if CV_CVAL < 0
+			CV_CNEG = 1
+		end if
+		virtual cv_names
+			CV_CNOFS = $
+			db CV_CNAME
+		end virtual
+		CV_CNLEN = lengthof CV_CNAME
+		virtual const_records
+			CONST_RECORD NEWCOFF.CV_CNOFS, NEWCOFF.CV_CNLEN, NEWCOFF.CV_CVAL and 0xFFFFFFFF, ty, NEWCOFF.CV_CNEG
+		end virtual
+	end namespace
+end macro
+
+; data markers name the current position with S_LDATA32/S_GDATA32 and a
+; primitive CodeView type index (default T_UQUAD). Public COFF symbols still
+; go through the linker normally; these markers add typed/static debugger names.
+macro cvdata_one? rectyp*, name*, ty*
+	namespace NEWCOFF
+		if name eqtype ''
+			CV_DNAME = name
+		else
+			CV_DNAME = `name
+		end if
+		virtual cv_names
+			CV_DNOFS = $
+			db CV_DNAME
+		end virtual
+		CV_DNLEN = lengthof CV_DNAME
+		CV_DOFS = $ - SECTION_BASE
+		virtual data_records
+			DATA_RECORD NEWCOFF.CV_DNOFS, NEWCOFF.CV_DNLEN, NEWCOFF.SECTION_INDEX, NEWCOFF.CV_DOFS, ty, rectyp
+		end virtual
+	end namespace
+end macro
+
+macro cvldata? name*, ty:CV_T_UQUAD
+	cvdata_one S_LDATA32, name, ty
+end macro
+
+macro cvgdata? name*, ty:CV_T_UQUAD
+	cvdata_one S_GDATA32, name, ty
+end macro
+
+macro cvdata? name*, ty:CV_T_UQUAD
+	cvldata name, ty
 end macro
 
 ; drop-in static_rsp frame wrappers: PROC/ENDP mark themselves, with the

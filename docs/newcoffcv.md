@@ -28,6 +28,9 @@ formats.
 | `cvendp` | closes the procedure (length becomes known) |
 | `cvlocal n [, n:type]` | rsp-relative locals/params of the open procedure (`S_REGREL32`): the offset is derived from the symbol itself, the display name is its own name; type is a CodeView index, default `CV_T_UQUAD`; named primitive aliases include `CV_T_INT4`, `CV_T_UINT4`, `CV_T_QUAD`, `CV_T_UQUAD`, and `CV_T_64PVOID` |
 | `cvlabel name` | names the current position (`S_LABEL32`) |
+| `cvconst name [, type]` | names an integer equate (`S_CONSTANT`); default type is `CV_T_UINT4`; compact numeric leaves are used below `0x8000`, otherwise `LF_LONG`/`LF_ULONG` |
+| `cvdata name [, type]` / `cvldata name [, type]` | names data at the current position as a module-local data symbol (`S_LDATA32`); default type is `CV_T_UQUAD` |
+| `cvgdata name [, type]` | names data at the current position as a global data symbol (`S_GDATA32`) |
 
 The current implementation intentionally exposes only a curated subset of
 CodeView simple type aliases. CodeView type indices below `0x1000` are
@@ -76,14 +79,14 @@ a REX prefix). Nothing is annotated by hand in `examples/hexer`.
 ## What is emitted
 
 - **One shared `.debug$S`** (always kept): `S_OBJNAME` + `S_COMPILE3`
-  (producer identification), the F3 file-name string table and the F4 file
-  checksum table — **SHA-256 (kind 3)** of each source's bytes, hashed at
-  assembly time: `SHA256.calc file <name>` feeds the file straight into
-  the hash (no copy), and `db SHA256.result` emits the 32-byte digest
-  string ([`include/macro/sha256.inc`](../include/macro/sha256.inc);
-  other hash functions can share the generator-in/string-out interface
-  regardless of digest size). `NEWCOFF.NOCHECKSUM=1` skips the hashing
-  (kind none, zeroed entries).
+  (producer identification), opt-in `S_CONSTANT` integer equates, the F3
+  file-name string table and the F4 file checksum table — **SHA-256 (kind
+  3)** of each source's bytes, hashed at assembly time: `SHA256.calc file
+  <name>` feeds the file straight into the hash (no copy), and
+  `db SHA256.result` emits the 32-byte digest string
+  ([`include/macro/sha256.inc`](../include/macro/sha256.inc); other hash
+  functions can share the generator-in/string-out interface regardless of
+  digest size). `NEWCOFF.NOCHECKSUM=1` skips the hashing (kind none, zeroed).
 - **One `.debug$S` per CODE section with debug material** — line records
   from data sections are ignored — holding an F2 lines subsection and an F1
   symbols subsection (`S_GPROC32` + `S_FRAMEPROC` + `S_END` per procedure,
@@ -92,6 +95,11 @@ a REX prefix). Nothing is annotated by hand in `examples/hexer`.
   to the code section when that is a COMDAT, so `/OPT:REF` discards code and
   debug data together (build hexer in `base` mode: the avx variants vanish
   along with their line tables — no dangling relocations).
+- **One `.debug$S` per DATA section with data symbols** when `cvdata`,
+  `cvldata`, or `cvgdata` markers are present. `S_LDATA32`/`S_GDATA32`
+  records use SECREL32 + SECTION relocations and primitive type indices.
+  The marker names the current position; public COFF symbols still reach the
+  PDB through the linker, while these markers add typed/static debugger names.
 - **`.xdata`/`.pdata` per code section with procedures** (AMD64 only):
   `UNWIND_INFO` synthesized from the cvframe facts — `UWOP_ALLOC_SMALL` /
   `UWOP_ALLOC_LARGE` for the rsp allocation, `UWOP_PUSH_NONVOL` per pushed
@@ -107,7 +115,8 @@ show a proper `LinkageName` without any extra work.
 
 `link /DEBUG:FULL` and `lld-link /DEBUG:FULL` both fold everything into a
 PDB: `llvm-pdbutil dump -symbols` shows the module symbols above,
-`dump -l` the line tables, `llvm-readobj --unwind` the exact prologue
+`dump -globals` shows `S_CONSTANT`/`S_GDATA32`, `dump -l` the line tables,
+`llvm-readobj --unwind` the exact prologue
 reconstruction (e.g. hexer's `u8_as_hex_init`: `PUSH_NONVOL RBX` at +1,
 `ALLOC_SMALL 32` at +5, prologue size 5).
 
@@ -154,7 +163,7 @@ Modules view), run against any file, and check:
 | 1 | C13 lines (F2/F3/F4), per-section associative `.debug$S` | **done** |
 | 2 | `S_GPROC32`/`S_FRAMEPROC`/`S_END`, `S_LABEL32`, `S_OBJNAME`/`S_COMPILE3`; `.pdata`/`.xdata` from the prologue facts | **done** |
 | 3 | `S_REGREL32` locals/params: `cvlocal` marker + automatic PROC-parameter harvest + automatic proc64 `locals` harvest; primitive type indices, default `T_UQUAD` | **done** |
-| 4 | `S_CONSTANT` for equates, `S_GDATA32`/`S_LDATA32` for data symbols incl. statics | planned |
+| 4 | `S_CONSTANT` for opt-in integer equates; `S_GDATA32`/`S_LDATA32` for typed data symbols and statics | **done** |
 | 5 | SHA-256 file checksums in F4 (`SHA256.calc` generator interface; `file` re-reads the source bytes in POSTPONE) | **done** |
 | 6 | `.debug$T`: allocator-owned type records from `0x1000` upward (`LF_STRUCTURE`/`LF_ARRAY`/`LF_POINTER`/...) bridged from `macro/struct.inc` definitions and SDK aliases; `S_UDT`; typed data symbols | ambitious |
 | 7 | `S_INLINESITE` modelling *macro expansions* as inline frames | speculative, uniquely fasm |
@@ -163,5 +172,6 @@ Known limits of the current stage: one open `cvproc` at a time (no nesting);
 automatic `locals` harvest currently records proc64 declaration labels with
 the default type index; unwind covers rsp-allocation + pushes (no
 frame-pointer chaining, which `static_rsp` frames never need);
-`S_GPROC32` uses `T_NOTYPE`. The 8-slot `reg_nibbles` field caps `uses` lists at 8
+`S_GPROC32` uses `T_NOTYPE`; data/constant markers use primitive type indices
+until `.debug$T` exists. The 8-slot `reg_nibbles` field caps `uses` lists at 8
 registers — matching the number of nonvolatile GPRs, so nothing real hits it.
