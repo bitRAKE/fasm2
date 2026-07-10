@@ -1,4 +1,5 @@
 settingset Events, EntryBreakpoint, 0
+config Engine, Assembler, 3
 init "plugins/fasm2/plugin_test.exe"
 asm cip, "endbr32"
 testassert $result == 4, "fasm2 assembled endbr32"

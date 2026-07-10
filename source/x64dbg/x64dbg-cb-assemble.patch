@@ -1,5 +1,4 @@
 diff --git a/src/dbg/_plugins.h b/src/dbg/_plugins.h
-index aefd7950..056854d1 100644
 --- a/src/dbg/_plugins.h
 +++ b/src/dbg/_plugins.h
 @@ -248,0 +249,13 @@ typedef struct
@@ -18,17 +17,26 @@ index aefd7950..056854d1 100644
 +
 @@ -309,0 +323 @@ typedef enum
 +    CB_ASSEMBLE, //PLUG_CB_ASSEMBLE
+diff --git a/src/dbg/assemble.h b/src/dbg/assemble.h
+--- a/src/dbg/assemble.h
++++ b/src/dbg/assemble.h
+@@ -9,0 +10 @@ enum class AssemblerEngine
++    Plugin = 3,
 diff --git a/src/dbg/assemble.cpp b/src/dbg/assemble.cpp
-index e15cf86f..a09d6df9 100644
 --- a/src/dbg/assemble.cpp
 +++ b/src/dbg/assemble.cpp
 @@ -14,0 +15 @@
 +#include "plugin_loader.h"
-@@ -46,0 +48,20 @@ bool assemble(duint addr, unsigned char* dest, int destsize, int* size, const ch
+@@ -46,0 +48,28 @@ bool assemble(duint addr, unsigned char* dest, int destsize, int* size, const ch
 +
-+    // Give assembler-provider plugins first refusal before the legacy backend.
-+    if(!plugincbempty(CB_ASSEMBLE))
++    if(assemblerEngine == AssemblerEngine::Plugin)
 +    {
++        if(plugincbempty(CB_ASSEMBLE))
++        {
++            if(error)
++                strcpy_s(error, MAX_ERROR_SIZE, "No assembler provider plugin is loaded");
++            return false;
++        }
 +        PLUG_CB_ASSEMBLE info = {};
 +        info.addr = addr;
 +        info.instruction = instruction;
@@ -43,11 +51,43 @@ index e15cf86f..a09d6df9 100644
 +                *size = info.size;
 +            return info.success;
 +        }
++        if(error)
++            strcpy_s(error, MAX_ERROR_SIZE, "No assembler provider plugin handled the instruction");
++        return false;
 +    }
 +
 diff --git a/src/dbg/plugin_loader.cpp b/src/dbg/plugin_loader.cpp
-index a648ba6b..83ea8419 100644
 --- a/src/dbg/plugin_loader.cpp
 +++ b/src/dbg/plugin_loader.cpp
 @@ -433,0 +434 @@ bool pluginload(const char* pluginName, bool loadall)
 +    regExport("CBASSEMBLE", CB_ASSEMBLE);
+diff --git a/src/gui/Src/Gui/AssembleDialog.cpp b/src/gui/Src/Gui/AssembleDialog.cpp
+--- a/src/gui/Src/Gui/AssembleDialog.cpp
++++ b/src/gui/Src/Gui/AssembleDialog.cpp
+@@ -35,0 +36,2 @@ AssembleDialog::AssembleDialog(QWidget* parent) :
++        if(setting == 3)
++            ui->radioPlugin->setChecked(true);
+@@ -202,0 +205,7 @@ void AssembleDialog::on_radioAsmjit_clicked()
++
++void AssembleDialog::on_radioPlugin_clicked()
++{
++    BridgeSettingSetUint("Engine", "Assembler", 3);
++    DbgSettingsUpdated();
++    validateInstruction(ui->lineEdit->text());
++}
+diff --git a/src/gui/Src/Gui/AssembleDialog.h b/src/gui/Src/Gui/AssembleDialog.h
+--- a/src/gui/Src/Gui/AssembleDialog.h
++++ b/src/gui/Src/Gui/AssembleDialog.h
+@@ -44,0 +45 @@ private slots:
++    void on_radioPlugin_clicked();
+diff --git a/src/gui/Src/Gui/AssembleDialog.ui b/src/gui/Src/Gui/AssembleDialog.ui
+--- a/src/gui/Src/Gui/AssembleDialog.ui
++++ b/src/gui/Src/Gui/AssembleDialog.ui
+@@ -75,0 +76,7 @@
++     <item>
++      <widget class="QRadioButton" name="radioPlugin">
++       <property name="text">
++        <string>&amp;Plugin (fasm2)</string>
++       </property>
++      </widget>
++     </item>

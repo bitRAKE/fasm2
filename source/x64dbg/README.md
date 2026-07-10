@@ -16,7 +16,8 @@ x64dbg at the time this package was written.
 x64dbg commit `ac70d947124bf1802cf2b86eee483e5ef2d38c48`:
 
 - Add `PLUG_CB_ASSEMBLE` and append `CB_ASSEMBLE` before `CB_LAST`.
-- Dispatch assembler requests to registered callbacks before XEDParse.
+- Add `AssemblerEngine::Plugin` and a third `Plugin (fasm2)` dialog choice.
+- Dispatch callbacks only when that explicit plugin engine is selected.
 - Auto-register a plugin's exported `CBASSEMBLE` function.
 
 Apply it from an x64dbg checkout and rebuild x32dbg:
@@ -26,22 +27,21 @@ git apply --ignore-space-change C:\git\fasm2\source\x64dbg\x64dbg-cb-assemble.pa
 ```
 
 Appending the callback preserves the numeric values of all existing callback
-types, but plugins must compile against the extended `_plugins.h`. The callback
-uses `handled` for provider arbitration and leaves XEDParse as the fallback
-when no plugin claims a request.
-
-The interception is in x64dbg's common `assemble(...)` function in
-`src/dbg/assemble.cpp`. Its ordering is intentional:
+types, but plugins must compile against the extended `_plugins.h`. Assembler
+engine setting 3 selects plugin providers. The common `assemble(...)` function
+in `src/dbg/assemble.cpp` then uses this ordering:
 
 1. Handle x64dbg's built-in data directives.
-2. Call every registered `CB_ASSEMBLE` provider.
-3. Return immediately when a provider sets `handled`.
-4. Invoke the existing XEDParse/asmjit backend only when no provider handled
-   the request.
+2. If `AssemblerEngine::Plugin` is selected, call registered `CB_ASSEMBLE`
+   providers and return the provider result.
+3. Otherwise invoke the selected XEDParse or asmjit backend without calling
+   plugin providers.
 
-Consequently the Assemble dialog, `asm` command, and assembly-pattern searches
-all use the provider through their existing calls to `assemble(...)`; no hook
-inside `XEDParse.dll` is required.
+Plugin selection fails explicitly if no provider is loaded or claims the
+instruction; it never silently falls back to another assembler. Consequently
+the existing radio selection remains authoritative for the Assemble dialog,
+`asm` command, and assembly-pattern searches. No hook inside `XEDParse.dll` is
+required.
 
 Build with the repository's fasm2 driver:
 
@@ -80,6 +80,33 @@ the authoritative fasm2 `include` directory. Relative paths are resolved from
 the plugin directory. No include files are copied into the plugin package.
 `StartupSource` supplies one optional source line inserted after `fasm2.inc` is
 loaded, and `MaximumPasses` is clamped to the range 1 through 10000.
+
+`StartupSource` is literal assembler source, not a filename. For example, use
+`StartupSource=use32` or `StartupSource=include 'my-startup.inc'`; a bare value
+such as `StartupSource=fasm2.inc` is parsed as an instruction and fails. Every
+request currently has this effective source order:
+
+```asm
+include '<IncludeDirectory>/fasm2.inc'
+<StartupSource, when non-empty>
+format binary
+use32
+org <requested address>
+<requested instruction>
+```
+
+Thus x32 mode does not depend on the INI setting: `use32` is always emitted by
+the provider immediately before `org`.
+
+## LLVM native x32 TitanEngine note
+
+The local x32dbg build using `-march=native` exposed an unrelated TitanEngine
+fault before the Assemble dialog could be tested. `_LocateXStateFeature` may
+return packed feature blocks, but TitanEngine cast them to 16-byte-aligned
+register types. LLVM consequently emitted faulting `vmovaps` instructions.
+The local TitanEngine fix uses a 64-byte-aligned context allocation and
+unaligned-safe bounded copies for AVX and AVX-512 feature blocks. This change
+belongs in TitanEngine/x64dbg and is separate from `x64dbg-cb-assemble.patch`.
 
 The pass limit catches non-converging assembly, but it is not a wall-clock
 timeout. The core has no cooperative cancellation hook, and forcibly killing
