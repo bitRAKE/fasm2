@@ -38,9 +38,17 @@ section '.text' code executable
   include '../../output.inc'
   include '../../console.inc'
 
+if defined FASMG_X64DBG_PLUGIN
+
+	include '../../x64dbg/plugin_text.inc'
+
+else
+
   DllEntryPoint:
 	mov	eax,1
 	retn	12
+
+end if
 
   fasmg_GetVersion:
 	mov	eax,version_string
@@ -93,7 +101,12 @@ section '.text' code executable
 
 	call	system_init
 
+if defined FASMG_X64DBG_PLUGIN
+	mov	eax,[configured_maximum_passes]
+	mov	[maximum_number_of_passes],eax
+else
 	mov	[maximum_number_of_passes],100
+end if
 	mov	[maximum_number_of_errors],1000
 	mov	[maximum_depth_of_stack],10000
 
@@ -205,6 +218,14 @@ section '.text' code executable
 
   include 'system.inc'
 
+if defined FASMG_X64DBG_PLUGIN
+
+section '.data' data readable writeable
+
+	include '../../x64dbg/plugin_data.inc'
+
+end if
+
 section '.rdata' data readable
 
 data import
@@ -214,9 +235,16 @@ data import
 	import kernel32,\
 	       CloseHandle,'CloseHandle',\
 	       CreateFile,'CreateFileA',\
+	       CreatePipe,'CreatePipe',\
+	       DeleteCriticalSection,'DeleteCriticalSection',\
+	       DisableThreadLibraryCalls,'DisableThreadLibraryCalls',\
+	       EnterCriticalSection,'EnterCriticalSection',\
 	       ExitProcess,'ExitProcess',\
 	       GetCommandLine,'GetCommandLineA',\
 	       GetEnvironmentVariable,'GetEnvironmentVariableA',\
+	       GetModuleFileNameA,'GetModuleFileNameA',\
+	       GetPrivateProfileIntA,'GetPrivateProfileIntA',\
+	       GetPrivateProfileStringA,'GetPrivateProfileStringA',\
 	       GetStdHandle,'GetStdHandle',\
 	       GetSystemTime,'GetSystemTime',\
 	       GetTickCount,'GetTickCount',\
@@ -226,6 +254,8 @@ data import
 	       HeapFree,'HeapFree',\
 	       HeapReAlloc,'HeapReAlloc',\
 	       HeapSize,'HeapSize',\
+	       InitializeCriticalSection,'InitializeCriticalSection',\
+	       LeaveCriticalSection,'LeaveCriticalSection',\
 	       VirtualAlloc,'VirtualAlloc',\
 	       VirtualFree,'VirtualFree',\
 	       ReadFile,'ReadFile',\
@@ -240,9 +270,22 @@ align 4
 
 data export
 
+if defined FASMG_X64DBG_PLUGIN
+
+	export 'fasm2.dp32',\
+	       fasmg_GetVersion,'fasmg_GetVersion',\
+	       fasmg_Assemble,'fasmg_Assemble',\
+	       pluginit,'pluginit',\
+	       plugstop,'plugstop',\
+	       CBASSEMBLE,'CBASSEMBLE'
+
+else
+
 	export 'FASMG.DLL',\
 	       fasmg_GetVersion,'fasmg_GetVersion',\
 	       fasmg_Assemble,'fasmg_Assemble'
+
+end if
 
 end data
 

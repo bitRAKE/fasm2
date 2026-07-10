@@ -1,0 +1,52 @@
+diff --git a/src/dbg/_plugins.h b/src/dbg/_plugins.h
+index aefd7950..056854d1 100644
+--- a/src/dbg/_plugins.h
++++ b/src/dbg/_plugins.h
+@@ -248,0 +249,13 @@ typedef struct
++typedef struct
++{
++    duint addr;
++    const char* instruction;
++    unsigned char* dest;
++    int destSize;
++    int size;
++    char* error;
++    int errorSize;
++    bool handled;
++    bool success;
++} PLUG_CB_ASSEMBLE;
++
+@@ -309,0 +323 @@ typedef enum
++    CB_ASSEMBLE, //PLUG_CB_ASSEMBLE
+diff --git a/src/dbg/assemble.cpp b/src/dbg/assemble.cpp
+index e15cf86f..a09d6df9 100644
+--- a/src/dbg/assemble.cpp
++++ b/src/dbg/assemble.cpp
+@@ -14,0 +15 @@
++#include "plugin_loader.h"
+@@ -46,0 +48,19 @@ bool assemble(duint addr, unsigned char* dest, int destsize, int* size, const ch
++
++    if(!plugincbempty(CB_ASSEMBLE))
++    {
++        PLUG_CB_ASSEMBLE info = {};
++        info.addr = addr;
++        info.instruction = instruction;
++        info.dest = dest;
++        info.destSize = destsize;
++        info.error = error;
++        info.errorSize = error ? MAX_ERROR_SIZE : 0;
++        plugincbcall(CB_ASSEMBLE, &info);
++        if(info.handled)
++        {
++            if(size)
++                *size = info.size;
++            return info.success;
++        }
++    }
++
+diff --git a/src/dbg/plugin_loader.cpp b/src/dbg/plugin_loader.cpp
+index a648ba6b..83ea8419 100644
+--- a/src/dbg/plugin_loader.cpp
++++ b/src/dbg/plugin_loader.cpp
+@@ -433,0 +434 @@ bool pluginload(const char* pluginName, bool loadall)
++    regExport("CBASSEMBLE", CB_ASSEMBLE);

@@ -1,0 +1,9 @@
+[fasm2]
+; Required. Absolute paths are recommended; relative paths use the plugin directory.
+IncludeDirectory=C:/git/fasm2/include
+
+; Optional single source line inserted after fasm2.inc is loaded.
+StartupSource=
+
+; Bounds repeated assembly passes. This is not a wall-clock timeout.
+MaximumPasses=100

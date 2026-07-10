@@ -1,0 +1,5 @@
+settingset Events, EntryBreakpoint, 0
+init "plugins/fasm2/plugin_test.exe"
+asm cip, "endbr32"
+testassert $result == 4, "fasm2 assembled endbr32"
+testassert byte:[cip] == F3 && byte:[cip+1] == 0F && byte:[cip+2] == 1E && byte:[cip+3] == FB, "fasm2 wrote the expected CET encoding"
