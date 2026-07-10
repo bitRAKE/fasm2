@@ -30,6 +30,19 @@ types, but plugins must compile against the extended `_plugins.h`. The callback
 uses `handled` for provider arbitration and leaves XEDParse as the fallback
 when no plugin claims a request.
 
+The interception is in x64dbg's common `assemble(...)` function in
+`src/dbg/assemble.cpp`. Its ordering is intentional:
+
+1. Handle x64dbg's built-in data directives.
+2. Call every registered `CB_ASSEMBLE` provider.
+3. Return immediately when a provider sets `handled`.
+4. Invoke the existing XEDParse/asmjit backend only when no provider handled
+   the request.
+
+Consequently the Assemble dialog, `asm` command, and assembly-pattern searches
+all use the provider through their existing calls to `assemble(...)`; no hook
+inside `XEDParse.dll` is required.
+
 Build with the repository's fasm2 driver:
 
 ```cmd

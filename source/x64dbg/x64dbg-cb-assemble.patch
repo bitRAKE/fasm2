@@ -24,8 +24,9 @@ index e15cf86f..a09d6df9 100644
 +++ b/src/dbg/assemble.cpp
 @@ -14,0 +15 @@
 +#include "plugin_loader.h"
-@@ -46,0 +48,19 @@ bool assemble(duint addr, unsigned char* dest, int destsize, int* size, const ch
+@@ -46,0 +48,20 @@ bool assemble(duint addr, unsigned char* dest, int destsize, int* size, const ch
 +
++    // Give assembler-provider plugins first refusal before the legacy backend.
 +    if(!plugincbempty(CB_ASSEMBLE))
 +    {
 +        PLUG_CB_ASSEMBLE info = {};
