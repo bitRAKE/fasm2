@@ -35,7 +35,6 @@ import re
 import subprocess
 import sys
 import textwrap
-import winreg
 from pathlib import Path
 from typing import Optional
 
@@ -182,23 +181,27 @@ def find_sdk() -> tuple[Path, str]:
         )
         return root, versions[0]
 
-    # Registry lookup
-    for hive in (winreg.HKEY_LOCAL_MACHINE,):
-        for sub in (
-            r"SOFTWARE\Microsoft\Windows Kits\Installed Roots",
-            r"SOFTWARE\WOW6432Node\Microsoft\Windows Kits\Installed Roots",
-        ):
-            try:
-                with winreg.OpenKey(hive, sub) as k:
-                    root = Path(winreg.QueryValueEx(k, "KitsRoot10")[0])
-                    versions = sorted(
-                        (d.name for d in (root / "Include").iterdir()
-                         if d.is_dir() and d.name.startswith("10.")),
-                        reverse=True,
-                    )
-                    return root, versions[0]
-            except (FileNotFoundError, OSError):
-                pass
+    # Registry lookup is available on Windows.  Explicit WINSDK_ROOT discovery
+    # above remains usable on other hosts with a copied SDK tree.
+    if os.name == "nt":
+        import importlib
+        registry = importlib.import_module("winreg")
+        for hive in (registry.HKEY_LOCAL_MACHINE,):
+            for sub in (
+                r"SOFTWARE\Microsoft\Windows Kits\Installed Roots",
+                r"SOFTWARE\WOW6432Node\Microsoft\Windows Kits\Installed Roots",
+            ):
+                try:
+                    with registry.OpenKey(hive, sub) as k:
+                        root = Path(registry.QueryValueEx(k, "KitsRoot10")[0])
+                        versions = sorted(
+                            (d.name for d in (root / "Include").iterdir()
+                             if d.is_dir() and d.name.startswith("10.")),
+                            reverse=True,
+                        )
+                        return root, versions[0]
+                except (FileNotFoundError, OSError):
+                    pass
     raise RuntimeError("Cannot find Windows SDK.  Set WINSDK_ROOT env var.")
 
 
