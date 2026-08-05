@@ -108,6 +108,15 @@ The local TitanEngine fix uses a 64-byte-aligned context allocation and
 unaligned-safe bounded copies for AVX and AVX-512 feature blocks. This change
 belongs in TitanEngine/x64dbg and is separate from `x64dbg-cb-assemble.patch`.
 
+The same native optimization also exposed an x32 GUI alignment bug in
+`RegistersView`: Clang folded nominally unaligned SIMD loads into `vmovdqa`
+because the public register types promise 16-byte alignment while Qt's x86
+object allocation supplied only 8-byte alignment. The local GUI fix removes
+the invalid outer alignment promise and keeps the small SIMD detection helpers
+under a Clang `optnone/noinline` boundary so their `loadu` operations remain
+unaligned-safe. This is likewise a native-build fix, not part of the assembler
+provider API patch.
+
 The pass limit catches non-converging assembly, but it is not a wall-clock
 timeout. The core has no cooperative cancellation hook, and forcibly killing
 an in-process assembler thread can corrupt its heap and output state. A hard

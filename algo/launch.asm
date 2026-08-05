@@ -98,11 +98,16 @@ section '.data$LaunchNormal' data readable writeable comdat associative LaunchNo
 
 ;-------------------------------------------------------------------------------
 ; ShellExecuteEx has no lpEnvironment equivalent - an elevated process gets whatever environment the elevated host (consent.exe's spawned shell) naturally has, not a custom block. Any Environment entries on the profile are silently inert here; DebugExecuteProfile warns about this before calling in.
+;
+; Start-Process -FilePath helper.exe -ArgumentList '--do-admin-thing' -Verb RunAs
+;
+; Or via the shell COM object, no third-party tools
+;	powershell -c "(New-Object -ComObject Shell.Application).ShellExecute('helper.exe','','','runas',1)"
 
-section '.text$LaunchElevated' code readable executable comdat align 16
-LaunchElevated:
-public LaunchElevated
-cvproc LaunchElevated
+section '.text$LaunchElevatedRunAs' code readable executable comdat align 16
+LaunchElevatedRunAs:
+public LaunchElevatedRunAs
+cvproc LaunchElevatedRunAs
 	virtual at rsp
 		rq 4 ; shadow space
 		.frame := $-$$ + 8
@@ -129,7 +134,7 @@ cvproc LaunchElevated
 	mov [rcx + SHELLEXECUTEINFOW.lpParameters], r8
 
 	call [ShellExecuteExW]
-	test eax, eax ; BOOL
+	test eax, eax ; BOOL, did user decline (ERROR_CANCELLED)?
 	jz .no_process
 	mov rcx, [.sei.hProcess]
 	jrcxz .no_process
@@ -140,12 +145,12 @@ cvproc LaunchElevated
 cvendp
 
 
-section '.rdata$LaunchElevated' data readable comdat exactmatch align 1
+section '.rdata$LaunchElevatedRunAs' data readable comdat exactmatch align 1
 	_runas du 'runas',0
 
-section '.data$LaunchElevated' data readable writeable comdat associative LaunchElevated align 16
+section '.data$LaunchElevatedRunAs' data readable writeable comdat associative LaunchElevatedRunAs align 16
 	sei SHELLEXECUTEINFOW cbSize: sizeof SHELLEXECUTEINFOW,\
-		fMask: SEE_MASK_NOCLOSEPROCESS,\
+		fMask: SEE_MASK_NOCLOSEPROCESS,\; populate hProcess
 		lpVerb: _runas,\
 		nShow: SW_SHOWNORMAL
 
