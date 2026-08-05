@@ -19,12 +19,11 @@ inlinemacro... = 0
 
 calminstruction inlinemacro?! &declaration&
 	local	name
-	match	name(arguments?), declaration
+	match	name:name arguments?, declaration, :
 	jyes	define
-	match	name= arguments?, declaration
-	jyes	define
-	match	name arguments?, declaration
+	err	'invalid name'
     define:
+	match	(arguments?), arguments
 	arrange tmp, =__inline__.name
 	arrange name, =inlinemacro.name
 	publish name, tmp
@@ -59,7 +58,11 @@ macro inlinemacro?.enable? chain
 		compute i, i+1
 		arrange text, =__inline__.?(=else =if 1) =__inline__.?(=__return__.i==1) text =__inline__.?(=end =if) =__inline__.?(=if ~=definite =__return__.i)
 	    preprocess:
-		match	head? =__inline__.name tail?, text
+		match	head? =__inline__.tail, text
+		jno	ready
+		match	?(arguments) tail?, tail
+		jyes	special
+		match	name:name tail?, tail, :
 		jno	ready
 		match	arguments tail?, tail, ()
 		jyes	inline
@@ -67,8 +70,6 @@ macro inlinemacro?.enable? chain
 		jump	preprocess
 	    inline:
 		match	(arguments?), arguments
-		match	?, name
-		jyes	special
 		local	tmp, return
 		compute i, i+1
 		arrange return, =__return__.i
