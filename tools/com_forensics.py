@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 COM Interface Forensic Analyzer v2.0
 Supports: comtypes (rich analysis), PE parsing (offline forensics), and registry extraction
 

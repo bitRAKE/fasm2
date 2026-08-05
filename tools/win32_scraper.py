@@ -450,8 +450,10 @@ def get_macros(headers: list[str], llvm_bin: Path, sdk_root: Path,
             f"-I{inc / 'um'}", f"-I{inc / 'shared'}", f"-I{inc / 'ucrt'}",
             "-x", "c", tmp,
         ]
-        r = subprocess.run(args, capture_output=True, text=True)
-        os.unlink(tmp)
+        try:
+            r = subprocess.run(args, capture_output=True, text=True)
+        finally:
+            Path(tmp).unlink(missing_ok=True)
         out: dict[str, str] = {}
         for line in r.stdout.splitlines():
             m = re.match(r"^#define\s+(\w+)\s+(.*)", line)
