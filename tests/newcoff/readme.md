@@ -51,3 +51,23 @@ matters here.)
 Verified against `lld-link` and MSVC `link` (14.44), inspected with
 `llvm-readobj`: identical EXACT_MATCH checksums from both backends, external
 relocations for the folded table, section-symbol relocations elsewhere.
+
+## Procedure frame regressions
+
+Run `python check_proc_frames.py` from an x64 Visual Studio developer prompt
+(also run by `_build.cmd`). The runner uses temporary outputs and covers
+`NEWCOFF.DEBUG=1` and `6`, multi-register `USES` forwarding, a large stack
+allocation with named locals, native stack walking through the assembly frame,
+automatic line-table presence, and warning-free MSVC PDB linking (`/WX`). When
+LLVM's `llvm-pdbutil` is installed at its standard path, it also checks that the
+procedure and local survive in the PDB. No shaderTool files are required.
+
+These tests retain regressions found while consolidating shaderTool's desktop
+interface: wrapper forwarding must keep the register list grouped, and an
+object with procedures but no source lines must omit empty checksum tables.
+
+Validation note (2026-09-04): the standalone frame runner passes with MSVC
+14.51 and LLVM PDB inspection. The older full harness currently stops in
+smoke.asm with format.inc's 'choice has already been declared' default-extension
+error; the new fixture explicitly selects the obj extension. Full-suite success
+is not claimed by this change.

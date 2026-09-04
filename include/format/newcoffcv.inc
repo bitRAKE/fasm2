@@ -310,6 +310,9 @@ namespace NEWCOFF
 				db 0
 				db CV_PAD dup 0
 			end repeat
+			; Omit file tables when no source lines registered a file.
+			; MS LINK rejects an empty checksum subsection (LNK4209).
+			if CV_FILE_COUNT > 0
 			; F3: file name strings
 			dd DEBUG_S_STRINGTABLE, CV_STR_SIZE
 			load byte_sequence : CV_STR_SIZE from cv_strings : 0
@@ -325,6 +328,7 @@ namespace NEWCOFF
 				load CV_FLEN : 4 from cv_files : (%-1) * 8 + 4
 				cv_emit_checksum CV_FOFS, CV_FLEN
 			end repeat
+			end if
 			; re-anchor the current label: SHA256.calc's macro-local
 			; pad became the parent, and anonymous struct instances
 			; born under a macro-local lose directive resolution
@@ -1074,7 +1078,7 @@ end macro
 ;   close@proc    equ newcoff_debug_close
 macro newcoff_debug_prologue procname,flag,parmbytes,localbytes,reglist
 	cvproc procname
-	static_rsp_prologue procname,flag,parmbytes,localbytes,reglist
+	static_rsp_prologue procname,flag,parmbytes,localbytes,<reglist>
 	match any, reglist
 		cvframe framebytes@proc, reglist
 	else
@@ -1084,7 +1088,7 @@ end macro
 
 macro newcoff_debug_close procname,flag,parmbytes,localbytes,reglist
 	cvendp
-	static_rsp_close procname,flag,parmbytes,localbytes,reglist
+	static_rsp_close procname,flag,parmbytes,localbytes,<reglist>
 end macro
 
 if definite NEWCOFF.DEBUG & NEWCOFF.DEBUG > 5

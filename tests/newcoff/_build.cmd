@@ -94,6 +94,9 @@ if defined PDBUTIL (
   echo [ok]   cv locals, constants and data symbols harvested into CodeView
 )
 
+rem Native frame regressions require Python and MSVC from an x64 dev prompt.
+python check_proc_frames.py || goto :err
+
 rem --- ovfl: 65600 relocations in one section (IMAGE_SCN_LNK_NRELOC_OVFL)
 call "%ROOT%\fasm2.cmd" ovfl.asm ovfl.obj || goto :err
 
