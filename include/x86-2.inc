@@ -200,6 +200,9 @@ end macro
 	XSAVEOPT:		ext | 128 + 0
 	XSAVEC: 		ext | 128 + 1
 	XSS:			ext | 128 + 3
+	; CPUID.(EAX=80000001H):ECX
+	SVM: 			ext | 224 + 2
+	SKINIT: 		ext | 224 + 12
 	; CPUID.(EAX=80000001H):EDX
 	RDTSCP: 		ext | 256 + 27
 	3DNow:			ext | 256 + 31
