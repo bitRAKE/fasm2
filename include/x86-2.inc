@@ -1123,6 +1123,18 @@ iterate context, @dest,@src,@src2,@aux
 
 end iterate
 
+calminstruction x86.store_address_prefix size*
+	check	(size = 2 & x86.mode = 32) | (size = 4 & x86.mode <> 32)
+	jyes	prefix
+	check	size shl 3 = x86.mode
+	jyes	ok
+	err	'invalid operand size'
+    ok:
+	exit
+    prefix:
+	emit	1, 67h
+end calminstruction
+
 calminstruction x86.store_operand_prefix size*, reg:0
 
 	check	size = 8 & x86.cpu < x86.x64.cpu

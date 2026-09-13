@@ -5,11 +5,10 @@ iterate <instr,opcode>, vmrun,0xD8, vmload,0xDA, vmsave,0xDB
 	calminstruction instr? dest*
 		call	x86.require.SVM
 		call	x86.parse_operand@dest, dest
-		check	@dest.type = 'reg' & @dest.rm = 0 \
-			& (@dest.size = 4 | @dest.size = 8)
+		check	@dest.type = 'reg' & @dest.rm = 0
 		jno	invalid
-		call	x86.select_operand_prefix@dest, @dest.size
-		xcall	x86.store_instruction@dest, (0Fh),(01h),(opcode)
+		call	x86.store_address_prefix, @dest.size
+		emit	3, 0x010F or (opcode shl 16)
 		exit
 	invalid:
 		err	'only rAX register supported'
@@ -44,13 +43,12 @@ calminstruction invlpga? addr:rax,asid:ecx
 	call	x86.require.SVM
 	call	x86.parse_operand@dest, addr
 	call	x86.parse_operand@src, asid
-	check	@dest.type = 'reg' & @dest.rm = 0 \
-		& (@dest.size = 4 | @dest.size = 8)
+	check	@dest.type = 'reg' & @dest.rm = 0
 	jno	invalid
 	check	@src.type = 'reg' & @src.rm = 1 & @src.size = 4
 	jno	invalid
-	call	x86.select_operand_prefix@dest, @dest.size
-	xcall	x86.store_instruction@dest, <0Fh,01h,0xDF>
+	call	x86.store_address_prefix, @dest.size
+	emit	3, 0xDF010F
 	exit
 invalid:
 	err 'invlpga operands must be rAX and ECX'
