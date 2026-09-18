@@ -26,7 +26,7 @@ formats.
 | `cvproc name` | opens a procedure at the current position, before any prologue pushes |
 | `cvframe size [, regs]` | placed right after the prologue: rsp allocation, prologue length, pushed nonvolatile registers in push order |
 | `cvendp` | closes the procedure (length becomes known) |
-| `cvlocal n [, n:type]` | rsp-relative locals/params of the open procedure (`S_REGREL32`): the offset is derived from the symbol itself, the display name is its own name; type is a CodeView index, default `CV_T_UQUAD`; named primitive aliases include `CV_T_INT4`, `CV_T_UINT4`, `CV_T_QUAD`, `CV_T_UQUAD`, and `CV_T_64PVOID` |
+| `cvlocal n [, n:type]` | rsp-relative locals/params of the open procedure (`S_REGREL32`): the offset is derived from the symbol itself, the display name is its own name; four-byte labels default to `CV_T_UINT4`, other widths to `CV_T_UQUAD`; explicit CodeView indices are preserved, including `CV_T_INT4`, `CV_T_UINT4`, `CV_T_QUAD`, `CV_T_UQUAD`, and `CV_T_64PVOID` |
 | `cvlabel name` | names the current position (`S_LABEL32`) |
 | `cvconst name [, type]` | names an integer equate (`S_CONSTANT`); default type is `CV_T_UINT4`; compact numeric leaves are used below `0x8000`, otherwise `LF_LONG`/`LF_ULONG` |
 | `cvdata name [, type]` / `cvldata name [, type]` | names data at the current position as a module-local data symbol (`S_LDATA32`); default type is `CV_T_UQUAD` |
@@ -73,6 +73,15 @@ blocks: each declaration line is recorded after the virtual local label is
 created, so `locals ... endl` entries become rsp-relative `S_REGREL32`
 symbols without a manual `cvlocal`. This behavior is scoped to the
 `newcoffproc64.inc` wrapper; the generic `proc64.inc` macros are unchanged.
+
+Automatic PROC/LOCALS records and untyped `cvlocal` use the same storage-width
+rule: a four-byte label receives `CV_T_UINT4`; other widths retain the existing
+`CV_T_UQUAD` fallback. This corrects DWORD debugger reads without changing stack
+allocation, instruction encoding or parameter positions. Explicit annotations
+always win, including `CV_T_UQUAD` on a four-byte label. Size alone does not
+identify signed, floating, pointer or aggregate types; use explicit type indices
+where appropriate. Packed PROC `:4` names remain storage aliases: Win64 stack
+arguments still occupy their ABI-defined eight-byte positions.
 
 ```
 prologue@proc	equ newcoff_debug_prologue
@@ -171,7 +180,7 @@ Modules view), run against any file, and check:
 | --- | --- | --- |
 | 1 | C13 lines (F2/F3/F4), per-section associative `.debug$S` | **done** |
 | 2 | `S_GPROC32`/`S_FRAMEPROC`/`S_END`, `S_LABEL32`, `S_OBJNAME`/`S_COMPILE3`; `.pdata`/`.xdata` from the prologue facts | **done** |
-| 3 | `S_REGREL32` locals/params: `cvlocal` marker + automatic PROC-parameter harvest + automatic proc64 `locals` harvest; primitive type indices, default `T_UQUAD` | **done** |
+| 3 | `S_REGREL32` locals/params: `cvlocal` marker + automatic PROC-parameter harvest + automatic proc64 `locals` harvest; four-byte labels default to `T_UINT4`, others to `T_UQUAD` | **done** |
 | 4 | `S_CONSTANT` for opt-in integer equates; `S_GDATA32`/`S_LDATA32` for typed data symbols and statics | **done** |
 | 5 | SHA-256 file checksums in F4 (`SHA256.calc` generator interface; `file` re-reads the source bytes in POSTPONE) | **done** |
 | 6 | `.debug$T`: allocator-owned type records from `0x1000` upward (`LF_STRUCTURE`/`LF_ARRAY`/`LF_POINTER`/...) bridged from `macro/struct.inc` definitions and SDK aliases; `S_UDT`; typed data symbols | ambitious |
@@ -179,7 +188,8 @@ Modules view), run against any file, and check:
 
 Known limits of the current stage: one open `cvproc` at a time (no nesting);
 automatic `locals` harvest currently records proc64 declaration labels with
-the default type index; unwind covers rsp-allocation + pushes (no
+the storage-width default type index, without aggregate or signedness inference;
+unwind covers rsp-allocation + pushes (no
 frame-pointer chaining, which `static_rsp` frames never need);
 `S_GPROC32` uses `T_NOTYPE`; data/constant markers use primitive type indices
 until `.debug$T` exists. The 8-slot `reg_nibbles` field caps `uses` lists at 8

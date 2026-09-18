@@ -8,13 +8,13 @@
 ; so the symbol already exists and cvlocal_one can derive the rsp offset.
 macro cv_proc_local? line&
 	match nm[count]:ty rest, line
-		cvlocal_one nm, `nm, CV_T_UQUAD, 0
+		cvlocal_auto nm, `nm, 0
 	else match nm:ty rest, line
-		cvlocal_one nm, `nm, CV_T_UQUAD, 0
+		cvlocal_auto nm, `nm, 0
 	else match nm[count] rest, line
-		cvlocal_one nm, `nm, CV_T_UQUAD, 0
+		cvlocal_auto nm, `nm, 0
 	else match nm rest, line
-		cvlocal_one nm, `nm, CV_T_UQUAD, 0
+		cvlocal_auto nm, `nm, 0
 	end match
 end macro
 
@@ -99,11 +99,11 @@ macro newcoff_debug_proc64_proc? &statement&
 							end if
 							match argname:type, arg
 								label ?argname:type
-								cvlocal_one ?argname, `argname, CV_T_UQUAD, 0
+								cvlocal_auto ?argname, `argname, 0
 								rb type
 							else
 								?arg dq ?
-								cvlocal_one ?arg, `arg, CV_T_UQUAD, 0
+								cvlocal_auto ?arg, `arg, 0
 							end match
 						end iterate
 					end match

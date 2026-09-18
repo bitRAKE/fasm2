@@ -66,6 +66,13 @@ These tests retain regressions found while consolidating shaderTool's desktop
 interface: wrapper forwarding must keep the register list grouped, and an
 object with procedures but no source lines must omit empty checksum tables.
 
+`python check_cv_local_types.py` inspects the emitted C13 `S_REGREL32` records
+at both debug levels. It checks automatic DWORD/QWORD types for PROC names and
+LOCALS, eight packed DWORD home fields followed by a real fifth argument,
+untyped `cvlocal`, explicit signed/pointer/qword overrides, the parameter-harvest
+helper, and ignored absent/non-RSP names. Explicit types and offsets must survive
+independently of the automatic width rule. `_build.cmd` also invokes this check.
+
 Validation note (2026-09-04): the standalone frame runner passes with MSVC
 14.51 and LLVM PDB inspection. The older full harness currently stops in
 smoke.asm with format.inc's 'choice has already been declared' default-extension

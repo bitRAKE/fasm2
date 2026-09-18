@@ -925,7 +925,8 @@ end macro
 ; rsp-relative locals/params of the open procedure: the offset is derived
 ; from the symbol itself (it must be rsp-relative, as static_rsp locals
 ; and params are), the display name is the symbol's own name. Items may
-; carry a CodeView type index (default T_UQUAD):
+; carry a CodeView type index. Without one, four-byte labels use T_UINT4;
+; other widths keep T_UQUAD. Explicit type indices are never inferred:
 ; cvlocal len, flags:CV_T_UINT4, dst:CV_T_64PVOID
 macro cvlocal? args&
 	namespace NEWCOFF
@@ -937,9 +938,26 @@ macro cvlocal? args&
 		match nm:ty, item
 			cvlocal_one nm, `nm, ty, 1
 		else
-			cvlocal_one item, `item, CV_T_UQUAD, 1
+			cvlocal_auto item, `item, 1
 		end match
 	end iterate
+end macro
+
+; Automatic PROC/LOCALS harvesting and untyped cvlocal share storage-width
+; inference. Size alone does not establish signedness, pointer or aggregate
+; type; preserve the existing qword fallback outside four-byte labels.
+; Check definition before SIZEOF: the non-strict declaration hook can see
+; absent symbols, which cvlocal_one deliberately ignores.
+macro cvlocal_auto? ref*, namestr*, strict*
+	if defined ref
+		if sizeof ref = 4
+			cvlocal_one ref, namestr, CV_T_UINT4, strict
+		else
+			cvlocal_one ref, namestr, CV_T_UQUAD, strict
+		end if
+	else
+		cvlocal_one ref, namestr, CV_T_UQUAD, strict
+	end if
 end macro
 
 ; strict=0 skips silently when the symbol is absent or not rsp-relative
@@ -982,9 +1000,9 @@ macro cv_proc_params? prnt*, params&
 	match any, params
 		iterate p, params
 			match nm:sz, p
-				cvlocal_one prnt.nm, `nm, CV_T_UQUAD, 0
+				cvlocal_auto prnt.nm, `nm, 0
 			else
-				cvlocal_one prnt.p, `p, CV_T_UQUAD, 0
+				cvlocal_auto prnt.p, `p, 0
 			end match
 		end iterate
 	end match
