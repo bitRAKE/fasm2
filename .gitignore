@@ -1,0 +1,7 @@
+# Python helper caches
+__pycache__/
+*.py[cod]
+
+# Local Python tooling environments
+.venv/
+venv/
