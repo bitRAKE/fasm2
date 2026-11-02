@@ -69,3 +69,4 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `tbm_lwp.asm` | new | TBM (ModRM.reg-selected operations; bextr imm32 vs BMI1 bextr) and LWP; no AVX needed. |
 | `avx512_4x.asm` | G8 | 4VNNIW disp8 scales by 16 (Tuple1_4X), not by the vector; AVX512_4FMAPS. |
 | `padlock.asm` | new | VIA/Zhaoxin PadLock: per-unit bits, mandatory F3 on xcrypt*/xsha*/montmul, montmul not in 64-bit code. |
+| `avx512_fp16.asm` | new | AVX512-FP16 arithmetic, FMA, complex (distinct destination), scale/rcp/getexp/getmant/reduce/rndscale, compare and aliases, comi, fpclass, vmovsh, vmovw: EVEX maps 5/6, word broadcast and disp8. |

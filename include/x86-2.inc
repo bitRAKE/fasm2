@@ -198,6 +198,7 @@ end macro
 	PCONFIG:		ext | 96 + 18
 	CET_IBT:		ext | 96 + 20
 	AMX_BF16:		ext | 96 + 22
+	AVX512_FP16:		ext | 96 + 23
 	AMX_TILE:		ext | 96 + 24
 	AMX_INT8:		ext | 96 + 25
 	; CPUID.(EAX=7,ECX=1):EAX
@@ -4515,6 +4516,7 @@ include 'iset/bf16.inc'
 include 'iset/sha512.inc'
 include 'iset/sm.inc'
 include 'iset/vp2intersect.inc'
+include 'iset/avx512_fp16.inc'
 include 'iset/xop.inc'
 include 'iset/fma4.inc'
 include 'iset/tbm.inc'

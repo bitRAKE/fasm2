@@ -519,7 +519,7 @@ including AVX-VNNI-INT8/INT16. `bf16.inc` is done (`tests/iset/bf16.asm`): `vcvt
 
 | File | Gate | Mnemonics | Encoding notes | Must reject |
 |------|------|-----------|----------------|-------------|
-| `avx512_fp16.inc` | `AVX512_FP16` (+ VL for xmm/ymm through the central gate) | the full `…ph`/`…sh` set, `vmovw`, `vfcmaddcph`, `vfmaddcph`, … | EVEX **map 5 and 6** in `vex_mpw` (map 5 confirmed). Needs G5 (`1to32`). Unit 2. | VEX encodings (`EVEX_REQUIRED` everywhere); `1to32` on non-word units; for complex FMA, destination equal to a source (SDM #UD) |
+| `avx512_fp16.inc` **(part A done, `tests/iset/avx512_fp16.asm`; conversions next)** | `AVX512_FP16` (+ VL for xmm/ymm through the central gate) | the full `…ph`/`…sh` set, `vmovw`, `vfcmaddcph`, `vfmaddcph`, … | EVEX **map 5 and 6** in `vex_mpw` (map 5 confirmed). Needs G5 (`1to32`). Unit 2. | VEX encodings (`EVEX_REQUIRED` everywhere); `1to32` on non-word units; for complex FMA, destination equal to a source (SDM #UD) |
 | `vp2intersect.inc` **(done, `tests/iset/vp2intersect.asm`)** | `AVX512_VP2INTERSECT` | `vp2intersectd`, `vp2intersectq` | `EVEX.F2.0F38 68` W0/W1; destination is a k-register **pair**, written as the even register (`vp2intersectd k2,zmm2,zmm3` = `62 F2 6F 48 68 D3`) | odd k-register destination; masking of the destination |
 | `sha512.inc` **(done, `tests/iset/sha512.asm`)** | `SHA512` | `vsha512msg1`, `vsha512msg2`, `vsha512rnds2` | `VEX.256.F2.0F38 CC/CD/CB W0` (`C4 E2 7F CC CA`, …) | xmm destination; memory (all forms are register-only); EVEX features |
 | `sm.inc` **(done, `tests/iset/sm.asm`)** | `SM3`, `SM4` (separate gates in one ShangMi file) | `vsm3msg1/2`, `vsm3rnds2`, `vsm4key4`, `vsm4rnds4` | SM3: `VEX.128 0F38 DA` (NP/66), `0F3A DE ib`; SM4: `VEX.{128,256} F3/F2 0F38 DA` | 256-bit SM3; EVEX features; immediate wider than a byte |
@@ -702,7 +702,11 @@ How each source feeds the work:
    `fred.inc`, `tdx.inc`, plus fix G7. Modes follow XED's non-APX
    patterns. Not implemented: the APX EVEX forms (map 4) of RAO-INT,
    USER_MSR and CMPccXADD, and the MSR-IMM `rdmsr`/`wrmsrns` immediates.
-5. **`avx512_fp16.inc`** (largest table).
+5. **`avx512_fp16.inc`**: arithmetic, FMA, complex, compare, classify and
+   moves done, with tests, as thin macros over avx.inc's shape helpers
+   (the helpers are macros; converting them to CALM is a separate job).
+   Conversions next. Note: for `{sae}` with register operands fasm2 writes
+   EVEX.L'L = 512 where llvm-mc writes 00; the CPU ignores L'L there.
 6. `sse4a.inc` and the `3dnow.inc` additions: done, with tests (`use AMD64`
    now includes 3DNowExt). Then the XOP encoder change and
    `xop.inc`, `fma4.inc`, `tbm.inc`, `lwp.inc` (bextr's TBM form in place in
