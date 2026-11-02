@@ -230,7 +230,11 @@ end macro
 	LZCNT:			ext | 224 + 5
 	SSE4A:			ext | 224 + 6
 	PRFCHW: 		ext | 224 + 8
+	XOP:			ext | 224 + 11
 	SKINIT: 		ext | 224 + 12
+	LWP:			ext | 224 + 15
+	FMA4:			ext | 224 + 16
+	TBM:			ext | 224 + 21
 	MONITORX:		ext | 224 + 29
 	; CPUID.(EAX=80000001H):EDX
 	RDTSCP: 		ext | 256 + 27
@@ -4504,6 +4508,10 @@ include 'iset/bf16.inc'
 include 'iset/sha512.inc'
 include 'iset/sm.inc'
 include 'iset/vp2intersect.inc'
+include 'iset/xop.inc'
+include 'iset/fma4.inc'
+include 'iset/tbm.inc'
+include 'iset/lwp.inc'
 
 include 'iset/sha.inc'
 include 'iset/aes.inc'

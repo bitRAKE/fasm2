@@ -23,12 +23,31 @@ macro andn? dest*,src*,src2*
 	end if
 end macro
 
+; bextr r, r/m, r (BMI1) or bextr r, r/m, imm32 (AMD TBM, XOP.0A 10 /r id)
 macro bextr? dest*,src*,src2*
-	require BMI1
 	x86.parse_operand@dest dest
 	x86.parse_operand@src src
 	x86.parse_operand@src2 src2
-	if @dest.type = 'reg' & (@src.type = 'mem' | @src.type = 'reg') & @src2.type = 'reg'
+	if @src2.type = 'imm'
+		require TBM
+	else
+		require BMI1
+	end if
+	if @dest.type = 'reg' & (@src.type = 'mem' | @src.type = 'reg') & @src2.type = 'imm'
+		if @dest.size < 4
+			err 'invalid operand size'
+		else if @src.size and not @dest.size | @src2.size and not 4
+			err 'operand sizes do not match'
+		end if
+		if @dest.size = 8
+			if x86.mode < 64
+				err 'instruction requires long mode'
+			end if
+			AVX.store_gpr_instruction@src 16,XOP_0A_W1,10h,@dest.rm,,4,@src2.imm
+		else
+			AVX.store_gpr_instruction@src 16,XOP_0A_W0,10h,@dest.rm,,4,@src2.imm
+		end if
+	else if @dest.type = 'reg' & (@src.type = 'mem' | @src.type = 'reg') & @src2.type = 'reg'
 		if @dest.size < 4
 			err 'invalid operand size'
 		else if @src.size and not @dest.size | @src2.size <> @dest.size

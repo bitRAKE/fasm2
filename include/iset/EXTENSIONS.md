@@ -552,7 +552,12 @@ new VEX instructions.
 | `3dnow.inc` (in place) **(done, `tests/iset/3dnowext.asm`)** | — | `3DNowExt` | add `pswapd`, `pfnacc`, `pfpnacc`, `pf2iw` (`0F 0F /r` + suffix `BB/8A/8E/1C`). Move the existing `pi2fw` (`0C`) out of the 3DNow `iterate` and onto 3DNowExt. This is a behaviour change: it is refused under plain `use 3DNow`. | Non-MMX operands |
 | `lzcnt`, `prefetchw` | in place | G2, G4 | — | — |
 
-### 5.6 AMD XOP family (needs an encoder change first)
+### 5.6 AMD XOP family
+
+**Done** (`tests/iset/xop.asm`, `fma4.asm`, `tbm_lwp.asm`). The encoder
+emits `8Fh` for any map >= 8; `XOP_08/09/0A_W0/W1` are in `avx.inc`. XOP
+and FMA4 share `XOP.is4_instruction` (in `xop.inc`). TBM and LWP use the
+no-AVX GPR store (G7). The plan below is kept as the record.
 
 1. **Encoder (in `avx.inc`, `AVX_512.store_instruction`):**
    - When `(vex and 11111b) >= 8`, emit `8Fh` instead of `C4h` and force the
@@ -693,7 +698,8 @@ How each source feeds the work:
    USER_MSR and CMPccXADD, and the MSR-IMM `rdmsr`/`wrmsrns` immediates.
 5. **`avx512_fp16.inc`** (largest table).
 6. `sse4a.inc` and the `3dnow.inc` additions: done, with tests (`use AMD64`
-   now includes 3DNowExt). Next: the **XOP encoder change**, then
-   `xop.inc`, `fma4.inc`, `tbm.inc`, `lwp.inc`.
+   now includes 3DNowExt). Then the XOP encoder change and
+   `xop.inc`, `fma4.inc`, `tbm.inc`, `lwp.inc` (bextr's TBM form in place in
+   `bmi.inc`): done, with tests.
 7. **Historical and vendor files** (§5.7).
 8. **APX / AVX10.2**, as a separate design.

@@ -64,3 +64,6 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `cmpccxadd.asm` | new | All 30 condition names and aliases, operand roles, W by size, 64-bit only. |
 | `sse4a.asm` | new | EXTRQ/INSERTQ (register and two-immediate forms), MOVNTSD/MOVNTSS; vmread/movntps keep their bytes. |
 | `3dnowext.asm` | new | PF2IW, PI2FW (moved from 3DNow), PFNACC, PFPNACC, PSWAPD under 3DNowExt; `use AMD64` includes it. |
+| `xop.asm` | new | XOP: 8Fh lead byte for maps 8/9 (C4h kept for 0F3A, e.g. vpermil2ps), is4 operand, W choosing the memory slot, vpcom aliases, 128-bit-only forms. |
+| `fma4.asm` | new | FMA4: W/is4 operand placement (W1 for register-only forms, as llvm-mc), scalar memory sizes, packed-only vfmaddsub/vfmsubadd. |
+| `tbm_lwp.asm` | new | TBM (ModRM.reg-selected operations; bextr imm32 vs BMI1 bextr) and LWP; no AVX needed. |

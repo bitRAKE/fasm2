@@ -56,6 +56,14 @@ VEX_66_0F3A_W1 = VEX_66_0F3A_W0 or 8000h
 VEX_F3_0F3A_W1 = VEX_F3_0F3A_W0 or 8000h
 VEX_F2_0F3A_W1 = VEX_F2_0F3A_W0 or 8000h
 
+; AMD XOP maps 8, 9 and 0Ah: VEX layout with an 8Fh lead byte, no pp prefix
+XOP_08_W0 = 01000b
+XOP_09_W0 = 01001b
+XOP_0A_W0 = 01010b
+XOP_08_W1 = XOP_08_W0 or 8000h
+XOP_09_W1 = XOP_09_W0 or 8000h
+XOP_0A_W1 = XOP_0A_W0 or 8000h
+
 EVEX_AS_VEX = 0
 EVEX_W1 = 1 shl 15
 EVEX_REQUIRED = 1 shl 10
@@ -678,7 +686,13 @@ iterate context, @dest,@src,@src2,@aux
 			emit	1, ((vex and 10000000b) or ((vex shr 8) and 1111111b)) xor 11111000b
 			jump	evex_done
 		    vex_3byte:
+			check	vex and 11111b >= 8
+			jyes	xop_lead
 			emit	1, 0C4h
+			jump	vex_payload
+		    xop_lead:
+			emit	1, 8Fh
+		    vex_payload:
 			emit	1, (vex and 11111111b) xor 11100000b
 			emit	1, (vex shr 8) xor 01111000b
 			jump	evex_done
