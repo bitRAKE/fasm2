@@ -1,3 +1,19 @@
+; amx.inc -- Advanced Matrix Extensions (tile registers, VEX)
+;
+; CPUID requirements ("use <setting>" to enable, or "use everything"):
+;
+;	setting		CPUID bit		instructions
+;	AMX_TILE	7.0:EDX[24]		ldtilecfg sttilecfg tileloadd tileloaddt1
+;						tilestored tilezero tilerelease
+;	AMX_INT8	7.0:EDX[25]		tdpbssd tdpbsud tdpbusd tdpbuud
+;	AMX_BF16	7.0:EDX[22]		tdpbf16ps
+;	AMX_FP16	7.1:EAX[21]		tdpfp16ps
+;	AMX_COMPLEX	7.1:EDX[8]		tcmmimfp16ps tcmmrlfp16ps
+;
+; AMX executes in 64-bit mode only. tdpfp16ps and the complex products
+; check that, and AMX_TILE as CPUID requires; the older instructions do
+; not check either yet. Like every VEX instruction, AMX also needs AVX.
+
 
 define AMX AMX
 
@@ -160,3 +176,28 @@ macro tdpbf16ps? dest*,src*,src2*
 		err 'invalid operand'
 	end if
 end macro
+
+; AMX-FP16 / AMX-COMPLEX: tmm1, tmm2, tmm3, all three distinct
+iterate <instr,vex_mpw,opcode,feature>, 	tdpfp16ps,   VEX_F2_0F38_W0,5Ch,AMX_FP16, 	tcmmimfp16ps,VEX_66_0F38_W0,6Ch,AMX_COMPLEX, 	tcmmrlfp16ps,VEX_0F38_W0,   6Ch,AMX_COMPLEX
+
+	calminstruction instr? dest*,src*,src2*
+		call	x86.require.AMX_TILE
+		call	x86.require.feature
+		call	x86.require.bits64
+		call	AMX.parse_operand@dest, dest
+		call	AMX.parse_operand@src, src
+		call	AMX.parse_operand@src2, src2
+		check	@dest.type = 'tmmreg' & @src.type = 'tmmreg' & @src2.type = 'tmmreg'
+		jyes	tiles
+		err	'invalid operand'
+		exit
+	    tiles:
+		check	@dest.rm = @src.rm | @dest.rm = @src2.rm | @src.rm = @src2.rm
+		jno	encode
+		err	'tile registers must be distinct'
+		exit
+	    encode:
+		xcall	AVX.store_instruction@src, (16),(vex_mpw),(opcode),@dest.rm,@src2.rm
+	end calminstruction
+
+end iterate

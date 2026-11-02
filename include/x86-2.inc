@@ -188,6 +188,7 @@ end macro
 	; CPUID.(EAX=7,ECX=0):EDX
 	AVX512_4VNNIW:		ext | 96 + 2
 	UINTR:			ext | 96 + 5
+	AVX512_VP2INTERSECT:	ext | 96 + 8
 	SERIALIZE:		ext | 96 + 14
 	TSXLDTRK:		ext | 96 + 16
 	CET_IBT:		ext | 96 + 20
@@ -195,8 +196,12 @@ end macro
 	AMX_TILE:		ext | 96 + 24
 	AMX_INT8:		ext | 96 + 25
 	; CPUID.(EAX=7,ECX=1):EAX
+	SHA512: 		ext | 128 + 0
+	SM3:			ext | 128 + 1
+	SM4:			ext | 128 + 2
 	AVX_VNNI:		ext | 128 + 4
 	AVX512_BF16:		ext | 128 + 5
+	AMX_FP16:		ext | 128 + 21
 	HRESET: 		ext | 128 + 22
 	AVX_IFMA:		ext | 128 + 23
 	; CPUID.(EAX=0DH,ECX=1):EAX
@@ -206,6 +211,7 @@ end macro
 	; CPUID.(EAX=7,ECX=1):EDX
 	AVX_VNNI_INT8:		ext | 192 + 4
 	AVX_NE_CONVERT: 	ext | 192 + 5
+	AMX_COMPLEX:		ext | 192 + 8
 	AVX_VNNI_INT16: 	ext | 192 + 10
 	; CPUID.(EAX=80000001H):ECX
 	SVM: 			ext | 224 + 2
@@ -4466,6 +4472,9 @@ include 'iset/bmi.inc'
 include 'iset/vnni.inc'
 include 'iset/ifma.inc'
 include 'iset/bf16.inc'
+include 'iset/sha512.inc'
+include 'iset/sm.inc'
+include 'iset/vp2intersect.inc'
 
 include 'iset/sha.inc'
 include 'iset/aes.inc'

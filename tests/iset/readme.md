@@ -51,3 +51,7 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `amd.asm` | new | MONITORX, CLZERO, INVLPGB/TLBSYNC, RDPRU, MCOMMIT: one bit per feature, address-size `67h`, implicit register checks. |
 | `vnni_ifma.asm` | G6 | VNNI/IFMA in VEX and EVEX form: each gate alone, both together (VEX by default, `{evex}` or EVEX-only operands select EVEX), refusals when only the VEX feature is on; AVX-VNNI-INT8/INT16. |
 | `bf16.asm` | new | AVX512_BF16 and AVX-NE-CONVERT: `vcvtneps2bf16` in both encodings, the half-width size rule (explicit size for an xmm destination from memory), memory-only loads. |
+| `sha512.asm` | new | SHA-512: mixed ymm/xmm register operands; independent of SHA and of XSAVEOPT (its old window neighbour). |
+| `sm.asm` | new | SM3 (128-bit) and SM4 (128/256-bit), separate bits, VEX only, 8-bit immediate. |
+| `vp2intersect.asm` | new | Mask-register pair destination (even k only), AVX512VL for xmm/ymm, D/Q broadcast. |
+| `amx.asm` | new | AMX-FP16 and AMX-COMPLEX: AMX_TILE plus own bit, distinct tiles, 64-bit only. |
