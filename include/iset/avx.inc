@@ -65,6 +65,7 @@ EVEX_VL = 1 shl 22
 EVEX_VL_AVX2 = 1 shl 32
 EVEX_BW = 1 shl 23
 EVEX_DQ = 1 shl 24
+VEX_GPR = 1 shl 33		; VEX-encoded general-purpose instruction (BMI, CMPccXADD): no AVX needed
 
 iterate context, @dest,@src,@src2,@aux
 
@@ -509,6 +510,12 @@ iterate context, @dest,@src,@src2,@aux
 			xcall	AVX_512.store_instruction#context, vsize,vex_mpw,(EVEX_FORBIDDEN),opcode,(0),reg,vreg,imm_size,immediate
 		end calminstruction
 
+		calminstruction AVX.store_gpr_instruction#context vsize*,vex_mpw*,opcode*,reg*,vreg:0,imm_size:0,immediate
+			compute evex_b, 0
+			compute memsize, 0
+			xcall	AVX_512.store_instruction#context, vsize,vex_mpw,(EVEX_FORBIDDEN or VEX_GPR),opcode,(0),reg,vreg,imm_size,immediate
+		end calminstruction
+
 		calminstruction AVX_512.store_instruction#context vsize*,vex_mpw*,evex_f*,opcode*,mask*,reg*,vreg:0,imm_size:0,immediate
 
 			check	segment_prefix
@@ -659,7 +666,10 @@ iterate context, @dest,@src,@src2,@aux
 			err	'invalid operand'
 
 		    vex:
+			check	evex_flags and VEX_GPR
+			jyes	vex_feature_ok
 			call	x86.require.AVX
+		    vex_feature_ok:
 			compute vex, evex and 11111011_11111111b or (evex and 1 shl 21) shr (21-10)
 			check	vex and 10000000_01111111b <> 1 | x86.vexsize = 3
 			jyes	vex_3byte
