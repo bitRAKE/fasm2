@@ -1,4 +1,13 @@
 ; svm.inc -- AMD-V instruction encodings (APM vol.3)
+;
+; CPUID requirements ("use <setting>" to enable, or "use everything"):
+;
+;	setting	CPUID bit		instructions
+;	SVM	8000_0001h:ECX[2]	vmrun vmload vmsave vmmcall clgi invlpga
+;	SKINIT	8000_0001h:ECX[12]	skinit
+;	SVM or SKINIT			stgi
+;
+; Valid in 16-, 32- and 64-bit code.
 
 ; The rAX operand is implicit and optional; when given, its width selects
 ; the address size (67h), never the operand size.

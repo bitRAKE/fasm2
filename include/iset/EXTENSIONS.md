@@ -168,6 +168,26 @@ Each addition must settle all of the following. The per-extension plans in
   `cache.inc`, …) rather than a 10-line file each.
 - **Vendor-specific, undocumented or historical sets are opt-in files**:
   `x86-2.inc` does **not** include them (§3.2).
+- **Every file starts with its CPUID requirements**, so a reader can answer
+  "I want these instructions; what do I have to enable?" without reading
+  any code. The header lists the `use` setting, the CPUID leaf and bit
+  from §4, the instructions it unlocks, and any mode restriction.
+  Any-of and all-of gates are written out in full. `svm.inc` is the
+  model:
+
+  ```
+  ; CPUID requirements ("use <setting>" to enable, or "use everything"):
+  ;
+  ;	setting	CPUID bit		instructions
+  ;	SVM	8000_0001h:ECX[2]	vmrun vmload vmsave vmmcall clgi invlpga
+  ;	SKINIT	8000_0001h:ECX[12]	skinit
+  ;	SVM or SKINIT			stgi
+  ;
+  ; Valid in 16-, 32- and 64-bit code.
+  ```
+
+  Existing files (`vmx.inc`, `cet.inc`, `avx.inc`, …) have no such header
+  yet. Add it when each file is next touched.
 
 ### 3.2 Include point
 - Pick the earliest point in §1.1 whose helpers the file needs.
@@ -385,9 +405,14 @@ build byte-identical images with the `bb403a8` and the fixed `svm.inc`. The
 labs only use explicit `rax` in 64-bit mode, so the bare, 16/32-bit and
 SKINIT-only cases above are covered by the byte tests, not by the labs.
 
-**Still open:** `x86-2.inc` does not include `svm.inc`, so it is opt-in
-today. Under §1.1 it belongs in the GPR group after `uintr.inc`. Whether to
-include it by default is your decision.
+**Still open: the include point (§3.2).** Every other `include/iset` file
+(19 of 20) is pulled in by `x86-2.inc`. `svm.inc` is the only one that
+isn't, which is why `svm_labs` has its own `include 'iset/svm.inc'`. AMD-V
+is a documented CPUID feature, not a vendor-undocumented set, so §3.1/§3.2
+put it in the GPR group after `uintr.inc` with the other system
+extensions. If it is added there, the explicit include in `svm_labs`
+should be dropped: a second include would define every SVM mnemonic a
+second time.
 
 ### 5.2 Dual-encoded vector families (move and merge)
 
