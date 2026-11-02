@@ -228,11 +228,13 @@ end macro
 	; CPUID.(EAX=80000001H):ECX
 	SVM: 			ext | 224 + 2
 	LZCNT:			ext | 224 + 5
+	SSE4A:			ext | 224 + 6
 	PRFCHW: 		ext | 224 + 8
 	SKINIT: 		ext | 224 + 12
 	MONITORX:		ext | 224 + 29
 	; CPUID.(EAX=80000001H):EDX
 	RDTSCP: 		ext | 256 + 27
+	3DNowExt:		ext | 256 + 30
 	3DNow:			ext | 256 + 31
 	; CPUID.(EAX=80000008H):EBX
 	CLZERO: 		ext | 288 + 0
@@ -264,7 +266,7 @@ end macro
 	Pentium2: cpu = 6, fpu = 5, simd = 5, ext = 0
 	Pentium3: cpu = 6, fpu = 5, simd = 10, ext = 0
 	Pentium4: cpu = 7, fpu = 5, simd = 30, ext = 0
-	AMD64: cpu = 8, fpu = 5, simd = 20, ext = x86.3DNow.ext
+	AMD64: cpu = 8, fpu = 5, simd = 20, ext = x86.3DNow.ext or x86.3DNowExt.ext
 
 	SSE4: simd = x86.SSE4.2.simd, ext + x86.POPCNT.ext
 	AVX512: simd = x86.AVX512F.simd, ext + x86.AVX512VL.ext + x86.AVX512BW.ext + x86.AVX512DQ.ext + x86.AVX512CD.ext + x86.AVX512_IFMA.ext + x86.AVX512_VBMI.ext
@@ -4491,6 +4493,7 @@ include 'iset/sse.inc'
 include 'iset/sse2.inc'
 include 'iset/sse3.inc'
 include 'iset/sse4.inc'
+include 'iset/sse4a.inc'
 
 include 'iset/avx.inc'
 include 'iset/bmi.inc'

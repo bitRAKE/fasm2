@@ -548,8 +548,8 @@ new VEX instructions.
 |------|---------------|------|-------------------|-------------|
 | `sev.inc` | GPR group | `SEV_SNP` · `RMPQUERY` | **Done** (`tests/iset/sev.asm`). `pvalidate` → `F2 0F 01 FF` (32/64-bit, rAX is an address); `rmpadjust` → `F3 0F 01 FE`; `rmpupdate` → `F2 0F 01 FE`; `psmash` → `F3 0F 01 FF`; `rmpquery` → `F3 0F 01 FD` (all four 64-bit only, RAX is a value) | Wrong implicit registers; `eax` where RAX is a value; 16/32-bit use of the 64-bit-only ones. Collisions: `invlpgb`/`tlbsync`/`rdpru` (same bytes, no prefix). `vmgexit` is in `svm.inc`. |
 | `amd.inc` | GPR group | `MONITORX` · `CLZERO` · `RDPRU` · `MCOMMIT` · `INVLPGB` | **Done** (`tests/iset/amd.asm`). `monitorx` → `0F 01 FA`; `mwaitx` → `0F 01 FB`; `clzero` → `0F 01 FC`; `rdpru` → `0F 01 FD`; `mcommit` → `F3 0F 01 FA` (*APM*); `invlpgb` → `0F 01 FE`; `tlbsync` → `0F 01 FF` | Wrong implicit registers (zydis-db: `monitorx` rAX,ECX,EDX; `mwaitx` EAX,ECX; `invlpgb` rAX,EDX,ECX); one feature enabling another's instruction. Note: the existing `monitor`/`mwait` accept only `eax,ecx,edx` and never emit `67h`, so `monitor rax,ecx,edx` is refused in 64-bit code; they could move to the same helpers. |
-| `sse4a.inc` | after `sse4.inc` | `SSE4A` | `extrq xmm,imm8,imm8` → `66 0F 78 /0 ib ib`; `extrq xmm,xmm` → `66 0F 79`; `insertq xmm,xmm,imm8,imm8` → `F2 0F 78`; `insertq xmm,xmm` → `F2 0F 79`; `movntsd m64,xmm` → `F2 0F 2B`; `movntss m32,xmm` → `F3 0F 2B` | Memory for `extrq`/`insertq`; registers for `movnt*`. Collision: `0F 78/79` without a prefix are `vmread`/`vmwrite`. |
-| `3dnow.inc` (in place) | — | `3DNowExt` | add `pswapd`, `pfnacc`, `pfpnacc`, `pf2iw` (`0F 0F /r` + suffix `BB/8A/8E/1C`). Move the existing `pi2fw` (`0C`) out of the 3DNow `iterate` and onto 3DNowExt. This is a behaviour change: it is refused under plain `use 3DNow`. | Non-MMX operands |
+| `sse4a.inc` **(done, `tests/iset/sse4a.asm`)** | after `sse4.inc` | `SSE4A` | `extrq xmm,imm8,imm8` → `66 0F 78 /0 ib ib`; `extrq xmm,xmm` → `66 0F 79`; `insertq xmm,xmm,imm8,imm8` → `F2 0F 78`; `insertq xmm,xmm` → `F2 0F 79`; `movntsd m64,xmm` → `F2 0F 2B`; `movntss m32,xmm` → `F3 0F 2B` | Memory for `extrq`/`insertq`; registers for `movnt*`. Collision: `0F 78/79` without a prefix are `vmread`/`vmwrite`. |
+| `3dnow.inc` (in place) **(done, `tests/iset/3dnowext.asm`)** | — | `3DNowExt` | add `pswapd`, `pfnacc`, `pfpnacc`, `pf2iw` (`0F 0F /r` + suffix `BB/8A/8E/1C`). Move the existing `pi2fw` (`0C`) out of the 3DNow `iterate` and onto 3DNowExt. This is a behaviour change: it is refused under plain `use 3DNow`. | Non-MMX operands |
 | `lzcnt`, `prefetchw` | in place | G2, G4 | — | — |
 
 ### 5.6 AMD XOP family (needs an encoder change first)
@@ -692,7 +692,8 @@ How each source feeds the work:
    patterns. Not implemented: the APX EVEX forms (map 4) of RAO-INT,
    USER_MSR and CMPccXADD, and the MSR-IMM `rdmsr`/`wrmsrns` immediates.
 5. **`avx512_fp16.inc`** (largest table).
-6. **XOP encoder change**, then `xop.inc`, `fma4.inc`, `tbm.inc`,
-   `lwp.inc`, and `sse4a.inc` with the `3dnow.inc` additions.
+6. `sse4a.inc` and the `3dnow.inc` additions: done, with tests (`use AMD64`
+   now includes 3DNowExt). Next: the **XOP encoder change**, then
+   `xop.inc`, `fma4.inc`, `tbm.inc`, `lwp.inc`.
 7. **Historical and vendor files** (§5.7).
 8. **APX / AVX10.2**, as a separate design.

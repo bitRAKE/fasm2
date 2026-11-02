@@ -62,3 +62,5 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `fred_tdx.asm` | new | ERETS/ERETU, LKGS, TDX instructions: 64-bit only, own gates, neighbours clac/lldt unchanged, jmpe stays out. |
 | `msr.asm` | new | RDMSRLIST/WRMSRLIST, WRMSRNS (all modes), URDMSR/UWRMSR register and map-7 immediate forms; enqcmd unchanged. |
 | `cmpccxadd.asm` | new | All 30 condition names and aliases, operand roles, W by size, 64-bit only. |
+| `sse4a.asm` | new | EXTRQ/INSERTQ (register and two-immediate forms), MOVNTSD/MOVNTSS; vmread/movntps keep their bytes. |
+| `3dnowext.asm` | new | PF2IW, PI2FW (moved from 3DNow), PFNACC, PFPNACC, PSWAPD under 3DNowExt; `use AMD64` includes it. |
