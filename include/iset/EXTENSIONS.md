@@ -29,8 +29,20 @@ tables (§6.2).
 ### 1.1 File roles and include order
 
 `x86-2.inc` is the core encoder. It pulls in the `iset` files at three
-points, and the order matters. A file can only use helpers that were defined
-before it.
+points. In fasmg, a symbol defined exactly once (constant, macro, CALM
+instruction, CALM helper reached by `call`) is global: it can be used
+before its definition, and fasmg resolves it in a further pass. So include
+order is not about visibility. It matters for:
+- **symbols defined more than once**: each use sees the definition in
+  effect at that point, and a use before the first definition fails;
+- **assembly time**: each forward reference can cost an extra pass, so
+  helpers are still placed before their users;
+- **deliberate stacks**: a mnemonic extended by a later file (`movd`,
+  `pextrw`, `cmpsd`, ...) must come after the definition it falls back to.
+
+The trap is the opposite of a visibility error: **defining an existing
+name a second time silently changes it for everything that follows**,
+including user code after the includes (G12, G13, §2.4). See §1.3 rule 5.
 
 | Point in `x86-2.inc`   | Files                                      | Available helpers |
 |------------------------|--------------------------------------------|-------------------|
@@ -38,9 +50,9 @@ before it.
 | after SGX/system block | `vmx.inc`, `mpx.inc`, `cet.inc`, `uintr.inc`, `svm.inc` | the same (GPR/memory only) |
 | end of file            | `mmx` → `sse` → `sse2` → `sse3` → `sse4` → `avx` → `bmi` → `sha`, `aes`, `kl`, `gfni`, `pclmulqdq` → `3dnow` → `amx` | `MMX.*`, `SSE.*`, `AVX.*`, `AVX_512.*`, register elements `xmm16+`, `ymm*`, `zmm*`, `k*` |
 
-Placement rule:
+Placement rule (for pass count and readability, not visibility):
 - A file that touches XMM/YMM/ZMM/k registers, or that uses a VEX, EVEX or
-  XOP prefix (including VEX-encoded GPR instructions such as BMI), must come
+  XOP prefix (including VEX-encoded GPR instructions such as BMI), goes
   after `avx.inc`.
 - A file that only touches GPRs and memory belongs in the
   `vmx`/`mpx`/`cet`/`uintr` group.
@@ -82,10 +94,16 @@ These are easy to get wrong. Each one was confirmed while writing this note.
    calling the parser.** The parser errors on empty text.
 4. **Inside `iterate`, parameters are substituted when the
    `calminstruction` is defined**, so `emit 1, modrm` bakes the constant in.
-5. **Defining a mnemonic again does not replace it; it stacks.** The later
-   definition wins silently. That is how the double `xtest` bug (§2.4)
-   happened. Never define a mnemonic that already exists in another file
-   (see §3.3).
+5. **A second definition turns a global into a variable.** Defined once,
+   a name works everywhere, even before its definition. Defined twice,
+   every use gets whichever definition precedes it, a use before both
+   fails, and nothing warns. For a mnemonic, the later definition silently
+   replaces the earlier one for all code that follows. That is how `xtest`
+   (G3), `vpmuldq` (G12) and `vcvtph2ps`/`vcvtps2ph` (G13) lost forms. The
+   same applies to constants such as `VEX_GPR` or `XOP_08_W0`: a user
+   source that assigns one of them changes every instruction assembled
+   after it. Run `tests/iset/_dupnames.py` (§3.3), which fails on any new
+   instruction name defined twice.
 
 ---
 
@@ -167,7 +185,7 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G11 are fixed. Each has a test in `tests/iset/` that passes on this branch
+G1–G13 are fixed. Each has a test in `tests/iset/` that passes on this branch
 and fails on the tree before the fix (see `tests/iset/readme.md`).
 
 | # | Defect | Effect | Fix | Test |
@@ -183,6 +201,8 @@ and fails on the tree before the fix (see `tests/iset/readme.md`).
 | G9 | `avx.inc` spelled compare predicate 0Ch `neq_qq` | `vcmpneq_oqps/pd/ss/sd` (SDM names) were illegal instructions | Add `neq_oq`; keep `neq_qq` as an alias | `cmp_predicates.asm` |
 | G10 | `vcvttps2qq`/`vcvttps2uqq` called `AVX_512.parse_sae @src,sae` (space before the context) | Their `{sae}` form failed with `illegal instruction` | `AVX_512.parse_sae@src sae` | `avx512_sae.asm` |
 | G11 | `bndcl/bndcu/bndcn` called `x86.parse_operand @src,src` (same typo) | All three failed with `illegal instruction` in every form | `x86.parse_operand@src src` | `mpx_bndc.asm` |
+| G12 | `avx.inc` listed `vpmuldq` in two `iterate` blocks; the later, EVEX-only one replaced the VEX/EVEX one | `vpmuldq xmm/ymm` (AVX/AVX2) refused | Remove it from the later block | `redefinition.asm` |
+| G13 | `avx.inc` defined `vcvtph2ps`/`vcvtps2ph` twice; the later F16C VEX-only pair replaced the VEX+EVEX pair | AVX-512 forms (zmm, masks, `{sae}`) refused | One definition each: VEX needs F16C, EVEX needs AVX512F (`F16C.gate`) | `redefinition.asm` |
 
 ---
 
@@ -225,7 +245,8 @@ Each addition must settle all of the following. The per-extension plans in
   yet. Add it when each file is next touched.
 
 ### 3.2 Include point
-- Pick the earliest point in §1.1 whose helpers the file needs.
+- Place the file after the files whose helpers it uses (§1.1: fewer
+  passes; visibility is not the reason).
 - If a file *depends* on another file's encoder change (XOP before FMA4,
   TBM and LWP), it is included after that file, and the dependency is
   stated in its header comment.
@@ -238,6 +259,9 @@ Each addition must settle all of the following. The per-extension plans in
   already exists.
 - **If it exists, change it in place, in the file that owns it.**
   Never shadow it from a new file.
+- **`python tests/iset/_dupnames.py` must pass.** It fails on any
+  instruction name defined twice that is not one of the reviewed,
+  deliberate stacks listed in it.
 - **When a whole family changes owner, do it in one commit.** The family
   moves to a new file, and the old definitions are removed in the same
   change, as planned for VNNI, IFMA and BF16.

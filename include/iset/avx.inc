@@ -1915,7 +1915,20 @@ iterate <instr,vex_mpw,evex_f,opcode>, vcvttps2dq,VEX_F3_0F_W0,EVEX_AS_VEX+EVEX_
 
 end iterate
 
+; vcvtph2ps / vcvtps2ph: VEX form is F16C (1:ECX[29]), EVEX form AVX512F
+macro F16C.gate evex_f
+	if x86.ext and x86.F16C.ext
+		evex_f = EVEX_AS_VEX+EVEX_VL
+	else if x86.simd >= x86.AVX512F.simd
+		evex_f = EVEX_REQUIRED+EVEX_VL
+	else
+		require F16C
+	end if
+end macro
+
 macro vcvtph2ps? dest*,src_sae*&
+	local evex_f
+	F16C.gate evex_f
 	AVX_512.parse_k1z_operand@dest dest
 	match src=,sae, src_sae
 		AVX_512.parse_operand@src src
@@ -1930,13 +1943,15 @@ macro vcvtph2ps? dest*,src_sae*&
 		if @src.memsize = 0
 			@src.memsize = @dest.size shr 1
 		end if
-		AVX_512.store_instruction@src @dest.size,VEX_66_0F38_W0,EVEX_AS_VEX+EVEX_VL,13h,@dest.mask,@dest.rm
+		AVX_512.store_instruction@src @dest.size,VEX_66_0F38_W0,evex_f,13h,@dest.mask,@dest.rm
 	else
 		err 'invalid combination of operands'
 	end if
 end macro
 
 macro vcvtps2ph? dest*,src*,aux*&
+	local evex_f
+	F16C.gate evex_f
 	AVX_512.parse_k1z_operand@dest dest
 	AVX_512.parse_operand@src src
 	match sae=,imm, aux
@@ -1952,7 +1967,7 @@ macro vcvtps2ph? dest*,src*,aux*&
 		if @dest.memsize = 0
 			@dest.memsize = @src.size shr 1
 		end if
-		AVX_512.store_instruction@dest @src.size,VEX_66_0F3A_W0,EVEX_AS_VEX+EVEX_VL,1Dh,@dest.mask,@src.rm,,1,@aux.imm
+		AVX_512.store_instruction@dest @src.size,VEX_66_0F3A_W0,evex_f,1Dh,@dest.mask,@src.rm,,1,@aux.imm
 	else
 		err 'invalid combination of operands'
 	end if
@@ -2408,7 +2423,7 @@ iterate <instr,opcode>, vpmuldq,28h
 
 end iterate
 
-iterate <instr,opcode>, vpmuldq,28h, vpmaxsq,3Dh, vpmaxuq,3Fh, vpminsq,39h, vpminuq,3Bh, vpmullq,40h
+iterate <instr,opcode>, vpmaxsq,3Dh, vpmaxuq,3Fh, vpminsq,39h, vpminuq,3Bh	; vpmullq is AVX512DQ, defined below
 
 	macro instr? dest*,src*,src2*
 		AVX_512.basic_instruction_bcst VEX_66_0F38_W1,EVEX_REQUIRED+EVEX_VL,opcode,8,dest,src,src2
@@ -3742,35 +3757,6 @@ iterate <instr,vex_mpw,opcode>, vcvttps2qq,VEX_66_0F_W0,7Ah, vcvttps2uqq,VEX_66_
 	end macro
 
 end iterate
-
-macro vcvtph2ps? dest*,src*
-	require F16C
-	AVX_512.parse_operand@dest dest
-	AVX_512.parse_operand@src src
-	if @dest.type = 'mmreg' & (@src.type = 'mmreg' | @src.type = 'mem')
-		if (@src.type = 'mmreg' & @src.size <> 16) | (@src.type = 'mem' & @src.size*2 <> @dest.size)
-			err 'invalid operand size'
-		end if
-		AVX.store_instruction@src @dest.size,VEX_66_0F38_W0,13h,@dest.rm
-	else
-		err 'invalid combination of operands'
-	end if
-end macro
-
-macro vcvtps2ph? dest*,src*,round*
-	require F16C
-	AVX_512.parse_operand@dest dest
-	AVX_512.parse_operand@src src
-	x86.parse_operand@aux round
-	if (@dest.type = 'mmreg' | @dest.type = 'mem') & @src.type = 'mmreg' & @aux.type = 'imm'
-		if (@dest.type = 'mmreg' & @dest.size <> 16) | (@dest.type = 'mem' & @dest.size*2 <> @src.size) | @aux.size and not 1
-			err 'invalid operand size'
-		end if
-		AVX.store_instruction@dest @src.size,VEX_66_0F3A_W0,1Dh,@src.rm,,1,@aux.imm
-	else
-		err 'invalid combination of operands'
-	end if
-end macro
 
 iterate <instr,vex_mpw,opcode,msize>, vextractf32x8,VEX_66_0F3A_W0,1Bh,32, vextractf64x2,VEX_66_0F3A_W1,19h,16, \
 				      vextracti32x8,VEX_66_0F3A_W0,3Bh,32, vextracti64x2,VEX_66_0F3A_W1,39h,16

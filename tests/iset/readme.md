@@ -74,3 +74,9 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `cmp_predicates.asm` | G9 | `vcmpneq_oq*` exists (avx.inc spelled it `neq_qq`, kept as an alias). |
 | `avx512_sae.asm` | G10 | `{sae}` on vcvttps2qq/vcvttps2uqq (a mistyped parser call made it an illegal instruction). |
 | `mpx_bndc.asm` | G11 | bndcl/bndcu/bndcn assemble at all (same mistyped parser call); bytes checked with ZydisInfo. |
+| `redefinition.asm` | G12, G13 | Mnemonics shadowed by a second definition: vpmuldq VEX forms, vcvtph2ps/vcvtps2ph EVEX forms, vpmullq's DQ gate. |
+
+`_dupnames.py` is a separate check: `python tests/iset/_dupnames.py` fails on any
+instruction name defined twice in `include/` that is not a reviewed, deliberate
+stack. In fasmg a second definition silently replaces the first for all code
+that follows.
