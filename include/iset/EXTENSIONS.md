@@ -297,6 +297,12 @@ Each addition must settle all of the following. The per-extension plans in
 
 ### 3.7 Encoding path
 - **Fixed bytes:** use `emit`.
+- **Implicit register operands** (all optional; written ones are checked):
+  `x86.address_operand` for a rAX that is an address (emits `67h` when
+  narrower than the mode), and `xcall x86.implicit_operand, op, (rm),
+  (size)` for a fixed register such as ECX (`(1),(4)`). Both are in
+  `x86-2.inc`, next to `x86.store_address_prefix`. In CALM, `call` passes
+  only symbols; literal numbers need `xcall` with `(n)`.
 - **ModRM with GPR or memory:** use `x86.store_instruction@ctx`. Set
   `@ctx.opcode_prefix` for mandatory `66`/`F2`/`F3`. Use
   `x86.select_operand_prefix@ctx` or `x86.store_operand_prefix` for width.
@@ -529,8 +535,8 @@ new VEX instructions.
 
 | File | Include point | Gate | Mnemonics → bytes | Must reject |
 |------|---------------|------|-------------------|-------------|
-| `sev.inc` | GPR group | `SEV_SNP` · `RMPQUERY` | (`vmgexit` is in `svm.inc`, §5.1); `pvalidate` → `F2 0F 01 FF`; `rmpadjust` → `F3 0F 01 FE`; `rmpupdate` → `F2 0F 01 FE`; `psmash` → `F3 0F 01 FF`; `rmpquery` → `F3 0F 01 FD` | Any implicit operands that are written must be the architectural registers (rAX, rCX, rDX, as for SVM). Collisions: `vmmcall` (`0F 01 D9`), `invlpgb`/`tlbsync`/`rdpru` (no prefix), `mcommit` (`F3 0F 01 FA`). |
-| `amd.inc` | GPR group | `MONITORX` · `CLZERO` · `RDPRU` · `MCOMMIT` · `INVLPGB` | `monitorx` → `0F 01 FA`; `mwaitx` → `0F 01 FB`; `clzero` → `0F 01 FC`; `rdpru` → `0F 01 FD`; `mcommit` → `F3 0F 01 FA` (*APM*); `invlpgb` → `0F 01 FE`; `tlbsync` → `0F 01 FF` | Wrong implicit registers. Address size for `monitorx`/`clzero` follows the same rAX rule as SVM; copy the existing `monitor` and `umonitor` handling. |
+| `sev.inc` | GPR group | `SEV_SNP` · `RMPQUERY` | **Done** (`tests/iset/sev.asm`). `pvalidate` → `F2 0F 01 FF` (32/64-bit, rAX is an address); `rmpadjust` → `F3 0F 01 FE`; `rmpupdate` → `F2 0F 01 FE`; `psmash` → `F3 0F 01 FF`; `rmpquery` → `F3 0F 01 FD` (all four 64-bit only, RAX is a value) | Wrong implicit registers; `eax` where RAX is a value; 16/32-bit use of the 64-bit-only ones. Collisions: `invlpgb`/`tlbsync`/`rdpru` (same bytes, no prefix). `vmgexit` is in `svm.inc`. |
+| `amd.inc` | GPR group | `MONITORX` · `CLZERO` · `RDPRU` · `MCOMMIT` · `INVLPGB` | **Done** (`tests/iset/amd.asm`). `monitorx` → `0F 01 FA`; `mwaitx` → `0F 01 FB`; `clzero` → `0F 01 FC`; `rdpru` → `0F 01 FD`; `mcommit` → `F3 0F 01 FA` (*APM*); `invlpgb` → `0F 01 FE`; `tlbsync` → `0F 01 FF` | Wrong implicit registers (zydis-db: `monitorx` rAX,ECX,EDX; `mwaitx` EAX,ECX; `invlpgb` rAX,EDX,ECX); one feature enabling another's instruction. Note: the existing `monitor`/`mwait` accept only `eax,ecx,edx` and never emit `67h`, so `monitor rax,ecx,edx` is refused in 64-bit code; they could move to the same helpers. |
 | `sse4a.inc` | after `sse4.inc` | `SSE4A` | `extrq xmm,imm8,imm8` → `66 0F 78 /0 ib ib`; `extrq xmm,xmm` → `66 0F 79`; `insertq xmm,xmm,imm8,imm8` → `F2 0F 78`; `insertq xmm,xmm` → `F2 0F 79`; `movntsd m64,xmm` → `F2 0F 2B`; `movntss m32,xmm` → `F3 0F 2B` | Memory for `extrq`/`insertq`; registers for `movnt*`. Collision: `0F 78/79` without a prefix are `vmread`/`vmwrite`. |
 | `3dnow.inc` (in place) | — | `3DNowExt` | add `pswapd`, `pfnacc`, `pfpnacc`, `pf2iw` (`0F 0F /r` + suffix `BB/8A/8E/1C`). Move the existing `pi2fw` (`0C`) out of the 3DNow `iterate` and onto 3DNowExt. This is a behaviour change: it is refused under plain `use 3DNow`. | Non-MMX operands |
 | `lzcnt`, `prefetchw` | in place | G2, G4 | — | — |
@@ -663,9 +669,9 @@ How each source feeds the work:
    behaviour change, so record it in the changelog. Add the remaining table
    lines from §4 with their files, not ahead of them, so no gate exists
    without a mnemonic behind it.
-2. **`svm.inc`**: done (S1–S4 closed, `vmgexit` added, included by
-   `x86-2.inc`). Next come **`sev.inc` and `amd.inc`**.
-   These are GPR-only and low-risk, and they establish the CALM style.
+2. **`svm.inc`, `sev.inc`, `amd.inc`**: done, with tests. They are
+   GPR-only and established the CALM style and the implicit-operand
+   helpers (§3.7).
 3. **`vnni.inc`, `ifma.inc`, `bf16.inc`** (the move-and-merge pattern),
    then `sha512.inc`, `sm.inc`, `vp2intersect.inc`, and the AMX in-place
    additions.

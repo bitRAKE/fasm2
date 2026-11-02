@@ -205,11 +205,19 @@ end macro
 	LZCNT:			ext | 224 + 5
 	PRFCHW: 		ext | 224 + 8
 	SKINIT: 		ext | 224 + 12
+	MONITORX:		ext | 224 + 29
 	; CPUID.(EAX=80000001H):EDX
 	RDTSCP: 		ext | 256 + 27
 	3DNow:			ext | 256 + 31
+	; CPUID.(EAX=80000008H):EBX
+	CLZERO: 		ext | 288 + 0
+	INVLPGB:		ext | 288 + 3
+	RDPRU:			ext | 288 + 4
+	MCOMMIT:		ext | 288 + 8
 	; CPUID.(EAX=8000001FH):EAX
 	SEV_ES: 		ext | 320 + 3
+	SEV_SNP:		ext | 320 + 4
+	RMPQUERY:		ext | 320 + 6
 
 	; Some CPU presets:
 
@@ -1137,6 +1145,33 @@ calminstruction x86.store_address_prefix size*
 	exit
     prefix:
 	emit	1, 67h
+end calminstruction
+
+; Optional implicit rAX operand whose width selects the address size:
+; nothing when omitted, otherwise rAX checked and 67h emitted if needed.
+calminstruction x86.address_operand operand
+	match	, operand
+	jyes	done
+	call	x86.parse_operand@aux, operand
+	check	@aux.type = 'reg' & @aux.rm = 0 & @aux.size > 1
+	jyes	accumulator
+	err	'rAX expected'
+	exit
+    accumulator:
+	call	x86.store_address_prefix, @aux.size
+    done:
+end calminstruction
+
+; Optional implicit register operand: when written, it must be exactly the
+; register with the given number and size (for example 1,4 for ECX).
+calminstruction x86.implicit_operand operand, rm*, size*
+	match	, operand
+	jyes	done
+	call	x86.parse_operand@aux, operand
+	check	@aux.type = 'reg' & @aux.rm = rm & @aux.size = size
+	jyes	done
+	err	'invalid implicit operand'
+    done:
 end calminstruction
 
 calminstruction x86.store_operand_prefix size*, reg:0
@@ -4135,6 +4170,8 @@ include 'iset/mpx.inc'
 include 'iset/cet.inc'
 include 'iset/uintr.inc'
 include 'iset/svm.inc'
+include 'iset/sev.inc'
+include 'iset/amd.inc'
 
 macro xacquire? instr&
 	require HLE
