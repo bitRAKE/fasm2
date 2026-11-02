@@ -167,7 +167,7 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G8 are fixed. Each has a test in `tests/iset/` that passes on this branch
+G1–G11 are fixed. Each has a test in `tests/iset/` that passes on this branch
 and fails on the tree before the fix (see `tests/iset/readme.md`).
 
 | # | Defect | Effect | Fix | Test |
@@ -180,6 +180,9 @@ and fails on the tree before the fix (see `tests/iset/readme.md`).
 | G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Move both families to `vnni.inc`/`ifma.inc`, which own both gates (§5.2) | `vnni_ifma.asm` |
 | G7 | The shared VEX encoder requires `AVX` for every VEX instruction, including the VEX-encoded general-purpose ones (BMI1, BMI2, CMPccXADD) | `use x64, BMI1` + `andn eax, ecx, edx` gave `AVX or higher required`; some parts have BMI1/BMI2 without AVX | New flag `VEX_GPR` (`avx.inc`) skips the AVX check; `AVX.store_gpr_instruction@ctx` sets it. BMI1/BMI2 and CMPccXADD use it; vector VEX instructions still require AVX. | `bmi_gpr.asm` |
 | G8 | `vp4dpwssd`/`vp4dpwssds` compressed disp8 by the 64-byte vector; their memory operand is 128 bits (Tuple1_4X), so the CPU scales disp8 by 16 | `[rax+40h]` encoded disp8 = 1, which addresses `[rax+10h]`: a wrong address with no error | `memsize = 16` in place in `avx.inc` | `avx512_4x.asm` |
+| G9 | `avx.inc` spelled compare predicate 0Ch `neq_qq` | `vcmpneq_oqps/pd/ss/sd` (SDM names) were illegal instructions | Add `neq_oq`; keep `neq_qq` as an alias | `cmp_predicates.asm` |
+| G10 | `vcvttps2qq`/`vcvttps2uqq` called `AVX_512.parse_sae @src,sae` (space before the context) | Their `{sae}` form failed with `illegal instruction` | `AVX_512.parse_sae@src sae` | `avx512_sae.asm` |
+| G11 | `bndcl/bndcu/bndcn` called `x86.parse_operand @src,src` (same typo) | All three failed with `illegal instruction` in every form | `x86.parse_operand@src src` | `mpx_bndc.asm` |
 
 ---
 

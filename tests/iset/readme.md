@@ -71,3 +71,6 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `padlock.asm` | new | VIA/Zhaoxin PadLock: per-unit bits, mandatory F3 on xcrypt*/xsha*/montmul, montmul not in 64-bit code. |
 | `avx512_fp16.asm` | new | AVX512-FP16 arithmetic, FMA, complex (distinct destination), scale/rcp/getexp/getmant/reduce/rndscale, compare and aliases, comi, fpclass, vmovsh, vmovw: EVEX maps 5/6, word broadcast and disp8. |
 | `avx512_fp16_cvt.asm` | new | The 34 FP16 conversions: width ratios 1/2/4 both ways, ambiguous narrowing memory, disp8 by memory size, scalar and GPR forms. |
+| `cmp_predicates.asm` | G9 | `vcmpneq_oq*` exists (avx.inc spelled it `neq_qq`, kept as an alias). |
+| `avx512_sae.asm` | G10 | `{sae}` on vcvttps2qq/vcvttps2uqq (a mistyped parser call made it an illegal instruction). |
+| `mpx_bndc.asm` | G11 | bndcl/bndcu/bndcn assemble at all (same mistyped parser call); bytes checked with ZydisInfo. |

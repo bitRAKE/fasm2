@@ -1542,7 +1542,7 @@ iterate <instr,vex_mpw,evex_mpw,unit>, vcmpss,VEX_F3_0F_W0,VEX_F3_0F_W0,4, vcmps
 end iterate
 
 iterate <cond,code>, eq,0, lt,1, le,2, unord,3, neq,4, nlt,5, nle,6, ord,7, \
-		     eq_uq,8, nge,9, ngt,0Ah, false,0Bh, neq_qq,0Ch, ge,0Dh, gt,0Eh, true,0Fh, \
+		     eq_uq,8, nge,9, ngt,0Ah, false,0Bh, neq_oq,0Ch, neq_qq,0Ch, ge,0Dh, gt,0Eh, true,0Fh, \
 		     eq_os,10h, lt_oq,11h, le_oq,12h, unord_s,13h, neq_us,14h, nlt_uq,15h, nle_uq,16h, ord_s,17h, \
 		     eq_us,18h, nge_uq,19h, ngt_uq,1Ah, false_os,1Bh, neq_os,1Ch, ge_oq,1Dh, gt_oq,1Eh, true_us,1Fh
 
@@ -3696,7 +3696,7 @@ iterate <instr,vex_mpw,opcode>, vcvttps2qq,VEX_66_0F_W0,7Ah, vcvttps2uqq,VEX_66_
 		AVX_512.parse_k1z_operand@dest dest
 		match src=,sae, src_sae
 			AVX_512.parse_operand@src src
-			AVX_512.parse_sae @src,sae
+			AVX_512.parse_sae@src sae
 		else
 			AVX_512.parse_bcst_operand@src src_sae,4
 		end match

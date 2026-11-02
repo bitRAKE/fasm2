@@ -146,7 +146,7 @@ iterate <instr,prefix,ext>, bndcl,0F3h,1Ah, bndcu,0F2h,1Ah, bndcn,0F2h,1Bh
 	macro instr? dest*,src*
 		require MPX
 		MPX.parse_operand @dest,dest
-		x86.parse_operand @src,src
+		x86.parse_operand@src src
 		if @dest.type = 'bnd' & (@src.type = 'reg' | @src.type = 'mem')
 			if (x86.mode = 64 & @src.size and not 8) | (x86.mode < 64 & @src.size and not 4)
 				err 'invalid operand size'
