@@ -354,3 +354,183 @@ macro vmovw? dest*,src*
 		err 'invalid combination of operands'
 	end if
 end macro
+
+; --- conversions ------------------------------------------------------------
+
+VEX_F3_MAP5_W1	= VEX_F3_MAP5_W0 or 8000h
+
+; same element width: dest{k}{z}, src/m/m16bcst [, {er} or {sae}]
+iterate <instr,vex_mpw,opcode,rounding>, \
+	vcvtph2w,VEX_66_MAP5_W0,7Dh,er, vcvtph2uw,VEX_MAP5_W0,7Dh,er, \
+	vcvtw2ph,VEX_F3_MAP5_W0,7Dh,er, vcvtuw2ph,VEX_F2_MAP5_W0,7Dh,er, \
+	vcvttph2w,VEX_66_MAP5_W0,7Ch,sae, vcvttph2uw,VEX_MAP5_W0,7Ch,sae
+
+	macro instr? dest*,src*&
+		require AVX512_FP16
+		AVX_512.single_source_instruction_bcst_#rounding vex_mpw,EVEX_REQUIRED+EVEX_VL,opcode,2,dest,src
+	end macro
+
+end iterate
+
+; widening by ratio 2 (16 -> 32 bits) or 4 (16 -> 64 bits): the source is
+; the destination's size divided by the ratio (at least an xmm register)
+macro FP16.convert_widen vex_mpw,opcode,ratio,rounding,dest,src_r&
+	AVX_512.parse_k1z_operand@dest dest
+	match src=,r, src_r
+		AVX_512.parse_operand@src src
+		match =er, rounding
+			AVX_512.parse_er@src r,64/ratio
+		else
+			AVX_512.parse_sae@src r
+		end match
+	else
+		AVX_512.parse_bcst_operand@src src_r,2
+	end match
+	if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'mmreg')
+		if (@src.type = 'mem' & @src.size and not (@dest.size / ratio)) | (@src.type = 'mmreg' & (@dest.size / ratio - 1) and not 15 + 16 <> @src.size)
+			err 'invalid operand size'
+		end if
+		if @src.memsize = 0
+			@src.memsize = @dest.size / ratio
+		end if
+		AVX_512.store_instruction@src @dest.size,vex_mpw,EVEX_REQUIRED+EVEX_VL,opcode,@dest.mask,@dest.rm
+	else
+		err 'invalid combination of operands'
+	end if
+end macro
+
+iterate <instr,vex_mpw,opcode,ratio,rounding>, \
+	vcvtph2dq,VEX_66_MAP5_W0,5Bh,2,er, vcvtph2udq,VEX_MAP5_W0,79h,2,er, \
+	vcvttph2dq,VEX_F3_MAP5_W0,5Bh,2,sae, vcvttph2udq,VEX_MAP5_W0,78h,2,sae, \
+	vcvtph2psx,VEX_66_MAP6_W0,13h,2,sae, \
+	vcvtph2qq,VEX_66_MAP5_W0,7Bh,4,er, vcvtph2uqq,VEX_66_MAP5_W0,79h,4,er, \
+	vcvttph2qq,VEX_66_MAP5_W0,7Ah,4,sae, vcvttph2uqq,VEX_66_MAP5_W0,78h,4,sae, \
+	vcvtph2pd,VEX_MAP5_W0,5Ah,4,sae
+
+	macro instr? dest*,src*&
+		require AVX512_FP16
+		FP16.convert_widen vex_mpw,opcode,ratio,rounding,dest,src
+	end macro
+
+end iterate
+
+; narrowing by ratio 2 (32 -> 16 bits) or 4 (64 -> 16 bits): the destination
+; is the source's size divided by the ratio (at least an xmm register); a
+; memory source needs an explicit size when that leaves it ambiguous
+macro FP16.convert_narrow vex_mpw,opcode,ratio,unit,dest,src_er&
+	AVX_512.parse_k1z_operand@dest dest
+	match src=,er, src_er
+		AVX_512.parse_operand@src src
+		AVX_512.parse_er@src er
+	else
+		AVX_512.parse_bcst_operand@src src_er,unit
+	end match
+	if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'mmreg')
+		if @src.size = 0
+			if @dest.size = 16
+				err 'operand size not specified'
+			else
+				@src.size = 64
+			end if
+		end if
+		if (@src.size / ratio - 1) and not 15 + 16 <> @dest.size | @src.size > 64
+			err 'invalid operand size'
+		end if
+		AVX_512.store_instruction@src @src.size,vex_mpw,EVEX_REQUIRED+EVEX_VL,opcode,@dest.mask,@dest.rm
+	else
+		err 'invalid combination of operands'
+	end if
+end macro
+
+iterate <instr,vex_mpw,opcode,ratio,unit>, \
+	vcvtdq2ph,VEX_MAP5_W0,5Bh,2,4, vcvtudq2ph,VEX_F2_MAP5_W0,7Ah,2,4, vcvtps2phx,VEX_66_MAP5_W0,1Dh,2,4, \
+	vcvtqq2ph,VEX_MAP5_W1,5Bh,4,8, vcvtuqq2ph,VEX_F2_MAP5_W1,7Ah,4,8, vcvtpd2ph,VEX_66_MAP5_W1,5Ah,4,8
+
+	macro instr? dest*,src*&
+		require AVX512_FP16
+		FP16.convert_narrow vex_mpw,opcode,ratio,unit,dest,src
+	end macro
+
+end iterate
+
+; scalar FP16 <-> FP32/FP64: dest, src1, src2/m (the scalar's size)
+iterate <instr,vex_mpw,opcode,msize,rounding>, \
+	vcvtsh2ss,VEX_MAP6_W0,13h,2,sae, vcvtsh2sd,VEX_F3_MAP5_W0,5Ah,2,sae, \
+	vcvtss2sh,VEX_MAP5_W0,1Dh,4,er, vcvtsd2sh,VEX_F2_MAP5_W1,5Ah,8,er
+
+	macro instr? dest*,src*,src2*&
+		require AVX512_FP16
+		AVX_512.basic_instruction_#rounding vex_mpw,EVEX_REQUIRED,opcode,msize,dest,src,src2
+	end macro
+
+end iterate
+
+; FP16 scalar -> general-purpose register: r32/r64, xmm/m16 [, {er}/{sae}]
+iterate <instr,opcode,rounding>, vcvtsh2si,2Dh,er, vcvtsh2usi,79h,er, vcvttsh2si,2Ch,sae, vcvttsh2usi,78h,sae
+
+	macro instr? dest*,src_r*&
+		require AVX512_FP16
+		x86.parse_operand@dest dest
+		match src=,r, src_r
+			AVX_512.parse_operand@src src
+			match =er, rounding
+				AVX_512.parse_er@src r,16
+			else
+				AVX_512.parse_sae@src r
+			end match
+		else
+			AVX_512.parse_operand@src src_r
+		end match
+		if @dest.type = 'reg' & (@src.type = 'mem' | @src.type = 'mmreg')
+			if (@dest.size <> 4 & @dest.size <> 8) | (@src.type = 'mem' & @src.size and not 2) | (@src.type = 'mmreg' & @src.size <> 16)
+				err 'invalid operand size'
+			end if
+			@src.memsize = 2
+			if @dest.size = 8
+				if x86.mode < 64
+					err 'instruction requires long mode'
+				end if
+				AVX_512.store_instruction@src 16,VEX_F3_MAP5_W1,EVEX_REQUIRED,opcode,0,@dest.rm
+			else
+				AVX_512.store_instruction@src 16,VEX_F3_MAP5_W0,EVEX_REQUIRED,opcode,0,@dest.rm
+			end if
+		else
+			err 'invalid combination of operands'
+		end if
+	end macro
+
+end iterate
+
+; general-purpose register -> FP16 scalar: xmm, xmm, r/m32 or r/m64 [, {er}]
+iterate <instr,opcode>, vcvtsi2sh,2Ah, vcvtusi2sh,7Bh
+
+	macro instr? dest*,src*,src_er*&
+		require AVX512_FP16
+		AVX_512.parse_operand@dest dest
+		AVX_512.parse_operand@src src
+		match src2=,er, src_er
+			AVX_512.parse_operand@src2 src2
+			AVX_512.parse_er@src2 er,@src2.size
+		else
+			AVX_512.parse_operand@src2 src_er
+		end match
+		if @dest.type = 'mmreg' & @src.type = 'mmreg' & (@src2.type = 'reg' | @src2.type = 'mem')
+			if @src2.size = 0
+				err 'operand size not specified'
+			else if @dest.size <> 16 | @src.size <> 16 | (@src2.size <> 4 & @src2.size <> 8)
+				err 'invalid operand size'
+			end if
+			if @src2.size = 8
+				if x86.mode < 64
+					err 'instruction requires long mode'
+				end if
+				AVX_512.store_instruction@src2 16,VEX_F3_MAP5_W1,EVEX_REQUIRED,opcode,0,@dest.rm,@src.rm
+			else
+				AVX_512.store_instruction@src2 16,VEX_F3_MAP5_W0,EVEX_REQUIRED,opcode,0,@dest.rm,@src.rm
+			end if
+		else
+			err 'invalid combination of operands'
+		end if
+	end macro
+
+end iterate
