@@ -24,8 +24,8 @@
 ; FAIL 4: 'RDPRU or higher required'
 ; FAIL 5: 'MCOMMIT or higher required'
 ; FAIL 6: 'rAX expected'
-; FAIL 7: 'invalid implicit operand'
-; FAIL 8: 'invalid implicit operand'
+; FAIL 7: 'invalid implicit operand: rcx, expected ecx'
+; FAIL 8: 'invalid implicit operand: ecx, expected edx'
 ; FAIL 9: 'invalid operand size'
 
 macro expect bytes*, line&

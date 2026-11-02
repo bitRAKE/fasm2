@@ -1208,14 +1208,21 @@ calminstruction x86.address_operand operand
 end calminstruction
 
 ; Optional implicit register operand: when written, it must be exactly the
-; register with the given number and size (for example 1,4 for ECX).
-calminstruction x86.implicit_operand operand, rm*, size*
+; expected register, given by name: xcall x86.implicit_operand, op, <ecx>
+calminstruction x86.implicit_operand operand, expected*
+	local	type, rm, size
 	match	, operand
 	jyes	done
 	call	x86.parse_operand@aux, operand
-	check	@aux.type = 'reg' & @aux.rm = rm & @aux.size = size
+	compute type, @aux.type
+	compute rm, @aux.rm
+	compute size, @aux.size
+	call	x86.parse_operand@aux, expected
+	check	type = 'reg' & rm = @aux.rm & size = @aux.size
 	jyes	done
-	err	'invalid implicit operand'
+	stringify operand
+	stringify expected
+	err	'invalid implicit operand: ' bappend operand bappend ', expected ' bappend expected
     done:
 end calminstruction
 

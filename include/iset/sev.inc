@@ -19,8 +19,8 @@
 ; PVALIDATE rAX, ECX, EDX -- validate or rescind a guest page
 calminstruction pvalidate? addr,size,validate
 	call	x86.require.SEV_SNP
-	xcall	x86.implicit_operand, size, (1), (4)
-	xcall	x86.implicit_operand, validate, (2), (4)
+	xcall	x86.implicit_operand, size, <ecx>
+	xcall	x86.implicit_operand, validate, <edx>
 	call	x86.address_operand, addr
 	emit	4, 0xFF010FF2
 end calminstruction
@@ -29,9 +29,9 @@ end calminstruction
 calminstruction rmpadjust? page,attributes,size
 	call	x86.require.SEV_SNP
 	call	x86.require.bits64
-	xcall	x86.implicit_operand, page, (0), (8)
-	xcall	x86.implicit_operand, attributes, (1), (8)
-	xcall	x86.implicit_operand, size, (2), (8)
+	xcall	x86.implicit_operand, page, <rax>
+	xcall	x86.implicit_operand, attributes, <rcx>
+	xcall	x86.implicit_operand, size, <rdx>
 	emit	4, 0xFE010FF3
 end calminstruction
 
@@ -39,8 +39,8 @@ end calminstruction
 calminstruction rmpupdate? page,entry
 	call	x86.require.SEV_SNP
 	call	x86.require.bits64
-	xcall	x86.implicit_operand, page, (0), (8)
-	xcall	x86.implicit_operand, entry, (1), (8)
+	xcall	x86.implicit_operand, page, <rax>
+	xcall	x86.implicit_operand, entry, <rcx>
 	emit	4, 0xFE010FF2
 end calminstruction
 
@@ -48,7 +48,7 @@ end calminstruction
 calminstruction psmash? page
 	call	x86.require.SEV_SNP
 	call	x86.require.bits64
-	xcall	x86.implicit_operand, page, (0), (8)
+	xcall	x86.implicit_operand, page, <rax>
 	emit	4, 0xFF010FF3
 end calminstruction
 

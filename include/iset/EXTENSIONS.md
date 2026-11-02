@@ -341,8 +341,10 @@ Each addition must settle all of the following. The per-extension plans in
 - **Fixed bytes:** use `emit`.
 - **Implicit register operands** (all optional; written ones are checked):
   `x86.address_operand` for a rAX that is an address (emits `67h` when
-  narrower than the mode), and `xcall x86.implicit_operand, op, (rm),
-  (size)` for a fixed register such as ECX (`(1),(4)`). Both are in
+  narrower than the mode), and `xcall x86.implicit_operand, op, <ecx>`
+  for a fixed register, named as written. The expected register is
+  parsed like the operand, and a mismatch reports both:
+  `invalid implicit operand: rcx, expected ecx`. Both helpers are in
   `x86-2.inc`, next to `x86.store_address_prefix`. In CALM, `call` passes
   only symbols; literal numbers need `xcall` with `(n)`.
 - **ModRM with GPR or memory:** use `x86.store_instruction@ctx`. Set

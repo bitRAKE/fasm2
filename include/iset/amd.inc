@@ -22,8 +22,8 @@
 ; MONITORX rAX, ECX, EDX -- arm address monitoring (any privilege level)
 calminstruction monitorx? addr,extensions,hints
 	call	x86.require.MONITORX
-	xcall	x86.implicit_operand, extensions, (1), (4)
-	xcall	x86.implicit_operand, hints, (2), (4)
+	xcall	x86.implicit_operand, extensions, <ecx>
+	xcall	x86.implicit_operand, hints, <edx>
 	call	x86.address_operand, addr
 	emit	3, 0xFA010F
 end calminstruction
@@ -31,8 +31,8 @@ end calminstruction
 ; MWAITX EAX, ECX -- wait on the monitored address (EBX holds the timer)
 calminstruction mwaitx? hints,extensions
 	call	x86.require.MONITORX
-	xcall	x86.implicit_operand, hints, (0), (4)
-	xcall	x86.implicit_operand, extensions, (1), (4)
+	xcall	x86.implicit_operand, hints, <eax>
+	xcall	x86.implicit_operand, extensions, <ecx>
 	emit	3, 0xFB010F
 end calminstruction
 
@@ -46,8 +46,8 @@ end calminstruction
 ; INVLPGB rAX, EDX, ECX -- broadcast TLB invalidation
 calminstruction invlpgb? addr,asid,count
 	call	x86.require.INVLPGB
-	xcall	x86.implicit_operand, asid, (2), (4)
-	xcall	x86.implicit_operand, count, (1), (4)
+	xcall	x86.implicit_operand, asid, <edx>
+	xcall	x86.implicit_operand, count, <ecx>
 	call	x86.address_operand, addr
 	emit	3, 0xFE010F
 end calminstruction
