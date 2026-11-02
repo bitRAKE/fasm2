@@ -146,19 +146,39 @@ the pattern for dual-encoded families (§5.2).
 | 32  | 7.0:EBX             | ok |
 | 64  | 7.0:ECX             | ok |
 | 96  | 7.0:EDX             | ok |
-| 128 | 7.1:EAX **and** 0Dh.1:EAX | **collision**: HRESET (7.1 bit 22) shares the window with XSAVEOPT (0), XSAVEC (1) and XSS (3) |
+| 128 | 7.1:EAX             | HRESET. It used to share this window with 0Dh.1:EAX (G1, fixed). |
+| 160 | 0Dh.1:EAX           | XSAVEOPT, XSAVEC, XSS (moved here by G1) |
+| 224 | 80000001h:ECX       | SVM, LZCNT, PRFCHW, SKINIT |
 | 256 | 80000001h:EDX       | ok |
+| 320 | 8000001Fh:EAX       | SEV_ES |
+
+`x86.ext` and these windows are internal, like the file names; users name
+features, never numbers. The fixed relationship to CPUID is still useful:
+CPUID check code can be generated straight from the window and bit.
+`tests/iset/cpuid_windows.asm` pins every feature to its leaf, register and
+bit.
+
+**Cost.** Every gated instruction tests bits of this number, so fasmg does
+a big-integer AND (already over 320 bits) on each use. A table indexed by
+window and bit, needing two or three word lookups per check, may be faster
+than one wide operation. It isn't needed yet. Revisit it if assembly
+time of extension-heavy code becomes a problem; since users only name
+features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-| # | Defect | Effect | Fix |
-|---|--------|--------|-----|
-| G1 | Window 128 mixes two leaves | Adding SHA512 (7.1 bit 0), SM3 (bit 1) or RAO_INT (bit 3) would make `use XSAVEOPT` enable SHA512, and so on | Move XSAVEOPT, XSAVEC and XSS to a new window at 160. Users only ever name the feature, never the number, so this is source-compatible. |
-| G2 | `lzcnt` requires `BMI1` (`bmi.inc:80`) | LZCNT is CPUID 80000001h:ECX[5] (ABM). AMD K10 has LZCNT without BMI1, and an Intel `use BMI1` alone wrongly allows it | Add `LZCNT: ext \| 224 + 5` and gate `lzcnt` on it. `tzcnt` stays on BMI1. Behaviour change: `use BMI1` alone no longer allows `lzcnt`. |
-| G3 | `xtest` is defined twice: once under HLE (`x86-2.inc:4123`), once under RTM (`:4166`) | The second definition wins, so a CPU with HLE but no RTM is refused | Keep one CALM `xtest` with an any-of gate (§3.5): HLE or RTM |
-| G4 | `prefetch`/`prefetchw` require `3DNow` (`3dnow.inc:31`) | Every Intel target (Broadwell+) is refused `prefetchw` | Add `PRFCHW: ext \| 224 + 8`. Gate `prefetchw` on any-of 3DNow or PRFCHW. `prefetch` stays 3DNow only. |
-| G5 | `AVX_512.parse_bcst_operand` only accepts `1to2`…`1to16` | Broadcasts of 16-bit elements (FP16, BF16 inputs) to 512 bits need `1to32` | Add a `1to32` branch. Unit sizes 4 and 8 still reject it, through the existing size-mismatch error. |
-| G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Covered by the VNNI/IFMA plan in §5.2 |
+G1–G5 are fixed. Each has a test in `tests/iset/` that passes on this branch
+and fails on the tree before the fix (see `tests/iset/readme.md`). G6 is
+part of the VNNI/IFMA work in §5.2.
+
+| # | Defect | Effect | Fix | Test |
+|---|--------|--------|-----|------|
+| G1 | Window 128 mixes two leaves | Adding SHA512 (7.1 bit 0), SM3 (bit 1) or RAO_INT (bit 3) would make `use XSAVEOPT` enable SHA512, and so on | Move XSAVEOPT, XSAVEC and XSS to a new window at 160. Users only ever name the feature, never the number, so this is source-compatible. | `cpuid_windows.asm` |
+| G2 | `lzcnt` requires `BMI1` (`bmi.inc:80`) | LZCNT is CPUID 80000001h:ECX[5] (ABM). AMD K10 has LZCNT without BMI1, and an Intel `use BMI1` alone wrongly allows it | Add `LZCNT: ext \| 224 + 5` and gate `lzcnt` on it. `tzcnt` stays on BMI1. Behaviour change: `use BMI1` alone no longer allows `lzcnt`. | `lzcnt.asm` |
+| G3 | `xtest` is defined twice: once under HLE (`x86-2.inc:4123`), once under RTM (`:4166`) | The second definition wins, so a CPU with HLE but no RTM is refused | Keep one CALM `xtest` with an any-of gate (§3.5): HLE or RTM | `xtest.asm` |
+| G4 | `prefetch`/`prefetchw` require `3DNow` (`3dnow.inc:31`) | Every Intel target (Broadwell+) is refused `prefetchw` | Add `PRFCHW: ext \| 224 + 8`. Gate `prefetchw` on any-of 3DNow or PRFCHW. `prefetch` stays 3DNow only. | `prefetchw.asm` |
+| G5 | `AVX_512.parse_bcst_operand` only accepts `1to2`…`1to16` | Broadcasts of 16-bit elements (FP16, BF16 inputs) to 512 bits need `1to32` | Add a `1to32` branch. Unit sizes 4 and 8 still reject it, through the existing size-mismatch error. | `broadcast.asm` |
+| G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Covered by the VNNI/IFMA plan in §5.2 | pending (§5.2) |
 
 ---
 
@@ -289,8 +309,11 @@ Each addition must settle all of the following. The per-extension plans in
     a byte test.
 
 ### 3.8 Tests that must exist before merge
-Each item in this list is an assembly to run and compare with the reference
-or expected error:
+Each addition gets a self-contained source in `tests/iset/` (see its
+`readme.md`). Byte checks run inside fasmg, and `; FAIL n: 'message'`
+cases are run by `tests/iset/_run.ps1`. The test must fail on the tree
+before the change. Each item below is an assembly to run and compare
+with the reference or expected error:
 1. **Positive bytes:** every operand form in every legal mode, compared
    byte-for-byte against `llvm-mc` (or the APM/SDM where llvm has no
    support).
@@ -324,7 +347,7 @@ or expected error:
 | 352 | 14h.0:EBX        | `PTWRITE` (4). XED also requires Intel PT (7.0:EBX[25]), so add `INTEL_PT: ext \| 32 + 25` and gate on both. |
 | 384 | 12h.0:EAX        | `ENCLV` (5, *verify*: XED's `sgx-enclv` has no CPUID entry) |
 | 416 | C000_0001h:EDX   | VIA/Zhaoxin PadLock "present" bits: `PADLOCK_RNG` (2), `PADLOCK_ACE` (6), `PADLOCK_ACE2` (8), `PADLOCK_PHE` (10), `PADLOCK_PMM` (12) |
-| 480 | synthetic        | Features with no CPUID bit: `TDX` (0), detected through SEAM/MSRs; `CYRIX` (1); `GEODE` (2); `IA64` (3) for `jmpe` |
+| 480 | synthetic        | Features with no CPUID bit: `TDX` (0), detected through SEAM/MSRs; `CYRIX` (1); `GEODE` (2) |
 
 The one new kind of setting is for AVX10, which the hardware reports as a
 version number (CPUID 24h:EBX[7:0]), not as a bit:
@@ -547,26 +570,29 @@ must keep stable.
 | `cyrix.inc` (Geode section) | `GEODE` (synthetic) | `pfrcpv`, `pfrsqrtv` (`0F 0F /r 86/87`) | 3DNow suffix space |
 | `padlock.inc` | `PADLOCK_*` (C000_0001h:EDX) | `xstore`/`xstorerng` → `0F A7 C0`; `xcrypt{ecb,cbc,ctr,cfb,ofb}` → `F3 0F A7 C8/D0/D8/E0/E8`; `xsha1`/`xsha256` → `F3 0F A6 C8/D0`; `montmul` → `F3 0F A6 C0`; Zhaoxin GMI `ccs_hash`/`ccs_encrypt` (*verify*) | `xbts`/`ibts` (`0F A6/A7`) |
 | `undoc.inc` | exact CPU level (`requireexact 80386`/`80486`) for `umov`; `fpu` for the aliases | `umov` (`0F 10–13`); FPU alias opcodes `fstp1`, `fstp8`, `fstp9`, `fxch4`, `fxch7`, `fcom2`, `fcomp3`, `fcomp5` | SSE `movups`/`movlps`, … |
-| `ia64.inc` | `IA64` (synthetic) | `jmpe r/m` (`0F 00 /6`), `jmpe rel` (`0F B8`) | `lkgs` (`F2 0F 00 /6`), `popcnt` (`F3 0F B8`) |
 
 `loadall` already exists (gated with `requireexact` on 80286/80386). The
 probe in §6 reported it missing only because `everything` is not an 80286
 or 80386.
 
-### 5.8 Deferred: needs its own encoder design
+### 5.8 Deferred and out of scope
 
+**Out of scope:** encodings that are not x86-2's. Knights Corner's MVEX
+and Itanium (IA-64 native code, and `jmpe`, which only switches into it)
+belong to separate encoders, not to `x86-2.inc` or `iset`.
+
+**Deferred: APX and AVX10.2.** These will probably layer over `x86-2.inc`
+rather than replace it. Choose among the options when the work starts.
+What is known now:
 - **APX** (`push2`/`pop2`, REX2, NDD/NF forms of existing ALU instructions,
-  `ccmp`/`ctest`, `jmpabs`, 32 GPRs).
-  - It changes the core GPR encoder and register elements in `x86-2.inc`,
-    not `iset`.
-  - It needs a new REX2 prefix path and EVEX promotion of legacy maps.
-  - Gate: `APX_F` (7.1:EDX[21]) in window 192.
-- **AVX10.2** additions (new EVEX forms of VNNI-INT8/16, BF16 arithmetic,
-  saturating conversions, …).
-  - These slot into the family files above as one more gate each, keyed on
-    `avx10 >= 2`.
-  - The AVX10.1 *versioning* itself is just the `avx10` level item (§4).
-    For gating purposes, `AVX10.1` equals the AVX-512 feature set it lists.
+  `ccmp`/`ctest`, `jmpabs`, 32 GPRs) touches the core GPR encoder and the
+  register elements: a REX2 prefix path and EVEX promotion of legacy maps.
+  Gate: `APX_F` (7.1:EDX[21]) in window 192.
+- **AVX10.2** adds EVEX forms of VNNI-INT8/16, BF16 arithmetic, saturating
+  conversions, and more. These fit the family files above as one more gate
+  each, keyed on `avx10 >= 2`. The AVX10.1 versioning itself is just the
+  `avx10` level item (§4); for gating, `AVX10.1` equals the AVX-512
+  feature set it lists.
 
 ---
 
@@ -580,9 +606,10 @@ or 80386.
 - Mode-gated instructions such as `loadall` show up as false negatives under
   `use everything`.
 
-**Byte tests.** For each case, assemble a one-line file and compare the
-bytes with the expected value. Gate cases set `x86.ext` explicitly
-(`x86.ext = x86.SKINIT.ext`, …) and expect the `… required` message.
+**Byte tests.** `tests/iset/` holds the regression tests, one source per
+fix, run by `tests/iset/_run.ps1` (§3.8). Gate cases select features with
+the public settings (`{i386, SKINIT} stgi`, `use i386, SVM`) and expect the
+`… required` message.
 
 ### 6.1 Assemblers and disassemblers
 
@@ -632,10 +659,10 @@ How each source feeds the work:
 
 ## 7. Order of work
 
-1. **Gating repairs:** G1 (window split), G3 (`xtest`), G4 (`prefetchw`),
-   G5 (`1to32`), G2 (`lzcnt`; a behaviour change, so record it in the
-   changelog). Add the table lines from §4 with their files, not ahead of
-   them, so no gate exists without a mnemonic behind it.
+1. **Gating repairs:** done for G1–G5, with tests. G2 (`lzcnt`) is a
+   behaviour change, so record it in the changelog. Add the remaining table
+   lines from §4 with their files, not ahead of them, so no gate exists
+   without a mnemonic behind it.
 2. **`svm.inc`**: done (S1–S4 closed, `vmgexit` added, included by
    `x86-2.inc`). Next come **`sev.inc` and `amd.inc`**.
    These are GPR-only and low-risk, and they establish the CALM style.
