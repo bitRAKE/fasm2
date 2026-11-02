@@ -197,11 +197,13 @@ end macro
 	; CPUID.(EAX=7,ECX=1):EAX
 	HRESET: 		ext | 128 + 22
 	; CPUID.(EAX=0DH,ECX=1):EAX
-	XSAVEOPT:		ext | 128 + 0
-	XSAVEC: 		ext | 128 + 1
-	XSS:			ext | 128 + 3
+	XSAVEOPT:		ext | 160 + 0
+	XSAVEC: 		ext | 160 + 1
+	XSS:			ext | 160 + 3
 	; CPUID.(EAX=80000001H):ECX
 	SVM: 			ext | 224 + 2
+	LZCNT:			ext | 224 + 5
+	PRFCHW: 		ext | 224 + 8
 	SKINIT: 		ext | 224 + 12
 	; CPUID.(EAX=80000001H):EDX
 	RDTSCP: 		ext | 256 + 27
@@ -4146,11 +4148,6 @@ macro xrelease? instr&
 	instr
 end macro
 
-macro xtest?
-	require HLE
-	db 0Fh,1,0D6h
-end macro
-
 macro xbegin? dest*
 	require RTM
 	x86.parse_jump_operand@dest dest
@@ -4189,10 +4186,17 @@ macro xend?
 	db 0Fh,1,0D5h
 end macro
 
-macro xtest?
-	require RTM
-	db 0Fh,1,0D6h
-end macro
+; XTEST is present when either HLE or RTM is reported
+calminstruction xtest?
+	check	x86.ext and (x86.HLE.ext or x86.RTM.ext)
+	jyes	supported
+	err	'HLE or RTM required'
+	exit
+    supported:
+	emit	1, 0Fh
+	emit	1, 1
+	emit	1, 0D6h
+end calminstruction
 
 iterate <instr,pfx>, adcx,66h, adox,0F3h
 

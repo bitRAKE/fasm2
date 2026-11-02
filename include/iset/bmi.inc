@@ -74,10 +74,10 @@ iterate <instr,opcode,postbyte>, blsi,0F3h,3, blsmsk,0F3h,2, blsr,0F3h,1
 
 end iterate
 
-iterate <instr,opcode>, lzcnt,0BDh, tzcnt,0BCh
+iterate <instr,opcode,feature>, lzcnt,0BDh,LZCNT, tzcnt,0BCh,BMI1
 
 	macro instr? dest*,src*
-		require BMI1
+		require feature
 		x86.parse_operand@dest dest
 		x86.parse_operand@src src
 		if @dest.type = 'reg' & ( @src.type = 'reg' | @src.type = 'mem' )

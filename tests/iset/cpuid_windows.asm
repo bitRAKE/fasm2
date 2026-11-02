@@ -1,0 +1,97 @@
+; cpuid_windows.asm -- every extension bit sits in its own CPUID register's window (fix G1)
+;
+; Environment
+;	Assembly-time only: nothing here is executed. x86-2.inc keeps the
+;	extension features as bits of one large number, one 32-bit window per
+;	CPUID register (leaf, subleaf, register). This test pins every feature
+;	to the window and bit that CPUID reports it in, as listed by Intel XED
+;	(datafiles/*/cpuid*.xed.txt) and the AMD APM. The same table is what
+;	CPUID check code can be generated from. By hand:  fasm2 cpuid_windows.asm nul.bin
+;
+; Failure mode resolved
+;	XSAVEOPT, XSAVEC and XSS (CPUID 0Dh.1:EAX bits 0, 1, 3) were placed in
+;	window 128, which is CPUID 7.1:EAX (HRESET, bit 22). The planned 7.1:EAX
+;	features SHA512 (bit 0), SM3 (bit 1) and RAO_INT (bit 3) would have
+;	landed on the same bits, so "use SHA512" would have enabled XSAVEOPT
+;	and the reverse. 0Dh.1:EAX now has its own window at 160.
+;
+; FAIL 1: 'XSAVEOPT required'
+; FAIL 2: 'HRESET required'
+
+; window base for each CPUID register
+CPUID_01_ECX	= 0
+CPUID_07_0_EBX	= 32
+CPUID_07_0_ECX	= 64
+CPUID_07_0_EDX	= 96
+CPUID_07_1_EAX	= 128
+CPUID_0D_1_EAX	= 160
+CPUID_8000_0001_ECX = 224
+CPUID_8000_0001_EDX = 256
+CPUID_8000_001F_EAX = 320
+
+macro expect_bit name*, window*, bit*
+	if x86.name.ext <> 1 shl (window + bit)
+		display 'FAIL: ', `name, ' is not ', `window, '[', `bit, ']', 13, 10
+		err 'wrong CPUID window'
+	end if
+end macro
+
+if ~ defined FAIL
+
+	iterate <name,window,bit>, \
+		PCLMULQDQ,CPUID_01_ECX,1, MONITOR,CPUID_01_ECX,3, VMX,CPUID_01_ECX,5, \
+		SMX,CPUID_01_ECX,6, FMA,CPUID_01_ECX,12, CMPXCHG16B,CPUID_01_ECX,13, \
+		MOVBE,CPUID_01_ECX,22, POPCNT,CPUID_01_ECX,23, AESNI,CPUID_01_ECX,25, \
+		XSAVE,CPUID_01_ECX,26, F16C,CPUID_01_ECX,29, RDRAND,CPUID_01_ECX,30, \
+		\
+		FSGSBASE,CPUID_07_0_EBX,0, SGX,CPUID_07_0_EBX,2, BMI1,CPUID_07_0_EBX,3, \
+		HLE,CPUID_07_0_EBX,4, BMI2,CPUID_07_0_EBX,8, INVPCID,CPUID_07_0_EBX,10, \
+		RTM,CPUID_07_0_EBX,11, MPX,CPUID_07_0_EBX,14, AVX512DQ,CPUID_07_0_EBX,17, \
+		RDSEED,CPUID_07_0_EBX,18, ADX,CPUID_07_0_EBX,19, SMAP,CPUID_07_0_EBX,20, \
+		AVX512_IFMA,CPUID_07_0_EBX,21, CLFLUSHOPT,CPUID_07_0_EBX,23, \
+		AVX512PF,CPUID_07_0_EBX,26, AVX512ER,CPUID_07_0_EBX,27, \
+		AVX512CD,CPUID_07_0_EBX,28, SHA,CPUID_07_0_EBX,29, \
+		AVX512BW,CPUID_07_0_EBX,30, AVX512VL,CPUID_07_0_EBX,31, \
+		\
+		AVX512_VBMI,CPUID_07_0_ECX,1, OSPKE,CPUID_07_0_ECX,4, WAITPKG,CPUID_07_0_ECX,5, \
+		AVX512_VBMI2,CPUID_07_0_ECX,6, CET_SS,CPUID_07_0_ECX,7, GFNI,CPUID_07_0_ECX,8, \
+		VAES,CPUID_07_0_ECX,9, VPCLMULQDQ,CPUID_07_0_ECX,10, \
+		AVX512_VNNI,CPUID_07_0_ECX,11, AVX512_BITALG,CPUID_07_0_ECX,12, \
+		AVX512_VPOPCNTDQ,CPUID_07_0_ECX,14, RDPID,CPUID_07_0_ECX,22, \
+		KL,CPUID_07_0_ECX,23, CLDEMOTE,CPUID_07_0_ECX,25, MOVDIRI,CPUID_07_0_ECX,27, \
+		MOVDIR64B,CPUID_07_0_ECX,28, ENQCMD,CPUID_07_0_ECX,29, \
+		\
+		AVX512_4VNNIW,CPUID_07_0_EDX,2, UINTR,CPUID_07_0_EDX,5, \
+		SERIALIZE,CPUID_07_0_EDX,14, TSXLDTRK,CPUID_07_0_EDX,16, \
+		CET_IBT,CPUID_07_0_EDX,20, AMX_BF16,CPUID_07_0_EDX,22, \
+		AMX_TILE,CPUID_07_0_EDX,24, AMX_INT8,CPUID_07_0_EDX,25, \
+		\
+		HRESET,CPUID_07_1_EAX,22, \
+		\
+		XSAVEOPT,CPUID_0D_1_EAX,0, XSAVEC,CPUID_0D_1_EAX,1, XSS,CPUID_0D_1_EAX,3, \
+		\
+		SVM,CPUID_8000_0001_ECX,2, LZCNT,CPUID_8000_0001_ECX,5, \
+		PRFCHW,CPUID_8000_0001_ECX,8, SKINIT,CPUID_8000_0001_ECX,12, \
+		\
+		RDTSCP,CPUID_8000_0001_EDX,27, 3DNow,CPUID_8000_0001_EDX,31, \
+		\
+		SEV_ES,CPUID_8000_001F_EAX,3
+
+		expect_bit name, window, bit
+	end iterate
+
+	; the two registers that used to share a window stay apart in use
+	virtual at 0
+		{i386, XSAVE, XSAVEOPT} xsaveopt [eax]
+		{i386, HRESET} hreset 0
+	end virtual
+
+else if FAIL = 1	; HRESET does not enable XSAVEOPT
+	use i386, XSAVE, HRESET
+	xsaveopt [eax]
+
+else if FAIL = 2	; XSAVEOPT does not enable HRESET
+	use i386, XSAVE, XSAVEOPT
+	hreset 0
+
+end if

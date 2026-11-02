@@ -28,9 +28,17 @@ calminstruction femms?
 	emit	1, 0Eh
 end calminstruction
 
-iterate <instr,postbyte>, prefetch,0, prefetchw,1
+; PREFETCH requires 3DNow; PREFETCHW is also present on parts that report
+; only PRFCHW (CPUID 8000_0001h:ECX[8]), which covers Intel since Broadwell
+iterate <instr,postbyte,features,message>, \
+	prefetch,0,x86.3DNow.ext,'3DNow or higher required', \
+	prefetchw,1,x86.3DNow.ext or x86.PRFCHW.ext,'3DNow or PRFCHW required'
 	calminstruction instr? src*
-		call	x86.require.3DNow
+		check	x86.ext and (features)
+		jyes	supported
+		err	message
+		exit
+	    supported:
 		call	MMX.parse_operand@src, src
 		check	@src.type = 'mem'
 		jno	invalid_operand

@@ -235,6 +235,8 @@ iterate context, @dest,@src,@src2,@aux
 			jyes	bcst_8
 			match	=1to16?, broadcast
 			jyes	bcst_16
+			match	=1to32?, broadcast
+			jyes	bcst_32
 			err	'invalid broadcast'
 			exit
 		    bcst_2:
@@ -248,6 +250,9 @@ iterate context, @dest,@src,@src2,@aux
 			jump	bcst_ok
 		    bcst_16:
 			compute broadcast, 16
+			jump	bcst_ok
+		    bcst_32:
+			compute broadcast, 32
 		    bcst_ok:
 			compute size, memsize * broadcast
 			compute evex_b, 1
