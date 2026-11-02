@@ -1,3 +1,12 @@
+; mpx.inc -- Intel Memory Protection Extensions (retired)
+;
+; CPUID requirements ("use <setting>" to enable, or "use everything"):
+;
+;	setting	CPUID bit		instructions
+;	MPX	7.0:EBX[14]		bndmk bndmov bndcl bndcu bndcn bndldx bndstx
+;
+; Valid in 16-, 32- and 64-bit code; bnd0-bnd3. Removed from current
+; processors and from LLVM; XED decodes the opcodes as NOP by default.
 
 define MPX MPX
 

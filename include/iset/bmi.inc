@@ -1,3 +1,20 @@
+; bmi.inc -- bit manipulation (BMI1, BMI2, LZCNT, TBM bextr) and AVX-512 VBMI/VBMI2
+;
+; CPUID requirements ("use <setting>" to enable, or "use everything"):
+;
+;	setting		CPUID bit		instructions
+;	BMI1		7.0:EBX[3]		andn bextr (register control) blsi blsmsk blsr tzcnt
+;	LZCNT		8000_0001h:ECX[5]	lzcnt
+;	BMI2		7.0:EBX[8]		bzhi mulx pdep pext rorx sarx shlx shrx
+;	TBM		8000_0001h:ECX[21]	bextr r, r/m, imm32 (other TBM: tbm.inc)
+;	AVX512_VBMI	7.0:ECX[1]		vpermb vpermi2b vpermt2b vpmultishiftqb
+;	AVX512_VBMI2	7.0:ECX[6]		vpshld* vpshrd* vpshldv* vpshrdv* vpcompressb/w
+;						vpexpandb/w
+;
+; BMI1/BMI2/LZCNT/TBM are general-purpose instructions: valid in 16-, 32- and
+; 64-bit code (64-bit operands in 64-bit code only), and the VEX/XOP-encoded
+; ones need no AVX (VEX_GPR). VBMI/VBMI2 are EVEX: they need AVX512F, and
+; AVX512VL for xmm/ymm.
 
 macro andn? dest*,src*,src2*
 	require BMI1

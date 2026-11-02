@@ -1,3 +1,31 @@
+; avx.inc -- AVX, AVX2 and AVX-512 (and the shared VEX/EVEX/XOP encoder)
+;
+; CPUID requirements ("use <setting>" to enable, or "use everything"):
+;
+;	setting		CPUID bit		instructions
+;	AVX		1:ECX[28]		VEX forms of the SSE..SSE4.2 set, vbroadcast*,
+;						vperm2f128, vinsertf128, ...
+;	AVX2		7.0:EBX[5]		256-bit integer VEX forms, vpbroadcast*,
+;						vperm[dq], vpsllv*, gathers, ...
+;	FMA		1:ECX[12]		vfmadd/vfmsub/vfnmadd/vfnmsub 132/213/231
+;	F16C		1:ECX[29]		vcvtph2ps vcvtps2ph
+;	AVX512F		7.0:EBX[16]		EVEX forms, zmm, masks, k* (word forms)
+;	AVX512VL	7.0:EBX[31]		EVEX forms on xmm/ymm and xmm16-31/ymm16-31
+;	AVX512BW	7.0:EBX[30]		byte/word EVEX forms, kmovd/kmovq, ...
+;	AVX512DQ	7.0:EBX[17]		dword/qword EVEX forms, kmovb, vfpclass*, ...
+;	AVX512CD	7.0:EBX[28]		vpconflict* vplzcnt* vpbroadcastm*
+;	AVX512ER/PF	7.0:EBX[27]/[26]	Xeon Phi exp2/rcp28/rsqrt28, gather/scatter prefetch
+;	AVX512_BITALG	7.0:ECX[12]		vpopcntb/w vpshufbitqmb
+;	AVX512_VPOPCNTDQ 7.0:ECX[14]		vpopcntd/q
+;	AVX512_4VNNIW	7.0:EDX[2]		vp4dpwssd(s)
+;	AVX512_4FMAPS	7.0:EDX[3]		v4fmaddps v4fnmaddps v4fmaddss v4fnmaddss
+;
+; "simd" levels (AVX, AVX2, AVX512F) are minimum levels; the rest are bits.
+; The encoder in AVX_512.store_instruction chooses VEX or EVEX and applies
+; the vector-length gates (AVX2, AVX512VL, BW, DQ); VEX_GPR skips the AVX
+; check for general-purpose VEX/XOP instructions; maps >= 8 get the XOP 8Fh
+; lead byte. VNNI, IFMA, BF16, FP16 and other families live in their own
+; files, each with its own header.
 
 element AVX.reg
 
