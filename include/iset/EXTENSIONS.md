@@ -1,0 +1,609 @@
+# Instruction-set extensions: current state and plan
+
+This note records how `include/iset/` is built today, what is wrong with its
+feature gating, which x86 extensions are missing, and a concrete plan for
+each addition. It covers everything from the file name to the gate.
+
+The guiding rule: **every addition must reject the uses it does not
+support.** That means a missing feature bit, the wrong CPU mode, the wrong
+operand forms, and every other mnemonic it might shadow. An addition that
+only proves the valid forms assemble is not finished.
+
+All encodings quoted below were checked against `llvm-mc` 22.1.4
+(`llvm-mc -triple=x86_64 --show-encoding`), except where marked *APM* (AMD
+manual) or *verify*.
+
+---
+
+## 1. How the layer works today
+
+### 1.1 File roles and include order
+
+`x86-2.inc` is the core encoder. It pulls in the `iset` files at three
+points, and the order matters. A file can only use helpers that were defined
+before it.
+
+| Point in `x86-2.inc`   | Files                                      | Available helpers |
+|------------------------|--------------------------------------------|-------------------|
+| after the core ALU/system set | `fpu.inc`                           | `x86.parse_operand@*`, `x86.store_instruction@*`, `x86.store_operand_prefix` |
+| after SGX/system block | `vmx.inc`, `mpx.inc`, `cet.inc`, `uintr.inc` | the same (GPR/memory only) |
+| end of file            | `mmx` → `sse` → `sse2` → `sse3` → `sse4` → `avx` → `bmi` → `sha`, `aes`, `kl`, `gfni`, `pclmulqdq` → `3dnow` → `amx` | `MMX.*`, `SSE.*`, `AVX.*`, `AVX_512.*`, register elements `xmm16+`, `ymm*`, `zmm*`, `k*` |
+
+Placement rule:
+- A file that touches XMM/YMM/ZMM/k registers, or that uses a VEX, EVEX or
+  XOP prefix (including VEX-encoded GPR instructions such as BMI), must come
+  after `avx.inc`.
+- A file that only touches GPRs and memory belongs in the
+  `vmx`/`mpx`/`cet`/`uintr` group.
+
+### 1.2 Styles: CALM versus macro
+
+| Layer | Style |
+|-------|-------|
+| `x86-2.inc` core mnemonics, `fpu.inc`, `mmx.inc`, `3dnow.inc` | `calminstruction` |
+| Shared parsers and encoders: `x86.parse_operand@ctx`, `x86.store_instruction@ctx`, `SSE.parse_operand@ctx`, `AVX_512.parse_*_operand@ctx`, `AVX_512.store_instruction@ctx` | `calminstruction` |
+| Shape helpers: `SSE.basic_instruction`, `AVX_512.basic_instruction_bcst`, … | `macro` |
+| Nearly every mnemonic in `avx`, `sse*`, `bmi`, `aes`, `sha`, `gfni`, `kl`, `cet`, `vmx`, `amx`, … | `macro` |
+
+Policy from now on: **new mnemonics are written as `calminstruction`.** They
+call the CALM parsers and the CALM `store_instruction` directly. They do not
+call the macro shape helpers, because a CALM body would have to `assemble`
+text to reach a macro, which defeats the point.
+
+[`xcalm.inc`](../xcalm.inc) supplies `init`, `initsym`, `asm` and `xcall`.
+`xcall` passes literal arguments: `(expr)` for a number, `<text>` for
+symbolic text.
+
+### 1.3 CALM rules these files depend on
+
+These are easy to get wrong. Each one was confirmed while writing this note.
+
+1. **A label must not share a name with a CALM command.**
+   `store:`, `emit:`, `check:`, `call:`, `exit:`, `jump:`, `match:`,
+   `compute:`, `arrange:`, `assemble:`, `publish:`, `transform:`, `take:`,
+   `err:`, `local:` all fail. For example, `store:` produces
+   `Error: missing argument.` on the label line. Use names like `encode`,
+   `invalid`, `done`, `supported`.
+2. **The signature is `x86.store_instruction@ctx opcode*, reg*, imm_size:0, immediate`.**
+   Multi-byte opcodes go in one `<…>` argument, as in
+   `xcall x86.store_instruction@dest, <0Fh,0C7h>,(1)`. It always emits a
+   ModRM byte built from the parsed operand. Do not call it for
+   fixed-ModRM instructions such as `0F 01 D8`; write the bytes with `emit`.
+3. **Handle optional operands with `match , operand` / `jyes …` before
+   calling the parser.** The parser errors on empty text.
+4. **Inside `iterate`, parameters are substituted when the
+   `calminstruction` is defined**, so `emit 1, modrm` bakes the constant in.
+5. **Defining a mnemonic again does not replace it; it stacks.** The later
+   definition wins silently. That is how the double `xtest` bug (§2.4)
+   happened. Never define a mnemonic that already exists in another file
+   (see §3.3).
+
+---
+
+## 2. Support gating
+
+### 2.1 Mechanism
+
+The `macro ?` table at the top of `x86-2.inc` turns each entry
+`NAME: item op value[, …]` into three CALM procedures:
+`x86.use.NAME`, `x86.require.NAME` and `x86.requireexact.NAME`.
+
+| Operator | Meaning | `require` | `requireexact` |
+|----------|---------|-----------|----------------|
+| `=`  | sets a level (`mode`, `cpu`, `fpu`, `simd`, …) | `item >= value` | `item = value` |
+| `\|` | sets bit `value` in `item` (in practice `ext`) | bit set | bit set |
+| `+`  | ORs in a whole mask (presets)                  | all bits set | all bits set |
+
+An item name that has not been seen before is created automatically and
+starts at 0. A new *kind* of setting (for example `oem` or `avx10`, §4) needs
+nothing beyond its table line.
+
+How code calls it:
+- Macros: `require NAME` checks exactly; `require NAME+` checks "this level
+  or higher".
+- CALM: `call x86.require.NAME`.
+- On failure the message is `NAME required` or `NAME or higher required`.
+
+`{settings} instr` (the `??` hook) applies `use settings` to one line only.
+
+Users who need one specific encoding already have `{vex2}`, `{vex3}` and
+`{evex}`.
+
+### 2.2 Central VEX/EVEX gating
+
+`AVX_512.store_instruction@ctx` (`avx.inc` ~507–690) makes the
+prefix-family decisions from the `evex_f` flags:
+
+- `x86.simd < AVX512F` adds `EVEX_FORBIDDEN`.
+- A 256-bit operand with `EVEX_VL_AVX2` requires AVX2.
+- EVEX-only operands (masks, `xmm16+`, broadcast, embedded rounding, or
+  `EVEX_REQUIRED`) choose EVEX. EVEX then requires AVX512F, plus BW or DQ
+  when the `EVEX_BW` / `EVEX_DQ` flags are set, and AVX512VL when the vector
+  is narrower than 512 bits.
+- Otherwise the encoder chooses VEX and requires AVX.
+
+Feature-level choices sit *before* this, in the mnemonic. FMA and VAES pick
+`EVEX_AS_VEX` or `EVEX_REQUIRED` with `if x86.ext and x86.FMA.ext`. That is
+the pattern for dual-encoded families (§5.2).
+
+### 2.3 CPUID windows in `x86.ext`
+
+`x86.ext` is one large number; each CPUID register gets a 32-bit window.
+
+| Window | Register | State |
+|--------|----------|-------|
+| 0   | 1:ECX               | ok |
+| 32  | 7.0:EBX             | ok |
+| 64  | 7.0:ECX             | ok |
+| 96  | 7.0:EDX             | ok |
+| 128 | 7.1:EAX **and** 0Dh.1:EAX | **collision**: HRESET (7.1 bit 22) shares the window with XSAVEOPT (0), XSAVEC (1) and XSS (3) |
+| 256 | 80000001h:EDX       | ok |
+
+### 2.4 Defects to fix before adding anything
+
+| # | Defect | Effect | Fix |
+|---|--------|--------|-----|
+| G1 | Window 128 mixes two leaves | Adding SHA512 (7.1 bit 0), SM3 (bit 1) or RAO_INT (bit 3) would make `use XSAVEOPT` enable SHA512, and so on | Move XSAVEOPT, XSAVEC and XSS to a new window at 160. Users only ever name the feature, never the number, so this is source-compatible. |
+| G2 | `lzcnt` requires `BMI1` (`bmi.inc:80`) | LZCNT is CPUID 80000001h:ECX[5] (ABM). AMD K10 has LZCNT without BMI1, and an Intel `use BMI1` alone wrongly allows it | Add `LZCNT: ext \| 224 + 5` and gate `lzcnt` on it. `tzcnt` stays on BMI1. Behaviour change: `use BMI1` alone no longer allows `lzcnt`. |
+| G3 | `xtest` is defined twice: once under HLE (`x86-2.inc:4123`), once under RTM (`:4166`) | The second definition wins, so a CPU with HLE but no RTM is refused | Keep one CALM `xtest` with an any-of gate (§3.5): HLE or RTM |
+| G4 | `prefetch`/`prefetchw` require `3DNow` (`3dnow.inc:31`) | Every Intel target (Broadwell+) is refused `prefetchw` | Add `PRFCHW: ext \| 224 + 8`. Gate `prefetchw` on any-of 3DNow or PRFCHW. `prefetch` stays 3DNow only. |
+| G5 | `AVX_512.parse_bcst_operand` only accepts `1to2`…`1to16` | Broadcasts of 16-bit elements (FP16, BF16 inputs) to 512 bits need `1to32` | Add a `1to32` branch. Unit sizes 4 and 8 still reject it, through the existing size-mismatch error. |
+| G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Covered by the VNNI/IFMA plan in §5.2 |
+
+---
+
+## 3. Strategy checklist for every addition
+
+Each addition must settle all of the following. The per-extension plans in
+§5 fill in these fields.
+
+### 3.1 File name
+- Lower case and named for the feature family as the CPUID/table names it:
+  `svm.inc`, `sev.inc`, `sha512.inc`.
+- **One file holds one gate family.** That is a set of mnemonics that share
+  a feature bit, or a set of tightly related bits that share one encoder
+  path (for example `sev.inc` = SEV_ES + SEV_SNP + RMPQUERY).
+- **Single-instruction features go in a shared family file** (`amd.inc`,
+  `cache.inc`, …) rather than a 10-line file each.
+- **Vendor-specific, undocumented or historical sets are opt-in files**:
+  `x86-2.inc` does **not** include them (§3.2).
+
+### 3.2 Include point
+- Pick the earliest point in §1.1 whose helpers the file needs.
+- If a file *depends* on another file's encoder change (XOP before FMA4,
+  TBM and LWP), it is included after that file, and the dependency is
+  stated in its header comment.
+- Opt-in files (`cyrix.inc`, `padlock.inc`, `undoc.inc`) are included by
+  the user after `fasm2.inc`. The default mnemonic namespace stays clean,
+  and a user who never asked for them cannot reach those encodings.
+
+### 3.3 Mnemonic ownership
+- Run the probe (§6) before writing anything, to see whether the mnemonic
+  already exists.
+- **If it exists, change it in place, in the file that owns it.**
+  Never shadow it from a new file.
+- **When a whole family changes owner, do it in one commit.** The family
+  moves to a new file, and the old definitions are removed in the same
+  change, as planned for VNNI, IFMA and BF16.
+- **List byte-level collisions in the header comment.** These are a
+  different mnemonic on the same opcode bytes, for example:
+  - `urdmsr` and `enqcmd`: both `F2 0F 38 F8`, told apart by register vs
+    memory ModRM.
+  - `erets` and `clac`: both `0F 01 CA`, told apart by the prefix.
+  - `extrq`/`insertq` and `vmread`/`vmwrite`: `0F 78/79`, told apart by the
+    prefix.
+
+  The operand check in the new instruction must keep its own form apart
+  from the neighbour's.
+
+### 3.4 Feature bit
+- Add the table line in `x86-2.inc` in the window of the CPUID register that
+  reports the feature (§4), with a comment naming the leaf.
+- Names follow the existing style: SDM/APM names, upper case, `_` for
+  spaces. Examples: `AVX_VNNI`, `AVX512_FP16`, `SEV_SNP`.
+- **No CPUID bit exists?** Then the feature gets a synthetic bit in the
+  synthetic window, or an `oem` bit if it is vendor-undocumented (§4).
+- **Presets must not change meaning.** `everything` keeps `ext = -1`, so
+  it picks up every new `ext` bit automatically. It does *not* set `oem`
+  bits, so opt-in sets stay off.
+
+### 3.5 Gate code (first lines of the CALM body)
+- **One feature:** `call x86.require.NAME`.
+- **Any of several features** (STGI, XTEST, PREFETCHW):
+
+  ```
+  	check	x86.ext and (x86.SVM.ext or x86.SKINIT.ext)
+  	jyes	supported
+  	err	'SVM or SKINIT required'
+      supported:
+  ```
+
+  The message uses the same `NAME required` wording as the generated gates.
+- **64-bit only:** `call x86.require.bits64`. It produces the standard
+  message and also covers the "16/32-bit mode" case.
+- **Not valid in 64-bit mode:** `check x86.mode < 64` / `err 'instruction
+  not allowed in long mode'`.
+- **Exact CPU generation** (undocumented opcodes): `call
+  x86.requireexact.80386`, etc., as `xbts`/`ibts` already do.
+
+### 3.6 Operand validation
+- Reject every operand form the instruction does not define, with an
+  explicit `err`. The usual cases are:
+  - the wrong register class
+  - a fixed register that is not the expected one (rAX, ECX, EAX)
+  - memory where only a register is allowed, or the reverse
+  - the wrong width
+  - masks, broadcast or `xmm16+` on VEX-only instructions
+- **Implicit operands** (`vmrun rax`, `invlpga rax,ecx`, `skinit eax`,
+  `monitorx`, `clzero`) are optional. When written, they must name exactly
+  the architectural register.
+- The rAX operand means *address size*: it emits `67h` and never
+  `66h`/`REX.W` (§5.1).
+
+### 3.7 Encoding path
+- **Fixed bytes:** use `emit`.
+- **ModRM with GPR or memory:** use `x86.store_instruction@ctx`. Set
+  `@ctx.opcode_prefix` for mandatory `66`/`F2`/`F3`. Use
+  `x86.select_operand_prefix@ctx` or `x86.store_operand_prefix` for width.
+- **VEX/EVEX:** use `AVX.store_instruction@ctx` (VEX only: it adds
+  `EVEX_FORBIDDEN`) or `AVX_512.store_instruction@ctx` with explicit
+  `evex_f` flags.
+- **New maps:** the map number goes in the low bits of `vex_mpw`.
+  - Map 5 is confirmed working (`62 F5 6C 48 58 CB` = `vaddph zmm1,zmm2,zmm3`).
+  - Maps 6 (FP16) and 7 (VEX, USER_MSR) use the same field; check them with
+    a byte test.
+
+### 3.8 Tests that must exist before merge
+Each item in this list is an assembly to run and compare with the reference
+or expected error:
+1. **Positive bytes:** every operand form in every legal mode, compared
+   byte-for-byte against `llvm-mc` (or the APM/SDM where llvm has no
+   support).
+2. **Feature off:** with the bit cleared, every mnemonic fails with
+   `NAME required`.
+3. **Mode:** wrong-mode use fails, for example 64-bit-only instructions under
+   `use32`.
+4. **Operands:** each rejected form from §3.6 fails.
+5. **Neighbours:** the byte-collision neighbours from §3.3 still assemble
+   to their old bytes.
+6. **Presets:** the probe (§6) shows every new mnemonic defined under
+   `use everything`. Opt-in sets stay undefined until their file is
+   included.
+
+---
+
+## 4. Proposed `x86.ext` layout and new table lines
+
+| Window | Register | Contents |
+|--------|----------|----------|
+| 0   | 1:ECX            | unchanged |
+| 32  | 7.0:EBX          | + `CLWB` (24) |
+| 64  | 7.0:ECX          | + `PREFETCHWT1` (0) |
+| 96  | 7.0:EDX          | + `AVX512_4FMAPS` (3), `AVX512_VP2INTERSECT` (8), `PCONFIG` (18), `AVX512_FP16` (23) |
+| 128 | 7.1:EAX          | `HRESET` (22, unchanged) + `SHA512` (0), `SM3` (1), `SM4` (2), `RAO_INT` (3), `AVX_VNNI` (4), `AVX512_BF16` (5), `CMPCCXADD` (7), `FRED` (17), `LKGS` (18), `WRMSRNS` (19), `AMX_FP16` (21), `AVX_IFMA` (23), `MSRLIST` (27) |
+| 160 | 0Dh.1:EAX        | `XSAVEOPT` (0), `XSAVEC` (1), `XSS` (3): moved from 128 (G1) |
+| 192 | 7.1:EDX          | `AVX_VNNI_INT8` (4), `AVX_NE_CONVERT` (5), `AMX_COMPLEX` (8), `AVX_VNNI_INT16` (10), `PREFETCHI` (14), `USER_MSR` (15) |
+| 224 | 80000001h:ECX    | `SVM` (2), `LZCNT` (5), `SSE4A` (6), `PRFCHW` (8), `XOP` (11), `SKINIT` (12), `LWP` (15), `FMA4` (16), `TBM` (21), `MONITORX` (29). Window 224 matches `C:\adv_g\iset\svm.inc`. |
+| 256 | 80000001h:EDX    | `3DNow` (31, unchanged) + `3DNowExt` (30) |
+| 288 | 80000008h:EBX    | `CLZERO` (0), `INVLPGB` (3), `RDPRU` (4), `MCOMMIT` (8), `WBNOINVD` (9) |
+| 320 | 8000001Fh:EAX    | `SEV_ES` (3), `SEV_SNP` (4), `RMPQUERY` (6, *verify*) |
+| 352 | 14h.0:EBX        | `PTWRITE` (4) |
+| 384 | 12h.0:EAX        | `ENCLV` (5, *verify*) |
+| 416 | C000_0001h:EDX   | VIA/Zhaoxin PadLock "present" bits: `PADLOCK_RNG` (2), `PADLOCK_ACE` (6), `PADLOCK_ACE2` (8), `PADLOCK_PHE` (10), `PADLOCK_PMM` (12) |
+| 480 | synthetic        | `TDX` (0). No CPUID bit: TDX is detected through SEAM/MSRs. |
+
+Separate items that `everything` does not set:
+
+```
+	; Vendor-undocumented / historical opcodes, opt-in only (never set by "everything")
+	Cyrix:		oem | 0
+	Geode:		oem | 1
+	UNDOC:		oem | 2		; umov, FPU alias opcodes
+	IA64:		oem | 3		; jmpe
+
+	; AVX10 is versioned (CPUID 24h:EBX[7:0]), not a bit
+	AVX10.1:	avx10 = 1
+	AVX10.2:	avx10 = 2
+```
+
+`VMFUNC` needs no bit: it is VMX-controlled, so it gates on `VMX`.
+
+---
+
+## 5. Plans by extension
+
+Each entry gives: **file** · **include point** · **gate** · **modes** ·
+**encoding** · **must reject** · **notes**.
+
+### 5.1 AMD-V (SVM): `svm.inc`
+
+- **Include point:** after `uintr.inc` (GPR group).
+- **Gate:**
+  - `SVM` for `vmrun`, `vmload`, `vmsave`, `vmmcall`, `clgi`, `invlpga`.
+  - `SKINIT` for `skinit`.
+  - Any-of `SVM`/`SKINIT` for `stgi`. The APM allows STGI when either bit
+    is set.
+- **Modes:** all code modes. Protected mode is a run-time requirement, not
+  something the assembler can check.
+- **Encoding:** `0F 01 D8/DA/DB` (`vmrun`/`vmload`/`vmsave`), `D9`
+  (`vmmcall`), `DC` (`stgi`), `DD` (`clgi`), `DE` (`skinit`), `DF`
+  (`invlpga`).
+- **Must reject:**
+  - Any register other than rAX/eAX/AX.
+  - A rAX width that is illegal in the current mode: `ax` in 64-bit mode,
+    `rax` outside it.
+  - Memory operands.
+  - `skinit` with anything other than `eax`.
+  - `invlpga` with an ASID operand other than `ecx`.
+
+**Review of `C:\adv_g\iset\svm.inc`.** I assembled it against this tree
+with a stub `x86.require.SVM`:
+
+| Input | Produced | Correct |
+|-------|----------|---------|
+| `use64` `vmrun rax` | `48 0F C8` (that is `bswap rax`) | `0F 01 D8` |
+| `use64` `vmrun eax` | `0F C8` | `67 0F 01 D8` |
+| `use32` `vmrun eax` | `0F C8` | `0F 01 D8` |
+| `use16` `vmrun ax`  | error   | `0F 01 D8` |
+| `use64` `vmrun`     | `missing argument` | `0F 01 D8` (operand is implicit) |
+| `use64` `invlpga rax,ecx` | `invalid argument` | `0F 01 DF` |
+
+Causes:
+1. `xcall x86.store_instruction@dest, (0Fh),(01h),(opcode)` passes the
+   opcode bytes as `opcode`, `reg` and `imm_size`. The routine then emits
+   `0F` followed by a ModRM byte for `rm=0, reg=1`, which gives `C8`. These
+   instructions have a fixed ModRM, so they should simply `emit` the bytes.
+2. `x86.select_operand_prefix` produces `66h`/`REX.W`. The rAX operand of
+   these instructions selects the **address** size, which is the `67h`
+   prefix.
+3. The `invlpga` call has no `reg` argument (`store_instruction@dest,
+   <…>`), which makes it an invalid call.
+4. `vmrun`, `vmload`, `vmsave` and `invlpga` declare their operands as
+   required, but the APM writes them as implicit.
+5. `skinit` is gated on `SVM`. SKINIT has its own bit (80000001h:ECX[12]),
+   and `stgi` also has to accept SKINIT-only parts.
+6. Smaller points:
+   - `0x…` literals work, but the rest of the tree writes `…h`.
+   - Labels at column 0 are fine, but the tree indents them by four
+     spaces.
+
+The corrected form below was assembled and checked:
+
+```
+; implicit rAX address operand: address size selects 67h, never 66h/REX.W
+calminstruction SVM.address_operand operand
+	match	, operand
+	jyes	done
+	call	x86.parse_operand@dest, operand
+	check	@dest.type = 'reg' & @dest.rm = 0 & @dest.size > 1
+	jno	invalid
+	check	@dest.size shl 3 = x86.mode
+	jyes	done
+	check	@dest.size = 8 | (@dest.size = 2 & x86.mode = 64)
+	jyes	invalid
+	emit	1, 67h
+	exit
+    invalid:
+	err	'invalid operand'
+    done:
+end calminstruction
+
+iterate <instr,modrm>, vmrun,0D8h, vmload,0DAh, vmsave,0DBh
+
+	calminstruction instr? addr
+		call	x86.require.SVM
+		call	SVM.address_operand, addr
+		emit	1, 0Fh
+		emit	1, 01h
+		emit	1, modrm
+	end calminstruction
+
+end iterate
+
+calminstruction stgi?
+	check	x86.ext and (x86.SVM.ext or x86.SKINIT.ext)
+	jyes	supported
+	err	'SVM or SKINIT required'
+    supported:
+	emit	1, 0Fh
+	emit	1, 01h
+	emit	1, 0DCh
+end calminstruction
+```
+
+`vmmcall` and `clgi` take no operands and emit their bytes directly. `skinit
+[eax]` and `invlpga [addr[,ecx]]` follow the same pattern.
+
+Results, all as expected:
+- `vmrun` / `vmrun rax` (64-bit) → `0F 01 D8`
+- `vmrun eax` (64-bit) → `67 0F 01 D8`
+- `vmrun ax` (32-bit) → `67 0F 01 D8`
+- `vmrun eax` (16-bit) → `67 0F 01 D8`
+- `vmrun rbx`, `vmrun [rax]`, `vmrun ax` (64-bit) and `skinit rax` → `invalid operand`
+- `invlpga eax,ecx` → `67 0F 01 DF`
+- `invlpga rax,rcx` → `invalid operand`
+- SKINIT-only: `stgi` assembles, `clgi` → `SVM required`
+
+### 5.2 Dual-encoded vector families (move and merge)
+
+These features add a **VEX** form to a mnemonic that today exists only as
+EVEX, or the reverse. Each family moves into one CALM file that owns both
+gates, and its old definitions in `avx.inc` are removed in the same change.
+
+The gate logic inside the mnemonic is:
+
+```
+	; VEX allowed only if the VEX feature is present; EVEX only via the AVX-512 feature
+	check	x86.ext and x86.AVX_VNNI.ext
+	jyes	vex_ok
+	compute	evex_f, EVEX_REQUIRED+EVEX_VL	; VEX form not available
+	jump	gate_evex
+    vex_ok:
+	compute	evex_f, EVEX_AS_VEX+EVEX_VL
+	check	x86.ext and x86.AVX512_VNNI.ext
+	jyes	encode
+	compute	evex_f, EVEX_FORBIDDEN		; VEX only: masks/zmm/xmm16+ are rejected
+	jump	encode
+    gate_evex:
+	call	x86.require.AVX512_VNNI
+    encode:
+```
+
+| File | Mnemonics | VEX gate | EVEX gate | Reference bytes |
+|------|-----------|----------|-----------|-----------------|
+| `vnni.inc` | `vpdpbusd(s)`, `vpdpwssd(s)` | `AVX_VNNI` | `AVX512_VNNI` | `{vex} vpdpbusd ymm1,ymm2,ymm3` = `C4 E2 6D 50 CB` |
+| `ifma.inc` | `vpmadd52luq`, `vpmadd52huq` | `AVX_IFMA` | `AVX512_IFMA` | `{vex} vpmadd52luq ymm1,ymm2,ymm3` = `C4 E2 ED B4 CB` |
+| `bf16.inc` | `vcvtneps2bf16` (both forms); EVEX only: `vcvtne2ps2bf16`, `vdpbf16ps`; VEX only: `vbcstnebf162ps`, `vbcstnesh2ps`, `vcvtnee{bf16,ph}2ps`, `vcvtneo{bf16,ph}2ps` | `AVX_NE_CONVERT` | `AVX512_BF16` | `{vex} vcvtneps2bf16 xmm1,ymm2` = `C4 E2 7E 72 CA`; EVEX `62 F2 7E 48 72 CA`; `vdpbf16ps zmm` = `62 F2 6E 48 52 CB`; `vbcstnebf162ps ymm1,[rax]` = `C4 E2 7E B1 08` |
+
+- `vnni.inc` also gets the VEX-only sibling families:
+  - `AVX_VNNI_INT8`: `vpdpb{ss,su,uu}d(s)`, `F2/F3/NP 0F38 50/51 W0`
+  - `AVX_VNNI_INT16`: `vpdpw{su,us,uu}d(s)`, `F3/66/NP 0F38 D2/D3 W0`
+
+  Both are VEX-only (`EVEX_FORBIDDEN`) until AVX10.2 adds EVEX forms; that
+  will be one more gate in the same file. Reference bytes:
+  `vpdpbssd ymm1,ymm2,ymm3` = `C4 E2 6F 50 CB`;
+  `vpdpwsud ymm1,ymm2,ymm3` = `C4 E2 6E D2 CB`.
+- **Include point:** after `avx.inc`.
+- **Behaviour change to accept:** under `use everything`, both bits are
+  set, so `vpdpbusd xmm/ymm` without masks changes from EVEX to the shorter
+  VEX encoding. Every other dual instruction already behaves this way
+  (`vaddps`, FMA), and `{evex}` still forces EVEX.
+- **Must reject:**
+  - masks, `{1toN}`, `zmm` and `xmm16+` when only the VEX feature is on
+  - any use when neither bit is on, with the message naming the VEX feature
+  - memory sizes other than the vector or element size
+
+### 5.3 New EVEX/VEX vector families
+
+| File | Gate | Mnemonics | Encoding notes | Must reject |
+|------|------|-----------|----------------|-------------|
+| `avx512_fp16.inc` | `AVX512_FP16` (+ VL for xmm/ymm through the central gate) | the full `…ph`/`…sh` set, `vmovw`, `vfcmaddcph`, `vfmaddcph`, … | EVEX **map 5 and 6** in `vex_mpw` (map 5 confirmed). Needs G5 (`1to32`). Unit 2. | VEX encodings (`EVEX_REQUIRED` everywhere); `1to32` on non-word units; for complex FMA, destination equal to a source (SDM #UD) |
+| `vp2intersect.inc` | `AVX512_VP2INTERSECT` | `vp2intersectd`, `vp2intersectq` | `EVEX.F2.0F38 68` W0/W1; destination is a k-register **pair**, written as the even register (`vp2intersectd k2,zmm2,zmm3` = `62 F2 6F 48 68 D3`) | odd k-register destination; masking of the destination |
+| `sha512.inc` | `SHA512` | `vsha512msg1`, `vsha512msg2`, `vsha512rnds2` | `VEX.256.F2.0F38 CC/CD/CB W0` (`C4 E2 7F CC CA`, …) | xmm destination; memory (all forms are register-only); EVEX features |
+| `sm.inc` | `SM3`, `SM4` (separate gates in one ShangMi file) | `vsm3msg1/2`, `vsm3rnds2`, `vsm4key4`, `vsm4rnds4` | SM3: `VEX.128 0F38 DA` (NP/66), `0F3A DE ib`; SM4: `VEX.{128,256} F3/F2 0F38 DA` | 256-bit SM3; EVEX features; immediate wider than a byte |
+| `amx.inc` (in place) | `AMX_FP16`, `AMX_COMPLEX` | `tdpfp16ps`, `tcmmimfp16ps`, `tcmmrlfp16ps` | Copy the `tdpbf16ps` shape: `F2/66/NP 0F38 5C/6C` (`C4 E2 63 5C CA`) | the same tile register used twice (existing AMX rule); non-tile operands |
+| `avx.inc` (in place, next to `vp4dpwssd`) | `AVX512_4FMAPS` | `v4fmaddps`, `v4fnmaddps`, `v4fmaddss`, `v4fnmaddss` | Copy the `vp4dpwssd` register-block syntax; `EVEX.F2.0F38 9A/AA/9B/AB` | non-`+3` register block; non-memory source. This is Xeon Phi only, so low priority. |
+
+`sm.inc` was smoke-tested in CALM form. `vsm3msg1 xmm1,xmm2,xmm3` →
+`C4 E2 68 DA CB`. `ymm`, `xmm17`, `{k1}` and `qword [mem]` are all
+rejected. That proves the CALM → `AVX.store_instruction@src2` route for
+new VEX instructions.
+
+### 5.4 Scalar and system: Intel
+
+| File | Include point | Gate | Mnemonics → bytes | Modes | Must reject / collisions |
+|------|---------------|------|-------------------|-------|--------------------------|
+| `cache.inc` | GPR group | `CLWB` · `PREFETCHWT1` · `PREFETCHI` · `WBNOINVD` | `clwb m8` → `66 0F AE /6`; `prefetchwt1 m8` → `0F 0D /2`; `prefetchit0/1 m8` → `0F 18 /7`, `/6`; `wbnoinvd` → `F3 0F 09` | `prefetchi*`: 64-bit, **RIP-relative only** (other addressing is a reserved NOP) | `clwb` with a register operand. `66 0F AE /6` with a register ModRM is `tpause`; the probe must still show `tpause` unchanged. Non-RIP memory for `prefetchi*`. |
+| `system.inc` | GPR group | `PTWRITE` · `PCONFIG` · `ENCLV` · `VMX`(`vmfunc`) | `ptwrite r/m32/64` → `F3 [REX.W] 0F AE /4`; `pconfig` → `0F 01 C5`; `enclv` → `0F 01 C0`; `vmfunc` → `0F 01 D4` | `ptwrite` 64-bit width only in long mode | `ptwrite` with 8- or 16-bit operands. `vmfunc` could also live in `vmx.inc` (same gate); pick one place. |
+| `cmpccxadd.inc` | after `avx.inc` (VEX GPR, like `bmi.inc`) | `CMPCCXADD` | `cmp<cc>xadd m, r, r` → `VEX.128.66.0F38 E0+cc`, W by width (`cmpbexadd [rdx],ecx,eax` = `C4 E2 79 E6 0A`) | **64-bit only** | a register first operand; mismatched widths; 8- or 16-bit widths. Define the alias mnemonics (`cmpcxadd`, `cmpaexadd`, `cmpzxadd`/`cmpexadd`, …) from a single `iterate` over `<cc,code>`. |
+| `rao.inc` | GPR group | `RAO_INT` | `aadd/aand/aor/axor m, r` → `NP/66/F2/F3 0F 38 FC /r` (+`REX.W`) | 64-bit width in long mode | register destination; 8- or 16-bit widths |
+| `msr.inc` | after `avx.inc` (map-7 VEX) | `MSRLIST` · `WRMSRNS` · `USER_MSR` | `rdmsrlist`/`wrmsrlist` → `F2/F3 0F 01 C6`; `wrmsrns` → `0F 01 C6`; `urdmsr r64,r64` → `F2 0F 38 F8 /r`; `uwrmsr r64,r64` → `F3 0F 38 F8 /r`; `urdmsr r64,imm32` → `C4 E7 7B F8 /0 id`; `uwrmsr imm32,r64` → `C4 E7 7A F8 /0 id` | all 64-bit only (MSRLIST/USER_MSR) | `urdmsr` with memory: `F2 0F 38 F8` with memory is **`enqcmd`**, so the register-only check keeps them apart. Non-64-bit registers. |
+| `fred.inc` | GPR group | `FRED` · `LKGS` | `erets` → `F2 0F 01 CA`; `eretu` → `F3 0F 01 CA`; `lkgs r/m16` → `F2 0F 00 /6` | 64-bit only | `lkgs` with a non-16-bit operand. Collision: `clac` is `0F 01 CA`. |
+| `tdx.inc` | GPR group | `TDX` (synthetic) | `tdcall`/`seamret`/`seamops`/`seamcall` → `66 0F 01 CC/CD/CE/CF` | 64-bit only | any operand |
+
+### 5.5 AMD scalar and system
+
+| File | Include point | Gate | Mnemonics → bytes | Must reject |
+|------|---------------|------|-------------------|-------------|
+| `sev.inc` | GPR group | `SEV_ES` · `SEV_SNP` · `RMPQUERY` | `vmgexit` → `F3 0F 01 D9` (*APM*); `pvalidate` → `F2 0F 01 FF`; `rmpadjust` → `F3 0F 01 FE`; `rmpupdate` → `F2 0F 01 FE`; `psmash` → `F3 0F 01 FF`; `rmpquery` → `F3 0F 01 FD` | Any implicit operands that are written must be the architectural registers (rAX, rCX, rDX, as for SVM). Collisions: `vmmcall` (`0F 01 D9`), `invlpgb`/`tlbsync`/`rdpru` (no prefix), `mcommit` (`F3 0F 01 FA`). |
+| `amd.inc` | GPR group | `MONITORX` · `CLZERO` · `RDPRU` · `MCOMMIT` · `INVLPGB` | `monitorx` → `0F 01 FA`; `mwaitx` → `0F 01 FB`; `clzero` → `0F 01 FC`; `rdpru` → `0F 01 FD`; `mcommit` → `F3 0F 01 FA` (*APM*); `invlpgb` → `0F 01 FE`; `tlbsync` → `0F 01 FF` | Wrong implicit registers. Address size for `monitorx`/`clzero` follows the same rAX rule as SVM; copy the existing `monitor` and `umonitor` handling. |
+| `sse4a.inc` | after `sse4.inc` | `SSE4A` | `extrq xmm,imm8,imm8` → `66 0F 78 /0 ib ib`; `extrq xmm,xmm` → `66 0F 79`; `insertq xmm,xmm,imm8,imm8` → `F2 0F 78`; `insertq xmm,xmm` → `F2 0F 79`; `movntsd m64,xmm` → `F2 0F 2B`; `movntss m32,xmm` → `F3 0F 2B` | Memory for `extrq`/`insertq`; registers for `movnt*`. Collision: `0F 78/79` without a prefix are `vmread`/`vmwrite`. |
+| `3dnow.inc` (in place) | — | `3DNowExt` | add `pswapd`, `pfnacc`, `pfpnacc`, `pf2iw` (`0F 0F /r` + suffix `BB/8A/8E/1C`). Move the existing `pi2fw` (`0C`) out of the 3DNow `iterate` and onto 3DNowExt. This is a behaviour change: it is refused under plain `use 3DNow`. | Non-MMX operands |
+| `lzcnt`, `prefetchw` | in place | G2, G4 | — | — |
+
+### 5.6 AMD XOP family (needs an encoder change first)
+
+1. **Encoder (in `avx.inc`, `AVX_512.store_instruction`):**
+   - When `(vex and 11111b) >= 8`, emit `8Fh` instead of `C4h` and force the
+     3-byte form.
+   - Add constants `XOP_08_W0`, `XOP_09_W0`, `XOP_0A_W0` (and the `W1`
+     versions).
+
+   No existing encoding changes, because no current `vex_mpw` has a map
+   of 8 or above.
+2. Then add the files below, each included after `avx.inc` and after the
+   encoder change:
+
+| File | Gate | Notes |
+|------|------|-------|
+| `xop.inc` | `XOP` | `vpcmov` (`8F E8 70 A2 C2 30`, is4 like `vblendvps`), `vprot*`, `vpsha*`, `vpshl*`, `vpcom*`, `vpmacs*`, `vpperm`, `vfrcz*`, `vphadd*`, `vphsub*`, `vpermil2p*`. VEX.W swaps which source may be memory; reject memory in the other slot. |
+| `fma4.inc` | `FMA4` | `vfmadd{ps,pd,ss,sd}`, `vfmsub…`, `vfnmadd…`, `vfnmsub…`, `vfmaddsub…`, `vfmsubadd…` (`C4 E3 F1 68 C3 20`). Uses VEX map 0F3A with is4. The names differ from FMA3's `…132/213/231` forms, so there are no clashes. |
+| `tbm.inc` | `TBM` | `blcfill`, `blci`, `blcic`, `blcmsk`, `blcs`, `blsfill`, `blsic`, `t1mskc`, `tzmsk` (XOP map 9). **`bextr r, r/m, imm32` (XOP map A, `8F EA 78 10 … id`) is an extra form of BMI1's `bextr`.** Add it in place in `bmi.inc`: an immediate third operand requires `TBM`, a register requires `BMI1`. Do not redefine it in `tbm.inc`. |
+| `lwp.inc` | `LWP` | `llwpcb r`, `slwpcb r` (XOP.9 12 /0 /1), `lwpins`, `lwpval r, r/m32, imm32` (XOP.A 12 /0 /1) |
+
+### 5.7 Opt-in historical and vendor sets (not included by default)
+
+| File | Gate | Contents | Why opt-in |
+|------|------|----------|------------|
+| `cyrix.inc` | `oem` `Cyrix` (+ `requireexact` CPU where the encoding varies by generation) | `smint`, `dmint`, `rdm`, `rdshr`, `wrshr`, `svdc`, `rsdc`, `svldt`, `rsldt`, `svts`, `rsts`, `cpu_read`, `cpu_write`; EMMI `paveb`, `paddsiw`, `pmagw`, `pdistib`, `pmachriw`, `pmvzb`, … | Their opcodes are now the `0F 38`/`0F 3A` escapes, VMX `0F 78/79`, and the SSE `0F 5x` space |
+| `cyrix.inc` (Geode section) | `oem` `Geode` | `pfrcpv`, `pfrsqrtv` (`0F 0F /r 86/87`) | Geode GX only |
+| `padlock.inc` | `PADLOCK_*` (real CPUID bits) | `xstore`/`xstorerng` → `0F A7 C0`; `xcrypt{ecb,cbc,ctr,cfb,ofb}` → `F3 0F A7 C8/D0/D8/E0/E8`; `xsha1`/`xsha256` → `F3 0F A6 C8/D0`; `montmul` → `F3 0F A6 C0`; Zhaoxin GMI `ccs_hash`/`ccs_encrypt` (*verify*) | Same bytes as `xbts`/`ibts` (`0F A6/A7`) |
+| `undoc.inc` | `oem` `UNDOC` + `requireexact` CPU | `umov` (386/486, `0F 10–13`); FPU alias opcodes `fstp1`, `fstp8`, `fstp9`, `fxch4`, `fxch7`, `fcom2`, `fcomp3`, `fcomp5` | `umov` collides with SSE `movups`/`movlps`, … |
+| `ia64.inc` | `oem` `IA64` | `jmpe r/m` (`0F 00 /6`), `jmpe rel` (`0F B8`) | `0F 00 /6` with `F2` is `lkgs`; `0F B8` with `F3` is `popcnt` |
+
+`loadall` already exists (gated with `requireexact` on 80286/80386). The
+probe in §6 reported it missing only because `everything` is not an 80286
+or 80386.
+
+### 5.8 Deferred: needs its own encoder design
+
+- **APX** (`push2`/`pop2`, REX2, NDD/NF forms of existing ALU instructions,
+  `ccmp`/`ctest`, `jmpabs`, 32 GPRs).
+  - It changes the core GPR encoder and register elements in `x86-2.inc`,
+    not `iset`.
+  - It needs a new REX2 prefix path and EVEX promotion of legacy maps.
+  - Gate: `APX_F` (7.1:EDX[21]) in window 192.
+- **AVX10.2** additions (new EVEX forms of VNNI-INT8/16, BF16 arithmetic,
+  saturating conversions, …).
+  - These slot into the family files above as one more gate each, keyed on
+    `avx10 >= 2`.
+  - The AVX10.1 *versioning* itself is just the `avx10` level item (§4).
+    For gating purposes, `AVX10.1` equals the AVX-512 feature set it lists.
+
+---
+
+## 6. Verification tools
+
+**Mnemonic probe.** Assemble `use64` followed by the bare mnemonic with
+`fasmg -iInclude('fasm2.inc')`.
+- `illegal instruction` means the mnemonic is undefined.
+- Any other error (missing argument, invalid operand, `… required`) means it
+  is defined.
+- Mode-gated instructions such as `loadall` show up as false negatives under
+  `use everything`.
+
+**Byte tests.** For each case, assemble a one-line file and compare the
+bytes with the expected value. Gate cases set `x86.ext` explicitly
+(`x86.ext = x86.SKINIT.ext`, …) and expect the `… required` message.
+
+**Reference.** Use
+`"C:\Program Files\LLVM\bin\llvm-mc.exe" -triple=x86_64 --show-encoding`
+(also `-triple=i386` and `-triple=i386 -code16` for other modes).
+
+llvm-mc 22.1.4 does not cover:
+- `vmgexit` and `mcommit`
+- `monitorx`/`mwaitx` operand syntax
+- Cyrix and other historical sets
+
+Use the APM/SDM for those.
+
+---
+
+## 7. Order of work
+
+1. **Gating repairs:** G1 (window split), G3 (`xtest`), G4 (`prefetchw`),
+   G5 (`1to32`), G2 (`lzcnt`; a behaviour change, so record it in the
+   changelog). Add the table lines from §4 with their files, not ahead of
+   them, so no gate exists without a mnemonic behind it.
+2. **`svm.inc`** (corrected template above) and **`sev.inc`, `amd.inc`**.
+   These are GPR-only and low-risk, and they establish the CALM style.
+3. **`vnni.inc`, `ifma.inc`, `bf16.inc`** (the move-and-merge pattern),
+   then `sha512.inc`, `sm.inc`, `vp2intersect.inc`, and the AMX in-place
+   additions.
+4. **Intel scalar files:** `cache.inc`, `system.inc`, `cmpccxadd.inc`,
+   `rao.inc`, `msr.inc`, `fred.inc`, `tdx.inc`.
+5. **`avx512_fp16.inc`** (largest table).
+6. **XOP encoder change**, then `xop.inc`, `fma4.inc`, `tbm.inc`,
+   `lwp.inc`, and `sse4a.inc` with the `3dnow.inc` additions.
+7. **Opt-in legacy files.**
+8. **APX / AVX10.2**, as a separate design.
