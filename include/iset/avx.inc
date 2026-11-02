@@ -834,6 +834,25 @@ macro AVX_512.basic_instruction_bcst_sae_imm8 vex_mpw,evex_f,opcode,unit,dest,sr
 	end if
 end macro
 
+; CALM form of AVX_512.basic_instruction_bcst, for CALM mnemonics:
+; dest{k}{z}, src, src2/mem/{1toN} with all three the same vector size
+calminstruction AVX_512.calm_basic_instruction_bcst vex_mpw*,evex_f*,opcode*,unit*,dest*,src*,src2*
+	call	AVX_512.parse_k1z_operand@dest, dest
+	call	AVX_512.parse_operand@src, src
+	call	AVX_512.parse_bcst_operand@src2, src2,unit
+	check	@dest.type = 'mmreg' & @src.type = 'mmreg' & (@src2.type = 'mem' | @src2.type = 'mmreg')
+	jyes	operands_ok
+	err	'invalid combination of operands'
+	exit
+    operands_ok:
+	check	@src.size <> @dest.size | @src2.size and not @dest.size
+	jno	sizes_ok
+	err	'operand sizes do not match'
+	exit
+    sizes_ok:
+	call	AVX_512.store_instruction@src2, @dest.size,vex_mpw,evex_f,opcode,@dest.mask,@dest.rm,@src.rm
+end calminstruction
+
 macro AVX_512.basic_instruction_bcst vex_mpw,evex_f,opcode,unit,dest,src,src2
 	AVX_512.parse_k1z_operand@dest dest
 	AVX_512.parse_operand@src src
@@ -4160,14 +4179,6 @@ iterate <instr,unit,vex_mpw,opcode>, vpconflictd,4,VEX_66_0F38_W0,0C4h, vpconfli
 
 end iterate
 
-iterate <instr,opcode>, vpmadd52luq,0B4h, vpmadd52huq,0B5h
-
-	macro instr? dest*,src*,src2*
-		require AVX512_IFMA
-		AVX_512.basic_instruction_bcst VEX_66_0F38_W1,EVEX_REQUIRED+EVEX_VL,opcode,8,dest,src,src2
-	end macro
-
-end iterate
 
 iterate <instr,unit,vex_mpw,opcode>, vexp2ps,4,VEX_66_0F38_W0,0C8h, vexp2pd,4,VEX_66_0F38_W1,0C8h, \
 				     vrcp28ps,4,VEX_66_0F38_W0,0CAh, vrcp28pd,8,VEX_66_0F38_W1,0CAh, vrsqrt28ps,4,VEX_66_0F38_W0,0CCh, vrsqrt28pd,8,VEX_66_0F38_W1,0CCh
@@ -4298,14 +4309,6 @@ iterate <instr,unit,vex_mpw,opcode>, vpopcntd,4,VEX_66_0F38_W0,55h, vpopcntq,8,V
 
 end iterate
 
-iterate <instr,opcode>, vpdpbusd,50h, vpdpbusds,51h, vpdpwssd,52h, vpdpwssds,53h
-
-	macro instr? dest*,src*,src2*
-		require AVX512_VNNI
-		AVX_512.basic_instruction_bcst VEX_66_0F38_W0,EVEX_REQUIRED+EVEX_VL,opcode,4,dest,src,src2
-	end macro
-
-end iterate
 
 iterate <instr,opcode>, vp4dpwssd,52h, vp4dpwssds,53h
 

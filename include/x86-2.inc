@@ -195,11 +195,16 @@ end macro
 	AMX_TILE:		ext | 96 + 24
 	AMX_INT8:		ext | 96 + 25
 	; CPUID.(EAX=7,ECX=1):EAX
+	AVX_VNNI:		ext | 128 + 4
 	HRESET: 		ext | 128 + 22
+	AVX_IFMA:		ext | 128 + 23
 	; CPUID.(EAX=0DH,ECX=1):EAX
 	XSAVEOPT:		ext | 160 + 0
 	XSAVEC: 		ext | 160 + 1
 	XSS:			ext | 160 + 3
+	; CPUID.(EAX=7,ECX=1):EDX
+	AVX_VNNI_INT8:		ext | 192 + 4
+	AVX_VNNI_INT16: 	ext | 192 + 10
 	; CPUID.(EAX=80000001H):ECX
 	SVM: 			ext | 224 + 2
 	LZCNT:			ext | 224 + 5
@@ -4456,6 +4461,8 @@ include 'iset/sse4.inc'
 
 include 'iset/avx.inc'
 include 'iset/bmi.inc'
+include 'iset/vnni.inc'
+include 'iset/ifma.inc'
 
 include 'iset/sha.inc'
 include 'iset/aes.inc'

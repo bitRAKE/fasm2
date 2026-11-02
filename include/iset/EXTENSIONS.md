@@ -167,9 +167,8 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G5 are fixed. Each has a test in `tests/iset/` that passes on this branch
-and fails on the tree before the fix (see `tests/iset/readme.md`). G6 is
-part of the VNNI/IFMA work in §5.2.
+G1–G6 are fixed. Each has a test in `tests/iset/` that passes on this branch
+and fails on the tree before the fix (see `tests/iset/readme.md`).
 
 | # | Defect | Effect | Fix | Test |
 |---|--------|--------|-----|------|
@@ -178,7 +177,7 @@ part of the VNNI/IFMA work in §5.2.
 | G3 | `xtest` is defined twice: once under HLE (`x86-2.inc:4123`), once under RTM (`:4166`) | The second definition wins, so a CPU with HLE but no RTM is refused | Keep one CALM `xtest` with an any-of gate (§3.5): HLE or RTM | `xtest.asm` |
 | G4 | `prefetch`/`prefetchw` require `3DNow` (`3dnow.inc:31`) | Every Intel target (Broadwell+) is refused `prefetchw` | Add `PRFCHW: ext \| 224 + 8`. Gate `prefetchw` on any-of 3DNow or PRFCHW. `prefetch` stays 3DNow only. | `prefetchw.asm` |
 | G5 | `AVX_512.parse_bcst_operand` only accepts `1to2`…`1to16` | Broadcasts of 16-bit elements (FP16, BF16 inputs) to 512 bits need `1to32` | Add a `1to32` branch. Unit sizes 4 and 8 still reject it, through the existing size-mismatch error. | `broadcast.asm` |
-| G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Covered by the VNNI/IFMA plan in §5.2 | pending (§5.2) |
+| G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Move both families to `vnni.inc`/`ifma.inc`, which own both gates (§5.2) | `vnni_ifma.asm` |
 
 ---
 
@@ -460,24 +459,35 @@ These features add a **VEX** form to a mnemonic that today exists only as
 EVEX, or the reverse. Each family moves into one CALM file that owns both
 gates, and its old definitions in `avx.inc` are removed in the same change.
 
-The gate logic inside the mnemonic is:
+The gate logic inside the mnemonic, as implemented in `vnni.inc`:
 
 ```
-	; VEX allowed only if the VEX feature is present; EVEX only via the AVX-512 feature
+	local	evex_f
 	check	x86.ext and x86.AVX_VNNI.ext
-	jyes	vex_ok
-	compute	evex_f, EVEX_REQUIRED+EVEX_VL	; VEX form not available
-	jump	gate_evex
-    vex_ok:
-	compute	evex_f, EVEX_AS_VEX+EVEX_VL
+	jyes	vex_available
+	check	x86.ext and x86.AVX512_VNNI.ext
+	jyes	evex_only
+	err	'AVX_VNNI or AVX512_VNNI required'
+	exit
+    evex_only:
+	compute evex_f, EVEX_REQUIRED+EVEX_VL
+	jump	encode
+    vex_available:
+	compute evex_f, EVEX_AS_VEX+EVEX_VL+EVEX_VL_AVX2
 	check	x86.ext and x86.AVX512_VNNI.ext
 	jyes	encode
-	compute	evex_f, EVEX_FORBIDDEN		; VEX only: masks/zmm/xmm16+ are rejected
-	jump	encode
-    gate_evex:
-	call	x86.require.AVX512_VNNI
+	compute evex_f, EVEX_FORBIDDEN+EVEX_VL_AVX2	; VEX only: masks/zmm/xmm16+ refused
     encode:
+	xcall	AVX_512.calm_basic_instruction_bcst, (VEX_66_0F38_W0),evex_f,(opcode),(4),dest,src,src2
 ```
+
+`AVX_512.calm_basic_instruction_bcst` (in `avx.inc`) is the CALM form of
+the `AVX_512.basic_instruction_bcst` macro, so CALM mnemonics can use it.
+When the VEX feature is on but the AVX-512 one is off, `{evex}` cannot
+force EVEX; the instruction stays VEX.
+
+**Status:** `vnni.inc` and `ifma.inc` are done (G6, `tests/iset/vnni_ifma.asm`),
+including AVX-VNNI-INT8/INT16. `bf16.inc` is next.
 
 | File | Mnemonics | VEX gate | EVEX gate | Reference bytes |
 |------|-----------|----------|-----------|-----------------|
@@ -672,9 +682,9 @@ How each source feeds the work:
 2. **`svm.inc`, `sev.inc`, `amd.inc`**: done, with tests. They are
    GPR-only and established the CALM style and the implicit-operand
    helpers (§3.7).
-3. **`vnni.inc`, `ifma.inc`, `bf16.inc`** (the move-and-merge pattern),
-   then `sha512.inc`, `sm.inc`, `vp2intersect.inc`, and the AMX in-place
-   additions.
+3. **`vnni.inc`, `ifma.inc`**: done (G6). Then **`bf16.inc`** (the same
+   move-and-merge pattern), `sha512.inc`, `sm.inc`, `vp2intersect.inc`,
+   and the AMX in-place additions.
 4. **Intel scalar files:** `cache.inc`, `system.inc`, `cmpccxadd.inc`,
    `rao.inc`, `msr.inc`, `fred.inc`, `tdx.inc`.
 5. **`avx512_fp16.inc`** (largest table).
