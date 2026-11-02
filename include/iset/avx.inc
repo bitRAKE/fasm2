@@ -4351,11 +4351,48 @@ iterate <instr,opcode>, vp4dpwssd,52h, vp4dpwssds,53h
 			else if @dest.size <> @src.size
 				err 'operand sizes do not match'
 			end if
-			@src2.memsize = 0
+			@src2.memsize = 16	; Tuple1_4X: disp8 scales by 16, not by the vector
 			AVX_512.store_instruction@src2 @dest.size,VEX_F2_0F38_W0,EVEX_REQUIRED,opcode,@dest.mask,@dest.rm,@src.rm
 		else
 			err 'invalid combination of operands'
 		end if
 	end macro
+
+end iterate
+
+; AVX512_4FMAPS (Knights Mill): dest{k}{z}, src+3 (a block of four registers
+; named by its first), m128 -- packed forms zmm, scalar forms xmm
+iterate <instr,opcode,vsize>, v4fmaddps,9Ah,64, v4fnmaddps,0AAh,64, v4fmaddss,9Bh,16, v4fnmaddss,0ABh,16
+
+	calminstruction instr? dest*,src*,src2*
+		local	block
+		call	x86.require.AVX512_4FMAPS
+		call	AVX_512.parse_k1z_operand@dest, dest
+		match	block+=3, src
+		jyes	register_block
+		call	AVX_512.parse_operand@src, src
+		jump	source
+	    register_block:
+		call	AVX_512.parse_operand@src, block
+	    source:
+		call	AVX_512.parse_operand@src2, src2
+		check	@dest.type = 'mmreg' & @src.type = 'mmreg' & @src2.type = 'mem'
+		jyes	operands_ok
+		err	'invalid combination of operands'
+		exit
+	    operands_ok:
+		check	@dest.size <> vsize | @src2.size and not 16
+		jno	sizes_ok
+		err	'invalid operand size'
+		exit
+	    sizes_ok:
+		check	@src.size = @dest.size
+		jyes	encode
+		err	'operand sizes do not match'
+		exit
+	    encode:
+		compute @src2.memsize, 16
+		xcall	AVX_512.store_instruction@src2, @dest.size,(VEX_F2_0F38_W0),(EVEX_REQUIRED),(opcode),@dest.mask,@dest.rm,@src.rm
+	end calminstruction
 
 end iterate

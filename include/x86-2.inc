@@ -190,6 +190,7 @@ end macro
 	ENQCMD: 		ext | 64 + 29
 	; CPUID.(EAX=7,ECX=0):EDX
 	AVX512_4VNNIW:		ext | 96 + 2
+	AVX512_4FMAPS:		ext | 96 + 3
 	UINTR:			ext | 96 + 5
 	AVX512_VP2INTERSECT:	ext | 96 + 8
 	SERIALIZE:		ext | 96 + 14
@@ -254,6 +255,11 @@ end macro
 	PTWRITE:		ext | 352 + 4
 	; CPUID.(EAX=12H,ECX=0):EAX
 	ENCLV:			ext | 384 + 5
+	; CPUID.(EAX=C0000001H):EDX (VIA/Zhaoxin)
+	PADLOCK_RNG:		ext | 416 + 2
+	PADLOCK_ACE:		ext | 416 + 6
+	PADLOCK_PHE:		ext | 416 + 10
+	PADLOCK_PMM:		ext | 416 + 12
 	; no CPUID bit (synthetic)
 	TDX:			ext | 480 + 0
 
@@ -4216,6 +4222,7 @@ include 'iset/rao.inc'
 include 'iset/fred.inc'
 include 'iset/tdx.inc'
 include 'iset/msr.inc'
+include 'iset/padlock.inc'
 
 macro xacquire? instr&
 	require HLE

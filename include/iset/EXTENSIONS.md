@@ -167,7 +167,7 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G7 are fixed. Each has a test in `tests/iset/` that passes on this branch
+G1–G8 are fixed. Each has a test in `tests/iset/` that passes on this branch
 and fails on the tree before the fix (see `tests/iset/readme.md`).
 
 | # | Defect | Effect | Fix | Test |
@@ -179,6 +179,7 @@ and fails on the tree before the fix (see `tests/iset/readme.md`).
 | G5 | `AVX_512.parse_bcst_operand` only accepts `1to2`…`1to16` | Broadcasts of 16-bit elements (FP16, BF16 inputs) to 512 bits need `1to32` | Add a `1to32` branch. Unit sizes 4 and 8 still reject it, through the existing size-mismatch error. | `broadcast.asm` |
 | G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Move both families to `vnni.inc`/`ifma.inc`, which own both gates (§5.2) | `vnni_ifma.asm` |
 | G7 | The shared VEX encoder requires `AVX` for every VEX instruction, including the VEX-encoded general-purpose ones (BMI1, BMI2, CMPccXADD) | `use x64, BMI1` + `andn eax, ecx, edx` gave `AVX or higher required`; some parts have BMI1/BMI2 without AVX | New flag `VEX_GPR` (`avx.inc`) skips the AVX check; `AVX.store_gpr_instruction@ctx` sets it. BMI1/BMI2 and CMPccXADD use it; vector VEX instructions still require AVX. | `bmi_gpr.asm` |
+| G8 | `vp4dpwssd`/`vp4dpwssds` compressed disp8 by the 64-byte vector; their memory operand is 128 bits (Tuple1_4X), so the CPU scales disp8 by 16 | `[rax+40h]` encoded disp8 = 1, which addresses `[rax+10h]`: a wrong address with no error | `memsize = 16` in place in `avx.inc` | `avx512_4x.asm` |
 
 ---
 
@@ -523,7 +524,7 @@ including AVX-VNNI-INT8/INT16. `bf16.inc` is done (`tests/iset/bf16.asm`): `vcvt
 | `sha512.inc` **(done, `tests/iset/sha512.asm`)** | `SHA512` | `vsha512msg1`, `vsha512msg2`, `vsha512rnds2` | `VEX.256.F2.0F38 CC/CD/CB W0` (`C4 E2 7F CC CA`, …) | xmm destination; memory (all forms are register-only); EVEX features |
 | `sm.inc` **(done, `tests/iset/sm.asm`)** | `SM3`, `SM4` (separate gates in one ShangMi file) | `vsm3msg1/2`, `vsm3rnds2`, `vsm4key4`, `vsm4rnds4` | SM3: `VEX.128 0F38 DA` (NP/66), `0F3A DE ib`; SM4: `VEX.{128,256} F3/F2 0F38 DA` | 256-bit SM3; EVEX features; immediate wider than a byte |
 | `amx.inc` (in place) **(done, `tests/iset/amx.asm`)** | `AMX_FP16`, `AMX_COMPLEX` | `tdpfp16ps`, `tcmmimfp16ps`, `tcmmrlfp16ps` | Copy the `tdpbf16ps` shape: `F2/66/NP 0F38 5C/6C` (`C4 E2 63 5C CA`) | the same tile register used twice (existing AMX rule); non-tile operands |
-| `avx.inc` (in place, next to `vp4dpwssd`) | `AVX512_4FMAPS` | `v4fmaddps`, `v4fnmaddps`, `v4fmaddss`, `v4fnmaddss` | Copy the `vp4dpwssd` register-block syntax; `EVEX.F2.0F38 9A/AA/9B/AB` | non-`+3` register block; non-memory source. This is Xeon Phi only, so low priority. |
+| `avx.inc` (in place, next to `vp4dpwssd`) **(done, `tests/iset/avx512_4x.asm`)** | `AVX512_4FMAPS` | `v4fmaddps`, `v4fnmaddps`, `v4fmaddss`, `v4fnmaddss` | Copy the `vp4dpwssd` register-block syntax; `EVEX.F2.0F38 9A/AA/9B/AB` | non-`+3` register block; non-memory source. This is Xeon Phi only, so low priority. |
 
 `sm.inc` was smoke-tested in CALM form. `vsm3msg1 xmm1,xmm2,xmm3` →
 `C4 E2 68 DA CB`. `ymm`, `xmm17`, `{k1}` and `qword [mem]` are all
@@ -590,8 +591,13 @@ must keep stable.
 |------|------|----------|---------------|
 | `cyrix.inc` | `CYRIX` (synthetic) | `smint`, `dmint`, `rdm`, `rdshr`, `wrshr`, `svdc`, `rsdc`, `svldt`, `rsldt`, `svts`, `rsts`, `cpu_read`, `cpu_write`; EMMI `paveb`, `paddsiw`, `pmagw`, `pdistib`, `pmachriw`, `pmvzb`, … | the `0F 38`/`0F 3A` escapes, VMX `0F 78/79`, the SSE `0F 5x` space |
 | `cyrix.inc` (Geode section) | `GEODE` (synthetic) | `pfrcpv`, `pfrsqrtv` (`0F 0F /r 86/87`) | 3DNow suffix space |
-| `padlock.inc` | `PADLOCK_*` (C000_0001h:EDX) | `xstore`/`xstorerng` → `0F A7 C0`; `xcrypt{ecb,cbc,ctr,cfb,ofb}` → `F3 0F A7 C8/D0/D8/E0/E8`; `xsha1`/`xsha256` → `F3 0F A6 C8/D0`; `montmul` → `F3 0F A6 C0`; Zhaoxin GMI `ccs_hash`/`ccs_encrypt` (*verify*) | `xbts`/`ibts` (`0F A6/A7`) |
+| `padlock.inc` **(done, `tests/iset/padlock.asm`; four XED groups RNG/ACE/PHE/PMM)** | `PADLOCK_*` (C000_0001h:EDX) | `xstore`/`xstorerng` → `0F A7 C0`; `xcrypt{ecb,cbc,ctr,cfb,ofb}` → `F3 0F A7 C8/D0/D8/E0/E8`; `xsha1`/`xsha256` → `F3 0F A6 C8/D0`; `montmul` → `F3 0F A6 C0`; Zhaoxin GMI `ccs_hash`/`ccs_encrypt` (*verify*) | `xbts`/`ibts` (`0F A6/A7`) |
 | `undoc.inc` | exact CPU level (`requireexact 80386`/`80486`) for `umov`; `fpu` for the aliases | `umov` (`0F 10–13`); FPU alias opcodes `fstp1`, `fstp8`, `fstp9`, `fxch4`, `fxch7`, `fcom2`, `fcomp3`, `fcomp5` | SSE `movups`/`movlps`, … |
+
+**Blocked on a reference:** `cyrix.inc` and `undoc.inc`. No local tool (llvm-mc,
+XED, Zydis, zydis-db) knows these opcodes, so their bytes could only come
+from secondary sources; per §3.8 they wait for an authoritative listing
+(Cyrix/Geode data books, Intel's 386/486 notes for `umov`).
 
 `loadall` already exists (gated with `requireexact` on 80286/80386). The
 probe in §6 reported it missing only because `everything` is not an 80286
@@ -701,5 +707,7 @@ How each source feeds the work:
    now includes 3DNowExt). Then the XOP encoder change and
    `xop.inc`, `fma4.inc`, `tbm.inc`, `lwp.inc` (bextr's TBM form in place in
    `bmi.inc`): done, with tests.
-7. **Historical and vendor files** (§5.7).
+7. **Historical and vendor files** (§5.7): `padlock.inc` and 4FMAPS done;
+   `cyrix.inc`/`undoc.inc` blocked on a reference. Remaining: step 5,
+   `avx512_fp16.inc`.
 8. **APX / AVX10.2**, as a separate design.
