@@ -690,10 +690,11 @@ How each source feeds the work:
 
 ## 7. Order of work
 
-1. **Gating repairs:** done for G1–G5, with tests. G2 (`lzcnt`) is a
-   behaviour change, so record it in the changelog. Add the remaining table
-   lines from §4 with their files, not ahead of them, so no gate exists
-   without a mnemonic behind it.
+1. **Gating repairs:** done, with tests: G1–G5, and G6–G11 found while
+   implementing (§2.4). Behaviour changes to record in the changelog: G2
+   (`use BMI1` no longer allows `lzcnt`), G6 (unmasked VNNI/IFMA xmm/ymm
+   become VEX under `use everything`), G7 (BMI no longer needs AVX), and
+   `pi2fw` moving to 3DNowExt.
 2. **`svm.inc`, `sev.inc`, `amd.inc`**: done, with tests. They are
    GPR-only and established the CALM style and the implicit-operand
    helpers (§3.7).
@@ -715,6 +716,16 @@ How each source feeds the work:
    `xop.inc`, `fma4.inc`, `tbm.inc`, `lwp.inc` (bextr's TBM form in place in
    `bmi.inc`): done, with tests.
 7. **Historical and vendor files** (§5.7): `padlock.inc` and 4FMAPS done;
-   `cyrix.inc`/`undoc.inc` blocked on a reference. Remaining: step 5,
-   `avx512_fp16.inc`.
-8. **APX / AVX10.2**, as a separate design.
+   `cyrix.inc`/`undoc.inc` blocked on an authoritative reference.
+8. **APX / AVX10.2**, as a separate design (§5.8).
+
+**Status (end of this pass).** Every addition in §5 that has a reference
+is implemented and tested: `tests/iset/_run.ps1` runs 33 sources (209 checks), each of
+which fails on the tree before its change. Still open:
+- `cyrix.inc`, `undoc.inc`: no reference available locally (§5.7);
+- APX, AVX10.2: deferred (§5.8);
+- RMPQUERY and ENCLV bits are marked *verify* in §4 (no XED entry);
+- not yet planned, from XED's folder list (§6.2): MOVRS, MSR-IMM,
+  PBNDKB, AMX-DMR, SM4-EVEX;
+- CALM versions of avx.inc's AVX-512 shape helpers (FP16 uses the macros);
+- `monitor`/`mwait` could move to the implicit-operand helpers (§5.5).
