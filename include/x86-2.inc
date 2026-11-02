@@ -2311,23 +2311,23 @@ iterate <instr,handler,size>, push,push_instruction,0, pushw,push_instruction,2,
 
 end iterate
 
-iterate <instr,opcode>, ret,0C2h, retn,0C2h, retf,0CAh
+iterate instr, ret,retn
 
 	calminstruction instr? operand
 		match	, operand
 		jyes	ret_short
 		check	operand
 		jno	ret_short
-		emit	1, opcode
+		emit	1, 0C2h
 		call	word, operand
 		exit
 	    ret_short:
-		emit	1, opcode + 1
+		emit	1, 0C2h + 1
 	end calminstruction
 
 end iterate
 
-iterate <instr,size,opcode>, retw,2,0C2h, retnw,2,0C2h, retd,4,0C2h, retnd,4,0C2h, retfw,2,0CAh, retfd,4,0CAh
+iterate <instr,size>, retw,2, retnw,2, retd,4, retnd,4
 
 	calminstruction instr? operand
 		check	x86.mode = 64
@@ -2335,11 +2335,11 @@ iterate <instr,size,opcode>, retw,2,0C2h, retnw,2,0C2h, retd,4,0C2h, retnd,4,0C2
 		xcall	x86.store_operand_prefix, (size)
 		match	, operand
 		jyes	ret_short
-		emit	1, opcode
+		emit	1, 0C2h
 		call	word, operand
 		exit
 	    ret_short:
-		emit	1, opcode + 1
+		emit	1, 0C2h + 1
 		exit
 	    illegal_instruction:
 		err	'illegal instruction'
@@ -2347,21 +2347,53 @@ iterate <instr,size,opcode>, retw,2,0C2h, retnw,2,0C2h, retd,4,0C2h, retnd,4,0C2
 
 end iterate
 
-iterate <instr,opcode>, retq,0C2h, retnq,0C2h, retfq,0CAh
+iterate <instr,size>, retfw,2, retfd,4, retfq,8
+
+	calminstruction instr? operand
+		xcall	x86.store_operand_prefix, (size)
+		match	, operand
+		jyes	ret_short
+		emit	1, 0CAh
+		call	word, operand
+		exit
+	    ret_short:
+		emit	1, 0CAh + 1
+		exit
+	end calminstruction
+
+end iterate
+
+iterate instr, retq,retnq
 
 	calminstruction instr? operand
 		call	x86.require.bits64
 		match	, operand
 		jyes	ret_short
-		emit	1, opcode
+		emit	1, 0C2h
 		call	word, operand
 		exit
 	    ret_short:
-		emit	1, opcode + 1
+		emit	1, 0C2h + 1
 		exit
 	end calminstruction
 
 end iterate
+
+calminstruction retf? operand
+	check	x86.mode = 64
+	jno	prefix_ok
+	xcall	x86.store_operand_prefix, (8)
+    prefix_ok:
+	match	, operand
+	jyes	ret_short
+	check	operand
+	jno	ret_short
+	emit	1, 0CAh
+	call	word, operand
+	exit
+    ret_short:
+	emit	1, 0CAh + 1
+end calminstruction
 
 calminstruction lea? dest*,src*
 	call	x86.parse_operand@dest, dest
@@ -3087,7 +3119,7 @@ iterate <instr,opcode,len>, loopnz,0E0h,0, loopne,0E0h,0, loopz,0E1h,0, loope,0E
 
 		check	@dest.imm-($+1) < 80h & @dest.imm-($+1) >= -80h
 		jyes	relative_offset_ok
-		check	(@dest.imm-($+2)) and (1 shl (@dest.size*8) - 1) < 80h | (@dest.imm-($+2)) and (1 shl (@dest.size*8) - 1) >= 1 shl (@dest.size*8) - 80h
+		check	(@dest.imm-($+1)) and (1 shl (@dest.size*8) - 1) < 80h | (@dest.imm-($+1)) and (1 shl (@dest.size*8) - 1) >= 1 shl (@dest.size*8) - 80h
 		jyes	relative_offset_ok
 		emit	1
 		err	'relative jump out of range'
