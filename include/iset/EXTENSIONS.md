@@ -487,7 +487,7 @@ When the VEX feature is on but the AVX-512 one is off, `{evex}` cannot
 force EVEX; the instruction stays VEX.
 
 **Status:** `vnni.inc` and `ifma.inc` are done (G6, `tests/iset/vnni_ifma.asm`),
-including AVX-VNNI-INT8/INT16. `bf16.inc` is next.
+including AVX-VNNI-INT8/INT16. `bf16.inc` is done (`tests/iset/bf16.asm`): `vcvtneps2bf16` owns both gates; the six AVX-NE-CONVERT loads are memory-only and VEX-only.
 
 | File | Mnemonics | VEX gate | EVEX gate | Reference bytes |
 |------|-----------|----------|-----------|-----------------|
@@ -682,9 +682,9 @@ How each source feeds the work:
 2. **`svm.inc`, `sev.inc`, `amd.inc`**: done, with tests. They are
    GPR-only and established the CALM style and the implicit-operand
    helpers (§3.7).
-3. **`vnni.inc`, `ifma.inc`**: done (G6). Then **`bf16.inc`** (the same
-   move-and-merge pattern), `sha512.inc`, `sm.inc`, `vp2intersect.inc`,
-   and the AMX in-place additions.
+3. **`vnni.inc`, `ifma.inc`, `bf16.inc`**: done (G6 and BF16). Then
+   `sha512.inc`, `sm.inc`, `vp2intersect.inc`, and the AMX in-place
+   additions.
 4. **Intel scalar files:** `cache.inc`, `system.inc`, `cmpccxadd.inc`,
    `rao.inc`, `msr.inc`, `fred.inc`, `tdx.inc`.
 5. **`avx512_fp16.inc`** (largest table).
