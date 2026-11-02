@@ -1,3 +1,14 @@
+; vmx.inc -- Intel VMX (virtual-machine extensions)
+;
+; CPUID requirements ("use <setting>" to enable, or "use everything"):
+;
+;	setting	CPUID bit		instructions
+;	VMX	1:ECX[5]		vmxon vmxoff vmclear vmptrld vmptrst vmread
+;					vmwrite vmlaunch vmresume vmcall invept
+;					invvpid vmfunc
+;
+; vmfunc (0F 01 D4) has no CPUID bit of its own: it is enabled through the
+; VMX secondary processor-based controls, so it is gated on VMX.
 
 iterate <instr,prefix,ext,postbyte>, vmxon,0F3h,0C7h,6, vmclear,66h,0C7h,6,  \
 				 vmptrld,0,0C7h,6, vmptrst,0,0C7h,7
@@ -89,3 +100,9 @@ iterate <instr,opcode>, invept,80h, invvpid,81h
 	end macro
 
 end iterate
+
+; VMFUNC -- invoke a VM function (EAX selects it), from VMX non-root
+calminstruction vmfunc?
+	call	x86.require.VMX
+	emit	3, 0xD4010F
+end calminstruction

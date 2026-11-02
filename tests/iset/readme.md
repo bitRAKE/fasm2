@@ -55,3 +55,10 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `sm.asm` | new | SM3 (128-bit) and SM4 (128/256-bit), separate bits, VEX only, 8-bit immediate. |
 | `vp2intersect.asm` | new | Mask-register pair destination (even k only), AVX512VL for xmm/ymm, D/Q broadcast. |
 | `amx.asm` | new | AMX-FP16 and AMX-COMPLEX: AMX_TILE plus own bit, distinct tiles, 64-bit only. |
+| `bmi_gpr.asm` | G7 | BMI1/BMI2 assemble without AVX (VEX-encoded GPR instructions); vector VEX still needs AVX. |
+| `cache.asm` | new | CLWB (memory only, beside tpause), PREFETCHWT1, PREFETCHIT0/1 (RIP-relative, 64-bit), WBNOINVD. |
+| `system.asm` | new | PTWRITE (Intel PT + PTWRITE bits, no 16-bit form), PCONFIG, ENCLV, VMFUNC. |
+| `rao.asm` | new | AADD/AAND/AOR/AXOR: prefix selects the operation, no 16-bit form, memory destination. |
+| `fred_tdx.asm` | new | ERETS/ERETU, LKGS, TDX instructions: 64-bit only, own gates, neighbours clac/lldt unchanged, jmpe stays out. |
+| `msr.asm` | new | RDMSRLIST/WRMSRLIST, WRMSRNS (all modes), URDMSR/UWRMSR register and map-7 immediate forms; enqcmd unchanged. |
+| `cmpccxadd.asm` | new | All 30 condition names and aliases, operand roles, W by size, 64-bit only. |

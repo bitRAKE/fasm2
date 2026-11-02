@@ -167,7 +167,7 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G6 are fixed. Each has a test in `tests/iset/` that passes on this branch
+G1–G7 are fixed. Each has a test in `tests/iset/` that passes on this branch
 and fails on the tree before the fix (see `tests/iset/readme.md`).
 
 | # | Defect | Effect | Fix | Test |
@@ -178,6 +178,7 @@ and fails on the tree before the fix (see `tests/iset/readme.md`).
 | G4 | `prefetch`/`prefetchw` require `3DNow` (`3dnow.inc:31`) | Every Intel target (Broadwell+) is refused `prefetchw` | Add `PRFCHW: ext \| 224 + 8`. Gate `prefetchw` on any-of 3DNow or PRFCHW. `prefetch` stays 3DNow only. | `prefetchw.asm` |
 | G5 | `AVX_512.parse_bcst_operand` only accepts `1to2`…`1to16` | Broadcasts of 16-bit elements (FP16, BF16 inputs) to 512 bits need `1to32` | Add a `1to32` branch. Unit sizes 4 and 8 still reject it, through the existing size-mismatch error. | `broadcast.asm` |
 | G6 | VNNI and IFMA are hard-wired `EVEX_REQUIRED` (`avx.inc:4161`, `:4299`) | The VEX forms (AVX-VNNI, AVX-IFMA) cannot be emitted: `use AVX2, AVX512_VNNI` + `vpdpbusd ymm…` gives `invalid operand` | Move both families to `vnni.inc`/`ifma.inc`, which own both gates (§5.2) | `vnni_ifma.asm` |
+| G7 | The shared VEX encoder requires `AVX` for every VEX instruction, including the VEX-encoded general-purpose ones (BMI1, BMI2, CMPccXADD) | `use x64, BMI1` + `andn eax, ecx, edx` gave `AVX or higher required`; some parts have BMI1/BMI2 without AVX | New flag `VEX_GPR` (`avx.inc`) skips the AVX check; `AVX.store_gpr_instruction@ctx` sets it. BMI1/BMI2 and CMPccXADD use it; vector VEX instructions still require AVX. | `bmi_gpr.asm` |
 
 ---
 
@@ -533,13 +534,13 @@ new VEX instructions.
 
 | File | Include point | Gate | Mnemonics → bytes | Modes | Must reject / collisions |
 |------|---------------|------|-------------------|-------|--------------------------|
-| `cache.inc` | GPR group | `CLWB` · `PREFETCHWT1` · `PREFETCHI` · `WBNOINVD` | `clwb m8` → `66 0F AE /6`; `prefetchwt1 m8` → `0F 0D /2`; `prefetchit0/1 m8` → `0F 18 /7`, `/6`; `wbnoinvd` → `F3 0F 09` | `prefetchi*`: 64-bit, **RIP-relative only** (other addressing is a reserved NOP) | `clwb` with a register operand. `66 0F AE /6` with a register ModRM is `tpause`; the probe must still show `tpause` unchanged. Non-RIP memory for `prefetchi*`. |
-| `system.inc` | GPR group | `PTWRITE` · `PCONFIG` · `ENCLV` · `VMX`(`vmfunc`) | `ptwrite r/m32/64` → `F3 [REX.W] 0F AE /4`; `pconfig` → `0F 01 C5`; `enclv` → `0F 01 C0`; `vmfunc` → `0F 01 D4` | `ptwrite` 64-bit width only in long mode | `ptwrite` with 8- or 16-bit operands. `vmfunc` could also live in `vmx.inc` (same gate); pick one place. |
-| `cmpccxadd.inc` | after `avx.inc` (VEX GPR, like `bmi.inc`) | `CMPCCXADD` | `cmp<cc>xadd m, r, r` → `VEX.128.66.0F38 E0+cc`, W by width (`cmpbexadd [rdx],ecx,eax` = `C4 E2 79 E6 0A`) | **64-bit only** | a register first operand; mismatched widths; 8- or 16-bit widths. Define the alias mnemonics (`cmpcxadd`, `cmpaexadd`, `cmpzxadd`/`cmpexadd`, …) from a single `iterate` over `<cc,code>`. |
-| `rao.inc` | GPR group | `RAO_INT` | `aadd/aand/aor/axor m, r` → `NP/66/F2/F3 0F 38 FC /r` (+`REX.W`) | 64-bit width in long mode | register destination; 8- or 16-bit widths |
-| `msr.inc` | after `avx.inc` (map-7 VEX) | `MSRLIST` · `WRMSRNS` · `USER_MSR` | `rdmsrlist`/`wrmsrlist` → `F2/F3 0F 01 C6`; `wrmsrns` → `0F 01 C6`; `urdmsr r64,r64` → `F2 0F 38 F8 /r`; `uwrmsr r64,r64` → `F3 0F 38 F8 /r`; `urdmsr r64,imm32` → `C4 E7 7B F8 /0 id`; `uwrmsr imm32,r64` → `C4 E7 7A F8 /0 id` | all 64-bit only (MSRLIST/USER_MSR) | `urdmsr` with memory: `F2 0F 38 F8` with memory is **`enqcmd`**, so the register-only check keeps them apart. Non-64-bit registers. |
-| `fred.inc` | GPR group | `FRED` · `LKGS` | `erets` → `F2 0F 01 CA`; `eretu` → `F3 0F 01 CA`; `lkgs r/m16` → `F2 0F 00 /6` | 64-bit only | `lkgs` with a non-16-bit operand. Collision: `clac` is `0F 01 CA`. |
-| `tdx.inc` | GPR group | `TDX` (synthetic) | `tdcall`/`seamret`/`seamops`/`seamcall` → `66 0F 01 CC/CD/CE/CF` | 64-bit only | any operand |
+| `cache.inc` **(done, `tests/iset/cache.asm`)** | GPR group | `CLWB` · `PREFETCHWT1` · `PREFETCHI` · `WBNOINVD` | `clwb m8` → `66 0F AE /6`; `prefetchwt1 m8` → `0F 0D /2`; `prefetchit0/1 m8` → `0F 18 /7`, `/6`; `wbnoinvd` → `F3 0F 09` | `prefetchi*`: 64-bit, **RIP-relative only** (other addressing is a reserved NOP) | `clwb` with a register operand. `66 0F AE /6` with a register ModRM is `tpause`; the probe must still show `tpause` unchanged. Non-RIP memory for `prefetchi*`. |
+| `system.inc` **(done, `tests/iset/system.asm`)** | GPR group | `PTWRITE` · `PCONFIG` · `ENCLV` · `VMX`(`vmfunc`) | `ptwrite r/m32/64` → `F3 [REX.W] 0F AE /4`; `pconfig` → `0F 01 C5`; `enclv` → `0F 01 C0`; `vmfunc` → `0F 01 D4` | `ptwrite` 64-bit width only in long mode | `ptwrite` with 8- or 16-bit operands. `vmfunc` could also live in `vmx.inc` (same gate); pick one place. |
+| `cmpccxadd.inc` **(done, `tests/iset/cmpccxadd.asm`)** | after `bmi.inc` (VEX GPR via `AVX.store_gpr_instruction`, G7) | `CMPCCXADD` | `cmp<cc>xadd m, r, r` → `VEX.128.66.0F38 E0+cc`, W by width (`cmpbexadd [rdx],ecx,eax` = `C4 E2 79 E6 0A`) | **64-bit only** | a register first operand; mismatched widths; 8- or 16-bit widths. Define the alias mnemonics (`cmpcxadd`, `cmpaexadd`, `cmpzxadd`/`cmpexadd`, …) from a single `iterate` over `<cc,code>`. |
+| `rao.inc` **(done, `tests/iset/rao.asm`)** | GPR group | `RAO_INT` | `aadd/aand/aor/axor m, r` → `NP/66/F2/F3 0F 38 FC /r` (+`REX.W`) | 64-bit width in long mode | register destination; 8- or 16-bit widths |
+| `msr.inc` **(done, `tests/iset/msr.asm`)** | GPR group (the map-7 VEX bytes are emitted directly, so no AVX is needed) | `MSRLIST` · `WRMSRNS` · `USER_MSR` | `rdmsrlist`/`wrmsrlist` → `F2/F3 0F 01 C6`; `wrmsrns` → `0F 01 C6`; `urdmsr r64,r64` → `F2 0F 38 F8 /r`; `uwrmsr r64,r64` → `F3 0F 38 F8 /r`; `urdmsr r64,imm32` → `C4 E7 7B F8 /0 id`; `uwrmsr imm32,r64` → `C4 E7 7A F8 /0 id` | all 64-bit only (MSRLIST/USER_MSR) | `urdmsr` with memory: `F2 0F 38 F8` with memory is **`enqcmd`**, so the register-only check keeps them apart. Non-64-bit registers. |
+| `fred.inc` **(done, `tests/iset/fred_tdx.asm`)** | GPR group | `FRED` · `LKGS` | `erets` → `F2 0F 01 CA`; `eretu` → `F3 0F 01 CA`; `lkgs r/m16` → `F2 0F 00 /6` | 64-bit only | `lkgs` with a non-16-bit operand. Collision: `clac` is `0F 01 CA`. |
+| `tdx.inc` **(done, `tests/iset/fred_tdx.asm`)** | GPR group | `TDX` (synthetic) | `tdcall`/`seamret`/`seamops`/`seamcall` → `66 0F 01 CC/CD/CE/CF` | 64-bit only | any operand |
 
 ### 5.5 AMD scalar and system
 
@@ -685,8 +686,11 @@ How each source feeds the work:
 3. **`vnni.inc`, `ifma.inc`, `bf16.inc`, `sha512.inc`, `sm.inc`,
    `vp2intersect.inc`, AMX-FP16/COMPLEX**: done, with tests. AMX also
    needs AVX, through the VEX encoder.
-4. **Intel scalar files:** `cache.inc`, `system.inc`, `cmpccxadd.inc`,
-   `rao.inc`, `msr.inc`, `fred.inc`, `tdx.inc`.
+4. **Intel scalar files:** done, with tests: `cache.inc`, `system.inc`
+   (and `vmfunc` in `vmx.inc`), `cmpccxadd.inc`, `rao.inc`, `msr.inc`,
+   `fred.inc`, `tdx.inc`, plus fix G7. Modes follow XED's non-APX
+   patterns. Not implemented: the APX EVEX forms (map 4) of RAO-INT,
+   USER_MSR and CMPccXADD, and the MSR-IMM `rdmsr`/`wrmsrns` immediates.
 5. **`avx512_fp16.inc`** (largest table).
 6. **XOP encoder change**, then `xop.inc`, `fma4.inc`, `tbm.inc`,
    `lwp.inc`, and `sse4a.inc` with the `3dnow.inc` additions.

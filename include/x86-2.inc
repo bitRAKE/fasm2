@@ -161,6 +161,8 @@ end macro
 	SMAP:			ext | 32 + 20
 	AVX512_IFMA:		ext | 32 + 21
 	CLFLUSHOPT:		ext | 32 + 23
+	CLWB:			ext | 32 + 24
+	INTEL_PT:		ext | 32 + 25
 	AVX512PF:		ext | 32 + 26
 	AVX512ER:		ext | 32 + 27
 	AVX512CD:		ext | 32 + 28
@@ -168,6 +170,7 @@ end macro
 	AVX512BW:		ext | 32 + 30
 	AVX512VL:		ext | 32 + 31
 	; CPUID.(EAX=7,ECX=0):ECX
+	PREFETCHWT1:		ext | 64 + 0
 	AVX512_VBMI:		ext | 64 + 1
 	OSPKE:			ext | 64 + 4
 	WAITPKG:		ext | 64 + 5
@@ -191,6 +194,7 @@ end macro
 	AVX512_VP2INTERSECT:	ext | 96 + 8
 	SERIALIZE:		ext | 96 + 14
 	TSXLDTRK:		ext | 96 + 16
+	PCONFIG:		ext | 96 + 18
 	CET_IBT:		ext | 96 + 20
 	AMX_BF16:		ext | 96 + 22
 	AMX_TILE:		ext | 96 + 24
@@ -199,11 +203,17 @@ end macro
 	SHA512: 		ext | 128 + 0
 	SM3:			ext | 128 + 1
 	SM4:			ext | 128 + 2
+	RAO_INT:		ext | 128 + 3
 	AVX_VNNI:		ext | 128 + 4
 	AVX512_BF16:		ext | 128 + 5
+	CMPCCXADD:		ext | 128 + 7
+	FRED:			ext | 128 + 17
+	LKGS:			ext | 128 + 18
+	WRMSRNS:		ext | 128 + 19
 	AMX_FP16:		ext | 128 + 21
 	HRESET: 		ext | 128 + 22
 	AVX_IFMA:		ext | 128 + 23
+	MSRLIST:		ext | 128 + 27
 	; CPUID.(EAX=0DH,ECX=1):EAX
 	XSAVEOPT:		ext | 160 + 0
 	XSAVEC: 		ext | 160 + 1
@@ -213,6 +223,8 @@ end macro
 	AVX_NE_CONVERT: 	ext | 192 + 5
 	AMX_COMPLEX:		ext | 192 + 8
 	AVX_VNNI_INT16: 	ext | 192 + 10
+	PREFETCHI:		ext | 192 + 14
+	USER_MSR:		ext | 192 + 15
 	; CPUID.(EAX=80000001H):ECX
 	SVM: 			ext | 224 + 2
 	LZCNT:			ext | 224 + 5
@@ -227,10 +239,17 @@ end macro
 	INVLPGB:		ext | 288 + 3
 	RDPRU:			ext | 288 + 4
 	MCOMMIT:		ext | 288 + 8
+	WBNOINVD:		ext | 288 + 9
 	; CPUID.(EAX=8000001FH):EAX
 	SEV_ES: 		ext | 320 + 3
 	SEV_SNP:		ext | 320 + 4
 	RMPQUERY:		ext | 320 + 6
+	; CPUID.(EAX=14H,ECX=0):EBX
+	PTWRITE:		ext | 352 + 4
+	; CPUID.(EAX=12H,ECX=0):EAX
+	ENCLV:			ext | 384 + 5
+	; no CPUID bit (synthetic)
+	TDX:			ext | 480 + 0
 
 	; Some CPU presets:
 
@@ -4185,6 +4204,12 @@ include 'iset/uintr.inc'
 include 'iset/svm.inc'
 include 'iset/sev.inc'
 include 'iset/amd.inc'
+include 'iset/cache.inc'
+include 'iset/system.inc'
+include 'iset/rao.inc'
+include 'iset/fred.inc'
+include 'iset/tdx.inc'
+include 'iset/msr.inc'
 
 macro xacquire? instr&
 	require HLE
@@ -4469,6 +4494,7 @@ include 'iset/sse4.inc'
 
 include 'iset/avx.inc'
 include 'iset/bmi.inc'
+include 'iset/cmpccxadd.inc'
 include 'iset/vnni.inc'
 include 'iset/ifma.inc'
 include 'iset/bf16.inc'
