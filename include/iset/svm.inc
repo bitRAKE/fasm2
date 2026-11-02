@@ -6,6 +6,7 @@
 ;	SVM	8000_0001h:ECX[2]	vmrun vmload vmsave vmmcall clgi invlpga
 ;	SKINIT	8000_0001h:ECX[12]	skinit
 ;	SVM or SKINIT			stgi
+;	SEV_ES	8000_001Fh:EAX[3]	vmgexit
 ;
 ; Valid in 16-, 32- and 64-bit code.
 
@@ -41,6 +42,13 @@ iterate <instr,opcode>,\
 	end calminstruction
 
 end iterate
+
+; VMGEXIT is VMMCALL with an F3 prefix (APM vol.3); SEV-ES guests use it to
+; exit to the hypervisor, so it is gated on SEV_ES rather than SVM
+calminstruction vmgexit?
+	call	x86.require.SEV_ES
+	emit	4, 0xD9010FF3
+end calminstruction
 
 ; STGI is present when either SVM or SKINIT is reported
 calminstruction stgi?

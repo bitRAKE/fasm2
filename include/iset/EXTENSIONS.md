@@ -4,7 +4,15 @@ This note records how `include/iset/` is built today, what is wrong with its
 feature gating, which x86 extensions are missing, and a concrete plan for
 each addition. It covers everything from the file name to the gate.
 
-The guiding rule: **every addition must reject the uses it does not
+Two rules guide every addition.
+
+**One scheme: every file is included and `use` is the switch.** `x86-2.inc`
+includes every `include/iset` file, vendor-specific ones as well (`3dnow.inc`
+is AMD-only and is included). Nothing reaches the user through a separate
+include or a separate kind of setting. Availability is decided only by the
+CPUID-derived `use` settings.
+
+The second rule: **every addition must reject the uses it does not
 support.** That means a missing feature bit, the wrong CPU mode, the wrong
 operand forms, and every other mnemonic it might shadow. An addition that
 only proves the valid forms assemble is not finished.
@@ -27,7 +35,7 @@ before it.
 | Point in `x86-2.inc`   | Files                                      | Available helpers |
 |------------------------|--------------------------------------------|-------------------|
 | after the core ALU/system set | `fpu.inc`                           | `x86.parse_operand@*`, `x86.store_instruction@*`, `x86.store_operand_prefix` |
-| after SGX/system block | `vmx.inc`, `mpx.inc`, `cet.inc`, `uintr.inc` | the same (GPR/memory only) |
+| after SGX/system block | `vmx.inc`, `mpx.inc`, `cet.inc`, `uintr.inc`, `svm.inc` | the same (GPR/memory only) |
 | end of file            | `mmx` → `sse` → `sse2` → `sse3` → `sse4` → `avx` → `bmi` → `sha`, `aes`, `kl`, `gfni`, `pclmulqdq` → `3dnow` → `amx` | `MMX.*`, `SSE.*`, `AVX.*`, `AVX_512.*`, register elements `xmm16+`, `ymm*`, `zmm*`, `k*` |
 
 Placement rule:
@@ -96,8 +104,9 @@ The `macro ?` table at the top of `x86-2.inc` turns each entry
 | `+`  | ORs in a whole mask (presets)                  | all bits set | all bits set |
 
 An item name that has not been seen before is created automatically and
-starts at 0. A new *kind* of setting (for example `oem` or `avx10`, §4) needs
-nothing beyond its table line.
+starts at 0. A new *kind* of setting needs nothing beyond its table line.
+Add one only when the hardware itself reports a level rather than a bit
+(`avx10`, §4), not to build a parallel opt-in scheme.
 
 How code calls it:
 - Macros: `require NAME` checks exactly; `require NAME+` checks "this level
@@ -163,11 +172,13 @@ Each addition must settle all of the following. The per-extension plans in
   `svm.inc`, `sev.inc`, `sha512.inc`.
 - **One file holds one gate family.** That is a set of mnemonics that share
   a feature bit, or a set of tightly related bits that share one encoder
-  path (for example `sev.inc` = SEV_ES + SEV_SNP + RMPQUERY).
+  path (for example `svm.inc` = SVM + SKINIT + SEV_ES, since `vmgexit` is
+  `vmmcall` with an F3 prefix).
 - **Single-instruction features go in a shared family file** (`amd.inc`,
   `cache.inc`, …) rather than a 10-line file each.
-- **Vendor-specific, undocumented or historical sets are opt-in files**:
-  `x86-2.inc` does **not** include them (§3.2).
+- **Vendor-specific, undocumented or historical sets are ordinary files.**
+  They are included by `x86-2.inc` and gated like everything else (§3.4,
+  §5.7).
 - **Every file starts with its CPUID requirements**, so a reader can answer
   "I want these instructions; what do I have to enable?" without reading
   any code. The header lists the `use` setting, the CPUID leaf and bit
@@ -194,9 +205,9 @@ Each addition must settle all of the following. The per-extension plans in
 - If a file *depends* on another file's encoder change (XOP before FMA4,
   TBM and LWP), it is included after that file, and the dependency is
   stated in its header comment.
-- Opt-in files (`cyrix.inc`, `padlock.inc`, `undoc.inc`) are included by
-  the user after `fasm2.inc`. The default mnemonic namespace stays clean,
-  and a user who never asked for them cannot reach those encodings.
+- **Every file is included by `x86-2.inc`.** Users never write
+  `include 'iset/…'`. A file that `x86-2.inc` does not include is a bug,
+  as `svm.inc` was until it was fixed (§5.1).
 
 ### 3.3 Mnemonic ownership
 - Run the probe (§6) before writing anything, to see whether the mnemonic
@@ -222,11 +233,14 @@ Each addition must settle all of the following. The per-extension plans in
   reports the feature (§4), with a comment naming the leaf.
 - Names follow the existing style: SDM/APM names, upper case, `_` for
   spaces. Examples: `AVX_VNNI`, `AVX512_FP16`, `SEV_SNP`.
-- **No CPUID bit exists?** Then the feature gets a synthetic bit in the
-  synthetic window, or an `oem` bit if it is vendor-undocumented (§4).
+- **No CPUID bit exists?** Then the feature gets a bit in the synthetic
+  `ext` window (§4). Vendor-undocumented sets are treated the same way.
+- **Gates defined by CPU generation** (`umov`, `loadall`, `xbts`) use the
+  existing `cpu` level with `requireexact`, not a new bit.
 - **Presets must not change meaning.** `everything` keeps `ext = -1`, so
-  it picks up every new `ext` bit automatically. It does *not* set `oem`
-  bits, so opt-in sets stay off.
+  it picks up every new `ext` bit automatically, including the synthetic
+  ones. Their mnemonics are new names, so enabling them changes no
+  existing instruction's bytes.
 
 ### 3.5 Gate code (first lines of the CALM body)
 - **One feature:** `call x86.require.NAME`.
@@ -288,8 +302,7 @@ or expected error:
 5. **Neighbours:** the byte-collision neighbours from §3.3 still assemble
    to their old bytes.
 6. **Presets:** the probe (§6) shows every new mnemonic defined under
-   `use everything`. Opt-in sets stay undefined until their file is
-   included.
+   `use everything`, with no extra include.
 
 ---
 
@@ -307,22 +320,16 @@ or expected error:
 | 224 | 80000001h:ECX    | `SVM` (2), `LZCNT` (5), `SSE4A` (6), `PRFCHW` (8), `XOP` (11), `SKINIT` (12), `LWP` (15), `FMA4` (16), `TBM` (21), `MONITORX` (29). `SVM` and `SKINIT` are already defined. |
 | 256 | 80000001h:EDX    | `3DNow` (31, unchanged) + `3DNowExt` (30) |
 | 288 | 80000008h:EBX    | `CLZERO` (0), `INVLPGB` (3), `RDPRU` (4), `MCOMMIT` (8), `WBNOINVD` (9) |
-| 320 | 8000001Fh:EAX    | `SEV_ES` (3), `SEV_SNP` (4, XED `SNP`), `RMPQUERY` (6, *verify*: XED has no entry) |
+| 320 | 8000001Fh:EAX    | `SEV_ES` (3, defined), `SEV_SNP` (4, XED `SNP`), `RMPQUERY` (6, *verify*: XED has no entry) |
 | 352 | 14h.0:EBX        | `PTWRITE` (4). XED also requires Intel PT (7.0:EBX[25]), so add `INTEL_PT: ext \| 32 + 25` and gate on both. |
 | 384 | 12h.0:EAX        | `ENCLV` (5, *verify*: XED's `sgx-enclv` has no CPUID entry) |
 | 416 | C000_0001h:EDX   | VIA/Zhaoxin PadLock "present" bits: `PADLOCK_RNG` (2), `PADLOCK_ACE` (6), `PADLOCK_ACE2` (8), `PADLOCK_PHE` (10), `PADLOCK_PMM` (12) |
-| 480 | synthetic        | `TDX` (0). No CPUID bit: TDX is detected through SEAM/MSRs. |
+| 480 | synthetic        | Features with no CPUID bit: `TDX` (0), detected through SEAM/MSRs; `CYRIX` (1); `GEODE` (2); `IA64` (3) for `jmpe` |
 
-Separate items that `everything` does not set:
+The one new kind of setting is for AVX10, which the hardware reports as a
+version number (CPUID 24h:EBX[7:0]), not as a bit:
 
 ```
-	; Vendor-undocumented / historical opcodes, opt-in only (never set by "everything")
-	Cyrix:		oem | 0
-	Geode:		oem | 1
-	UNDOC:		oem | 2		; umov, FPU alias opcodes
-	IA64:		oem | 3		; jmpe
-
-	; AVX10 is versioned (CPUID 24h:EBX[7:0]), not a bit
 	AVX10.1:	avx10 = 1
 	AVX10.2:	avx10 = 2
 ```
@@ -344,6 +351,9 @@ Each entry gives: **file** · **include point** · **gate** · **modes** ·
   - `SKINIT` for `skinit`.
   - Any-of `SVM`/`SKINIT` for `stgi`. The APM allows STGI when either bit
     is set.
+  - `SEV_ES` for `vmgexit` (`F3 0F 01 D9`, *APM*). An SEV-ES guest uses it
+    to exit to the hypervisor. It lives here because it is `vmmcall` with
+    an F3 prefix; its gate is separate.
 - **Modes:** all code modes. Protected mode is a run-time requirement, not
   something the assembler can check.
 - **Encoding:** `0F 01 D8/DA/DB` (`vmrun`/`vmload`/`vmsave`), `D9`
@@ -360,7 +370,9 @@ Each entry gives: **file** · **include point** · **gate** · **modes** ·
 **Status: implemented on branch `win32`.**
 - `bb403a8 fix SVM support` added `include/iset/svm.inc`, the `SVM` and
   `SKINIT` table lines, and `x86.store_address_prefix`.
-- The follow-up commit on this branch closes four gaps found in review:
+- Follow-up commits on this branch close four gaps found in review, add
+  `vmgexit`, and include the file from `x86-2.inc` (it was the only `iset`
+  file left out):
 
 | # | Case | Before | After |
 |---|------|--------|-------|
@@ -399,20 +411,19 @@ Gates checked:
 | SVM only    | assembles | `SKINIT or higher required` | assemble |
 | neither     | `SVM or SKINIT required` | refused | refused |
 
+`vmgexit`: `F3 0F 01 D9` in all three modes, and `vmgexit rax` → `extra
+characters on line`. With only SEV_ES set, `vmgexit` assembles and
+`vmmcall` → `SVM or higher required`. With only SVM set, `vmgexit` →
+`SEV_ES or higher required`. No local tool knows `vmgexit` (§6.1), so the
+bytes come from the APM.
+
 **Regression check:** `C:\git\_vm\svm_labs` (UEFI SVM bring-up labs) uses
 `vmsave/vmrun/vmload rax`, `clgi`, `stgi` and `vmmcall`. All four stages
-build byte-identical images with the `bb403a8` and the fixed `svm.inc`. The
-labs only use explicit `rax` in 64-bit mode, so the bare, 16/32-bit and
-SKINIT-only cases above are covered by the byte tests, not by the labs.
-
-**Still open: the include point (§3.2).** Every other `include/iset` file
-(19 of 20) is pulled in by `x86-2.inc`. `svm.inc` is the only one that
-isn't, which is why `svm_labs` has its own `include 'iset/svm.inc'`. AMD-V
-is a documented CPUID feature, not a vendor-undocumented set, so §3.1/§3.2
-put it in the GPR group after `uintr.inc` with the other system
-extensions. If it is added there, the explicit include in `svm_labs`
-should be dropped: a second include would define every SVM mnemonic a
-second time.
+build byte-identical images with `bb403a8` and with this branch, even though
+the labs still `include 'iset/svm.inc'` themselves: the second definition
+only stacks. That line is now redundant and can be removed. The labs only
+use explicit `rax` in 64-bit mode, so the bare, 16/32-bit and SKINIT-only
+cases above rest on the byte tests, not on the labs.
 
 ### 5.2 Dual-encoded vector families (move and merge)
 
@@ -495,7 +506,7 @@ new VEX instructions.
 
 | File | Include point | Gate | Mnemonics → bytes | Must reject |
 |------|---------------|------|-------------------|-------------|
-| `sev.inc` | GPR group | `SEV_ES` · `SEV_SNP` · `RMPQUERY` | `vmgexit` → `F3 0F 01 D9` (*APM*); `pvalidate` → `F2 0F 01 FF`; `rmpadjust` → `F3 0F 01 FE`; `rmpupdate` → `F2 0F 01 FE`; `psmash` → `F3 0F 01 FF`; `rmpquery` → `F3 0F 01 FD` | Any implicit operands that are written must be the architectural registers (rAX, rCX, rDX, as for SVM). Collisions: `vmmcall` (`0F 01 D9`), `invlpgb`/`tlbsync`/`rdpru` (no prefix), `mcommit` (`F3 0F 01 FA`). |
+| `sev.inc` | GPR group | `SEV_SNP` · `RMPQUERY` | (`vmgexit` is in `svm.inc`, §5.1); `pvalidate` → `F2 0F 01 FF`; `rmpadjust` → `F3 0F 01 FE`; `rmpupdate` → `F2 0F 01 FE`; `psmash` → `F3 0F 01 FF`; `rmpquery` → `F3 0F 01 FD` | Any implicit operands that are written must be the architectural registers (rAX, rCX, rDX, as for SVM). Collisions: `vmmcall` (`0F 01 D9`), `invlpgb`/`tlbsync`/`rdpru` (no prefix), `mcommit` (`F3 0F 01 FA`). |
 | `amd.inc` | GPR group | `MONITORX` · `CLZERO` · `RDPRU` · `MCOMMIT` · `INVLPGB` | `monitorx` → `0F 01 FA`; `mwaitx` → `0F 01 FB`; `clzero` → `0F 01 FC`; `rdpru` → `0F 01 FD`; `mcommit` → `F3 0F 01 FA` (*APM*); `invlpgb` → `0F 01 FE`; `tlbsync` → `0F 01 FF` | Wrong implicit registers. Address size for `monitorx`/`clzero` follows the same rAX rule as SVM; copy the existing `monitor` and `umonitor` handling. |
 | `sse4a.inc` | after `sse4.inc` | `SSE4A` | `extrq xmm,imm8,imm8` → `66 0F 78 /0 ib ib`; `extrq xmm,xmm` → `66 0F 79`; `insertq xmm,xmm,imm8,imm8` → `F2 0F 78`; `insertq xmm,xmm` → `F2 0F 79`; `movntsd m64,xmm` → `F2 0F 2B`; `movntss m32,xmm` → `F3 0F 2B` | Memory for `extrq`/`insertq`; registers for `movnt*`. Collision: `0F 78/79` without a prefix are `vmread`/`vmwrite`. |
 | `3dnow.inc` (in place) | — | `3DNowExt` | add `pswapd`, `pfnacc`, `pfpnacc`, `pf2iw` (`0F 0F /r` + suffix `BB/8A/8E/1C`). Move the existing `pi2fw` (`0C`) out of the 3DNow `iterate` and onto 3DNowExt. This is a behaviour change: it is refused under plain `use 3DNow`. | Non-MMX operands |
@@ -521,15 +532,22 @@ new VEX instructions.
 | `tbm.inc` | `TBM` | `blcfill`, `blci`, `blcic`, `blcmsk`, `blcs`, `blsfill`, `blsic`, `t1mskc`, `tzmsk` (XOP map 9). **`bextr r, r/m, imm32` (XOP map A, `8F EA 78 10 … id`) is an extra form of BMI1's `bextr`.** Add it in place in `bmi.inc`: an immediate third operand requires `TBM`, a register requires `BMI1`. Do not redefine it in `tbm.inc`. |
 | `lwp.inc` | `LWP` | `llwpcb r`, `slwpcb r` (XOP.9 12 /0 /1), `lwpins`, `lwpval r, r/m32, imm32` (XOP.A 12 /0 /1) |
 
-### 5.7 Opt-in historical and vendor sets (not included by default)
+### 5.7 Historical and vendor sets
 
-| File | Gate | Contents | Why opt-in |
-|------|------|----------|------------|
-| `cyrix.inc` | `oem` `Cyrix` (+ `requireexact` CPU where the encoding varies by generation) | `smint`, `dmint`, `rdm`, `rdshr`, `wrshr`, `svdc`, `rsdc`, `svldt`, `rsldt`, `svts`, `rsts`, `cpu_read`, `cpu_write`; EMMI `paveb`, `paddsiw`, `pmagw`, `pdistib`, `pmachriw`, `pmvzb`, … | Their opcodes are now the `0F 38`/`0F 3A` escapes, VMX `0F 78/79`, and the SSE `0F 5x` space |
-| `cyrix.inc` (Geode section) | `oem` `Geode` | `pfrcpv`, `pfrsqrtv` (`0F 0F /r 86/87`) | Geode GX only |
-| `padlock.inc` | `PADLOCK_*` (real CPUID bits) | `xstore`/`xstorerng` → `0F A7 C0`; `xcrypt{ecb,cbc,ctr,cfb,ofb}` → `F3 0F A7 C8/D0/D8/E0/E8`; `xsha1`/`xsha256` → `F3 0F A6 C8/D0`; `montmul` → `F3 0F A6 C0`; Zhaoxin GMI `ccs_hash`/`ccs_encrypt` (*verify*) | Same bytes as `xbts`/`ibts` (`0F A6/A7`) |
-| `undoc.inc` | `oem` `UNDOC` + `requireexact` CPU | `umov` (386/486, `0F 10–13`); FPU alias opcodes `fstp1`, `fstp8`, `fstp9`, `fxch4`, `fxch7`, `fcom2`, `fcomp3`, `fcomp5` | `umov` collides with SSE `movups`/`movlps`, … |
-| `ia64.inc` | `oem` `IA64` | `jmpe r/m` (`0F 00 /6`), `jmpe rel` (`0F B8`) | `0F 00 /6` with `F2` is `lkgs`; `0F B8` with `F3` is `popcnt` |
+These files are included by `x86-2.inc` like any other (§3.2). They are
+gated by synthetic `ext` bits, by real CPUID bits, or by exact CPU level.
+Their opcode bytes overlap modern instructions, but their mnemonics do
+not, so having them defined changes nothing for existing code. The
+"Collides with" column lists the neighbours that the §3.8 neighbour tests
+must keep stable.
+
+| File | Gate | Contents | Collides with |
+|------|------|----------|---------------|
+| `cyrix.inc` | `CYRIX` (synthetic) | `smint`, `dmint`, `rdm`, `rdshr`, `wrshr`, `svdc`, `rsdc`, `svldt`, `rsldt`, `svts`, `rsts`, `cpu_read`, `cpu_write`; EMMI `paveb`, `paddsiw`, `pmagw`, `pdistib`, `pmachriw`, `pmvzb`, … | the `0F 38`/`0F 3A` escapes, VMX `0F 78/79`, the SSE `0F 5x` space |
+| `cyrix.inc` (Geode section) | `GEODE` (synthetic) | `pfrcpv`, `pfrsqrtv` (`0F 0F /r 86/87`) | 3DNow suffix space |
+| `padlock.inc` | `PADLOCK_*` (C000_0001h:EDX) | `xstore`/`xstorerng` → `0F A7 C0`; `xcrypt{ecb,cbc,ctr,cfb,ofb}` → `F3 0F A7 C8/D0/D8/E0/E8`; `xsha1`/`xsha256` → `F3 0F A6 C8/D0`; `montmul` → `F3 0F A6 C0`; Zhaoxin GMI `ccs_hash`/`ccs_encrypt` (*verify*) | `xbts`/`ibts` (`0F A6/A7`) |
+| `undoc.inc` | exact CPU level (`requireexact 80386`/`80486`) for `umov`; `fpu` for the aliases | `umov` (`0F 10–13`); FPU alias opcodes `fstp1`, `fstp8`, `fstp9`, `fxch4`, `fxch7`, `fcom2`, `fcomp3`, `fcomp5` | SSE `movups`/`movlps`, … |
+| `ia64.inc` | `IA64` (synthetic) | `jmpe r/m` (`0F 00 /6`), `jmpe rel` (`0F B8`) | `lkgs` (`F2 0F 00 /6`), `popcnt` (`F3 0F B8`) |
 
 `loadall` already exists (gated with `requireexact` on 80286/80386). The
 probe in §6 reported it missing only because `everything` is not an 80286
@@ -618,8 +636,8 @@ How each source feeds the work:
    G5 (`1to32`), G2 (`lzcnt`; a behaviour change, so record it in the
    changelog). Add the table lines from §4 with their files, not ahead of
    them, so no gate exists without a mnemonic behind it.
-2. **`svm.inc`**: done (S1–S4 closed). Deciding whether it is included by
-   default is still open. Next come **`sev.inc` and `amd.inc`**.
+2. **`svm.inc`**: done (S1–S4 closed, `vmgexit` added, included by
+   `x86-2.inc`). Next come **`sev.inc` and `amd.inc`**.
    These are GPR-only and low-risk, and they establish the CALM style.
 3. **`vnni.inc`, `ifma.inc`, `bf16.inc`** (the move-and-merge pattern),
    then `sha512.inc`, `sm.inc`, `vp2intersect.inc`, and the AMX in-place
@@ -629,5 +647,5 @@ How each source feeds the work:
 5. **`avx512_fp16.inc`** (largest table).
 6. **XOP encoder change**, then `xop.inc`, `fma4.inc`, `tbm.inc`,
    `lwp.inc`, and `sse4a.inc` with the `3dnow.inc` additions.
-7. **Opt-in legacy files.**
+7. **Historical and vendor files** (§5.7).
 8. **APX / AVX10.2**, as a separate design.

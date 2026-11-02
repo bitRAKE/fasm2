@@ -206,6 +206,8 @@ end macro
 	; CPUID.(EAX=80000001H):EDX
 	RDTSCP: 		ext | 256 + 27
 	3DNow:			ext | 256 + 31
+	; CPUID.(EAX=8000001FH):EAX
+	SEV_ES: 		ext | 320 + 3
 
 	; Some CPU presets:
 
@@ -4130,6 +4132,7 @@ include 'iset/vmx.inc'
 include 'iset/mpx.inc'
 include 'iset/cet.inc'
 include 'iset/uintr.inc'
+include 'iset/svm.inc'
 
 macro xacquire? instr&
 	require HLE
