@@ -11,7 +11,8 @@ only proves the valid forms assemble is not finished.
 
 All encodings quoted below were checked against `llvm-mc` 22.1.4
 (`llvm-mc -triple=x86_64 --show-encoding`), except where marked *APM* (AMD
-manual) or *verify*.
+manual) or *verify*. CPUID bits were checked against XED's `cpuid.xed.txt`
+tables (§6.2).
 
 ---
 
@@ -237,8 +238,8 @@ Each addition must settle all of the following. The per-extension plans in
 - **Implicit operands** (`vmrun rax`, `invlpga rax,ecx`, `skinit eax`,
   `monitorx`, `clzero`) are optional. When written, they must name exactly
   the architectural register.
-- The rAX operand means *address size*: it emits `67h` and never
-  `66h`/`REX.W` (§5.1).
+- The rAX operand means *address size*: use `x86.store_address_prefix`,
+  which emits `67h` and never `66h`/`REX.W` (§5.1).
 
 ### 3.7 Encoding path
 - **Fixed bytes:** use `emit`.
@@ -283,12 +284,12 @@ or expected error:
 | 128 | 7.1:EAX          | `HRESET` (22, unchanged) + `SHA512` (0), `SM3` (1), `SM4` (2), `RAO_INT` (3), `AVX_VNNI` (4), `AVX512_BF16` (5), `CMPCCXADD` (7), `FRED` (17), `LKGS` (18), `WRMSRNS` (19), `AMX_FP16` (21), `AVX_IFMA` (23), `MSRLIST` (27) |
 | 160 | 0Dh.1:EAX        | `XSAVEOPT` (0), `XSAVEC` (1), `XSS` (3): moved from 128 (G1) |
 | 192 | 7.1:EDX          | `AVX_VNNI_INT8` (4), `AVX_NE_CONVERT` (5), `AMX_COMPLEX` (8), `AVX_VNNI_INT16` (10), `PREFETCHI` (14), `USER_MSR` (15) |
-| 224 | 80000001h:ECX    | `SVM` (2), `LZCNT` (5), `SSE4A` (6), `PRFCHW` (8), `XOP` (11), `SKINIT` (12), `LWP` (15), `FMA4` (16), `TBM` (21), `MONITORX` (29). Window 224 matches `C:\adv_g\iset\svm.inc`. |
+| 224 | 80000001h:ECX    | `SVM` (2), `LZCNT` (5), `SSE4A` (6), `PRFCHW` (8), `XOP` (11), `SKINIT` (12), `LWP` (15), `FMA4` (16), `TBM` (21), `MONITORX` (29). `SVM` and `SKINIT` are already defined. |
 | 256 | 80000001h:EDX    | `3DNow` (31, unchanged) + `3DNowExt` (30) |
 | 288 | 80000008h:EBX    | `CLZERO` (0), `INVLPGB` (3), `RDPRU` (4), `MCOMMIT` (8), `WBNOINVD` (9) |
-| 320 | 8000001Fh:EAX    | `SEV_ES` (3), `SEV_SNP` (4), `RMPQUERY` (6, *verify*) |
-| 352 | 14h.0:EBX        | `PTWRITE` (4) |
-| 384 | 12h.0:EAX        | `ENCLV` (5, *verify*) |
+| 320 | 8000001Fh:EAX    | `SEV_ES` (3), `SEV_SNP` (4, XED `SNP`), `RMPQUERY` (6, *verify*: XED has no entry) |
+| 352 | 14h.0:EBX        | `PTWRITE` (4). XED also requires Intel PT (7.0:EBX[25]), so add `INTEL_PT: ext \| 32 + 25` and gate on both. |
+| 384 | 12h.0:EAX        | `ENCLV` (5, *verify*: XED's `sgx-enclv` has no CPUID entry) |
 | 416 | C000_0001h:EDX   | VIA/Zhaoxin PadLock "present" bits: `PADLOCK_RNG` (2), `PADLOCK_ACE` (6), `PADLOCK_ACE2` (8), `PADLOCK_PHE` (10), `PADLOCK_PMM` (12) |
 | 480 | synthetic        | `TDX` (0). No CPUID bit: TDX is detected through SEAM/MSRs. |
 
@@ -336,93 +337,57 @@ Each entry gives: **file** · **include point** · **gate** · **modes** ·
   - `skinit` with anything other than `eax`.
   - `invlpga` with an ASID operand other than `ecx`.
 
-**Review of `C:\adv_g\iset\svm.inc`.** I assembled it against this tree
-with a stub `x86.require.SVM`:
+**Status: implemented on branch `win32`.**
+- `bb403a8 fix SVM support` added `include/iset/svm.inc`, the `SVM` and
+  `SKINIT` table lines, and `x86.store_address_prefix`.
+- The follow-up commit on this branch closes four gaps found in review:
 
-| Input | Produced | Correct |
-|-------|----------|---------|
-| `use64` `vmrun rax` | `48 0F C8` (that is `bswap rax`) | `0F 01 D8` |
-| `use64` `vmrun eax` | `0F C8` | `67 0F 01 D8` |
-| `use32` `vmrun eax` | `0F C8` | `0F 01 D8` |
-| `use16` `vmrun ax`  | error   | `0F 01 D8` |
-| `use64` `vmrun`     | `missing argument` | `0F 01 D8` (operand is implicit) |
-| `use64` `invlpga rax,ecx` | `invalid argument` | `0F 01 DF` |
+| # | Case | Before | After |
+|---|------|--------|-------|
+| S1 | bare `invlpga` under `use32`/`use16` | `invalid operand size` (the default `addr:rax`) | `0F 01 DF` |
+| S2 | bare `vmrun`/`vmload`/`vmsave` | `missing argument` | `0F 01 D8/DA/DB` |
+| S3 | `skinit` gate | `SVM` | `SKINIT`. With only SVM set, `skinit` is now refused. |
+| S4 | `stgi` gate | `SVM` | SVM **or** SKINIT |
 
-Causes:
-1. `xcall x86.store_instruction@dest, (0Fh),(01h),(opcode)` passes the
-   opcode bytes as `opcode`, `reg` and `imm_size`. The routine then emits
-   `0F` followed by a ModRM byte for `rm=0, reg=1`, which gives `C8`. These
-   instructions have a fixed ModRM, so they should simply `emit` the bytes.
-2. `x86.select_operand_prefix` produces `66h`/`REX.W`. The rAX operand of
-   these instructions selects the **address** size, which is the `67h`
-   prefix.
-3. The `invlpga` call has no `reg` argument (`store_instruction@dest,
-   <…>`), which makes it an invalid call.
-4. `vmrun`, `vmload`, `vmsave` and `invlpga` declare their operands as
-   required, but the APM writes them as implicit.
-5. `skinit` is gated on `SVM`. SKINIT has its own bit (80000001h:ECX[12]),
-   and `stgi` also has to accept SKINIT-only parts.
-6. Smaller points:
-   - `0x…` literals work, but the rest of the tree writes `…h`.
-   - Labels at column 0 are fine, but the tree indents them by four
-     spaces.
+The fix makes both rAX operands optional: when the operand is omitted,
+`x86.store_address_prefix` is skipped and no `67h` is emitted.
 
-The corrected form below was assembled and checked:
+Byte results, all matching `llvm-mc`:
 
-```
-; implicit rAX address operand: address size selects 67h, never 66h/REX.W
-calminstruction SVM.address_operand operand
-	match	, operand
-	jyes	done
-	call	x86.parse_operand@dest, operand
-	check	@dest.type = 'reg' & @dest.rm = 0 & @dest.size > 1
-	jno	invalid
-	check	@dest.size shl 3 = x86.mode
-	jyes	done
-	check	@dest.size = 8 | (@dest.size = 2 & x86.mode = 64)
-	jyes	invalid
-	emit	1, 67h
-	exit
-    invalid:
-	err	'invalid operand'
-    done:
-end calminstruction
+| Input | Bytes |
+|-------|-------|
+| `vmrun`, `invlpga`: bare, in every mode | `0F 01 D8`, `0F 01 DF` |
+| `use64` `vmrun rax` / `vmrun eax` | `0F 01 D8` / `67 0F 01 D8` |
+| `use32` `vmrun eax` / `vmrun ax`  | `0F 01 D8` / `67 0F 01 D8` |
+| `use16` `vmrun ax` / `vmrun eax`  | `0F 01 D8` / `67 0F 01 D8` |
+| `vmload rax`, `vmsave eax` (64-bit) | `0F 01 DA`, `67 0F 01 DB` |
+| `vmmcall`, `stgi`, `clgi`, `skinit` | `0F 01 D9`, `DC`, `DD`, `DE` |
+| `invlpga rax,ecx`, `invlpga eax,ecx` (64-bit), `invlpga ax,ecx` (32-bit) | `0F 01 DF`, `67 0F 01 DF`, `67 0F 01 DF` |
 
-iterate <instr,modrm>, vmrun,0D8h, vmload,0DAh, vmsave,0DBh
+Refused, as required:
+- `vmrun ax` or `invlpga ax,ecx` (64-bit), `vmrun rax` (32-bit) and
+  `vmrun al` → `invalid operand size`
+- `vmrun rbx`, `vmrun [rax]` → `only rAX register supported`
+- `skinit ax`/`rax` → `register EAX expected`
+- `invlpga rax,rcx`, `invlpga rbx,ecx` → `invlpga operands must be rAX and ECX`
 
-	calminstruction instr? addr
-		call	x86.require.SVM
-		call	SVM.address_operand, addr
-		emit	1, 0Fh
-		emit	1, 01h
-		emit	1, modrm
-	end calminstruction
+Gates checked:
 
-end iterate
+| `x86.ext` | `stgi` | `skinit` | `clgi`/`vmrun` |
+|-----------|--------|----------|----------------|
+| SKINIT only | assembles | assembles | `SVM or higher required` |
+| SVM only    | assembles | `SKINIT or higher required` | assemble |
+| neither     | `SVM or SKINIT required` | refused | refused |
 
-calminstruction stgi?
-	check	x86.ext and (x86.SVM.ext or x86.SKINIT.ext)
-	jyes	supported
-	err	'SVM or SKINIT required'
-    supported:
-	emit	1, 0Fh
-	emit	1, 01h
-	emit	1, 0DCh
-end calminstruction
-```
+**Regression check:** `C:\git\_vm\svm_labs` (UEFI SVM bring-up labs) uses
+`vmsave/vmrun/vmload rax`, `clgi`, `stgi` and `vmmcall`. All four stages
+build byte-identical images with the `bb403a8` and the fixed `svm.inc`. The
+labs only use explicit `rax` in 64-bit mode, so the bare, 16/32-bit and
+SKINIT-only cases above are covered by the byte tests, not by the labs.
 
-`vmmcall` and `clgi` take no operands and emit their bytes directly. `skinit
-[eax]` and `invlpga [addr[,ecx]]` follow the same pattern.
-
-Results, all as expected:
-- `vmrun` / `vmrun rax` (64-bit) → `0F 01 D8`
-- `vmrun eax` (64-bit) → `67 0F 01 D8`
-- `vmrun ax` (32-bit) → `67 0F 01 D8`
-- `vmrun eax` (16-bit) → `67 0F 01 D8`
-- `vmrun rbx`, `vmrun [rax]`, `vmrun ax` (64-bit) and `skinit rax` → `invalid operand`
-- `invlpga eax,ecx` → `67 0F 01 DF`
-- `invlpga rax,rcx` → `invalid operand`
-- SKINIT-only: `stgi` assembles, `clgi` → `SVM required`
+**Still open:** `x86-2.inc` does not include `svm.inc`, so it is opt-in
+today. Under §1.1 it belongs in the GPR group after `uintr.inc`. Whether to
+include it by default is your decision.
 
 ### 5.2 Dual-encoded vector families (move and merge)
 
@@ -576,16 +541,49 @@ or 80386.
 bytes with the expected value. Gate cases set `x86.ext` explicitly
 (`x86.ext = x86.SKINIT.ext`, …) and expect the `… required` message.
 
-**Reference.** Use
-`"C:\Program Files\LLVM\bin\llvm-mc.exe" -triple=x86_64 --show-encoding`
-(also `-triple=i386` and `-triple=i386 -code16` for other modes).
+### 6.1 Assemblers and disassemblers
 
-llvm-mc 22.1.4 does not cover:
-- `vmgexit` and `mcommit`
-- `monitorx`/`mwaitx` operand syntax
+| Tool | Path | Use |
+|------|------|-----|
+| llvm-mc 22.1.4 (release) | `C:\Program Files\LLVM\bin\llvm-mc.exe` | Reference encodings: `-triple=x86_64 --show-encoding` (also `-triple=i386`, and `-triple=i386 -code16`). Add `-disassemble` to decode hex bytes. |
+| LLVM 23.0.0git (local build, assertions on) | `C:\git\llvm-project\build-native\bin` | The same tools at the current upstream level: `llvm-mc`, `llvm-objdump`, `llvm-tblgen`, `llvm-mca`, `llvm-exegesis`, `llc`, `clang`, `lld-link`. Prefer it when an extension is new enough that the release may lag. `llvm-tblgen` can dump X86 instruction records for whole-family comparisons. |
+| XED | `C:\third_party\xed\obj\wkit\bin\xed.exe` | Intel's decoder. `xed -64 -d <hex>` gives ICLASS, category, ISA set and extension. Its `-e` encoder needs full operand syntax; bare mnemonics fail. |
+| ZydisInfo | `C:\git\zyantific\zydis\build\llvm-native-release\ZydisInfo.exe` | `ZydisInfo -64 <hex bytes…>` gives a full decode with map, opcode, effective operand/address size and per-flag actions. It is a second, independent decoder for checking fasm2 output. |
+
+None of these covers:
+- `vmgexit` (`F3 0F 01 D9`): both decoders report it as `vmmcall`, and neither LLVM version accepts it.
+- `mcommit` assembly. Zydis does decode `F3 0F 01 FA` as `mcommit`.
+- `rmpread`
 - Cyrix and other historical sets
 
 Use the APM/SDM for those.
+
+### 6.2 Data sources: `C:\git\x86-cvb\data`
+
+`x86-cvb` mirrors upstream instruction databases. Each has a pinned commit
+or SHA-256 in `data\sources.lock.json`; refresh them with
+`python tools\fetch_sources.py`.
+
+| Source | Location | What it gives iset work |
+|--------|----------|-------------------------|
+| **XED datafiles** (intelxed/xed) | `data\src\xed\datafiles\<ext>\` | This is the CPUID truth for gating. Each `cpuid*.xed.txt` maps an ISA set to `name.leaf.subleaf.reg.bit`, e.g. `XED_ISA_SET_LZCNT: lzcnt.80000001.0.ecx.5`. It also lists **multi-bit requirements**, for example: `AMX_FP16` = `amx_tiles.7.0.edx.24` + `amx_fp16.7.1.eax.21`; `SM3` = `sm3.7.1.eax.1` + `avx.1.0.ecx.28`; `PTWRITE` = Intel PT + `14.0.ebx.4`; AVX512_FP16 128/256 = `avx512_fp16` + `avx512vl`. The `*-isa.xed.txt` files hold encoding patterns per form. There are about 100 extension folders, including `apx-f`, `avx10-*`, `amd`, `via` and `evex-map5-6`. |
+| **zydis-db** | `data\src\zydis-db\datafiles\instructions.json` | One record per encodable form: mnemonic, encoding (legacy/VEX/EVEX/XOP/3DNow/MVEX), map, opcode, prefixes, operand specs, ISA set/extension, CPU flags and exception class. It is the best source for generating test cases that cover every form. |
+| **Zydis** source | `data\src\zydis` | The decoder and encoder library that ZydisInfo is built from. Its tests are a corpus of tricky encodings. |
+| **sail-x86-from-acl2** | `data\src\sail-x86-from-acl2` | Formal semantics. It is not needed for encoding, but it is the reference when an instruction's side effects matter. |
+| `x86.csv` (golang/arch) | `data\x86.csv` | A compact table of Intel syntax, Go syntax, encoding and CPUID feature. It is easy to `grep` for one mnemonic. |
+| `uops-instructions.xml` (uops.info) | `data\uops-instructions.xml` | Measured latency and throughput per form and microarchitecture, plus an IACA-style ISA extension label. It is large (about 140 MB). |
+
+How each source feeds the work:
+1. **§4 table lines:** take the bit from XED's `cpuid*.xed.txt`. Where XED
+   lists several bits, the gate checks all of them. Where XED has `n/a`
+   (SVM, TDX, INVLPGB), cite the APM/SDM in the table comment.
+2. **Test cases:** generate every form from zydis-db for the extension's
+   ISA set. Assemble each form with fasm2 and with `llvm-mc` and compare
+   the bytes. Then decode fasm2's bytes with `xed -d` and `ZydisInfo`, and
+   check that the ISA set matches the gate.
+3. **New gaps:** compare XED's extension folders with `include/iset`
+   to find extensions this document doesn't yet list, such as `movrs`,
+   `msr-imm`, `pbndkb`, `amx-dmr`, `sm4-evex` and `avx10-2`.
 
 ---
 
@@ -595,7 +593,8 @@ Use the APM/SDM for those.
    G5 (`1to32`), G2 (`lzcnt`; a behaviour change, so record it in the
    changelog). Add the table lines from §4 with their files, not ahead of
    them, so no gate exists without a mnemonic behind it.
-2. **`svm.inc`** (corrected template above) and **`sev.inc`, `amd.inc`**.
+2. **`svm.inc`**: done (S1–S4 closed). Deciding whether it is included by
+   default is still open. Next come **`sev.inc` and `amd.inc`**.
    These are GPR-only and low-risk, and they establish the CALM style.
 3. **`vnni.inc`, `ifma.inc`, `bf16.inc`** (the move-and-merge pattern),
    then `sha512.inc`, `sm.inc`, `vp2intersect.inc`, and the AMX in-place
