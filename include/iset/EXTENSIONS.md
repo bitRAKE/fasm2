@@ -94,16 +94,27 @@ These are easy to get wrong. Each one was confirmed while writing this note.
    calling the parser.** The parser errors on empty text.
 4. **Inside `iterate`, parameters are substituted when the
    `calminstruction` is defined**, so `emit 1, modrm` bakes the constant in.
-5. **A second definition turns a global into a variable.** Defined once,
-   a name works everywhere, even before its definition. Defined twice,
-   every use gets whichever definition precedes it, a use before both
-   fails, and nothing warns. For a mnemonic, the later definition silently
-   replaces the earlier one for all code that follows. That is how `xtest`
-   (G3), `vpmuldq` (G12) and `vcvtph2ps`/`vcvtps2ph` (G13) lost forms. The
-   same applies to constants such as `VEX_GPR` or `XOP_08_W0`: a user
-   source that assigns one of them changes every instruction assembled
-   after it. Run `tests/iset/_dupnames.py` (§3.3), which fails on any new
-   instruction name defined twice.
+5. **A second definition stacks; it does not just replace.** Defined once,
+   a name is global and works everywhere, even before its definition.
+   Defined again, it becomes a stack: each use gets the definition in
+   effect at that point, and a use before the first one fails. Inside a
+   stacked definition, the mnemonic's own name means the *earlier*
+   definition (`purge` pops back to it). That is the extension technique:
+   a later layer handles its new forms and, for anything else, says "not
+   for me, try the earlier one" by calling its own name. It works between
+   macros and CALM instructions in either direction (CALM reaches it with
+   `arrange`/`assemble`). In a macro, "pass it on" is an `if`/`else`
+   branch: `exit` exists only in CALM and is an illegal instruction in a
+   macro.
+
+   The trap is a later layer that does **not** pass on: it silently takes
+   over every form for all code that follows. That is how `xtest` (G3),
+   `vpmuldq` (G12), `vcvtph2ps`/`vcvtps2ph` (G13) and the MMX/SSE forms of
+   `movd`/`movq`/`pinsrw`/`pextrw`/`pmovmskb` (G14) lost forms or gained
+   the wrong gate. A layer must gate only its own forms. Constants are no
+   different: a user source that assigns `VEX_GPR` or `XOP_08_W0` changes
+   every instruction assembled after it. `tests/iset/_dupnames.py` (§3.3)
+   lists every reviewed stack and fails on any new name defined twice.
 
 ---
 
@@ -185,7 +196,7 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G13 are fixed. Each has a test in `tests/iset/` that passes on this branch
+G1–G14 are fixed. Each has a test in `tests/iset/` that passes on this branch
 and fails on the tree before the fix (see `tests/iset/readme.md`).
 
 | # | Defect | Effect | Fix | Test |
@@ -203,6 +214,7 @@ and fails on the tree before the fix (see `tests/iset/readme.md`).
 | G11 | `bndcl/bndcu/bndcn` called `x86.parse_operand @src,src` (same typo) | All three failed with `illegal instruction` in every form | `x86.parse_operand@src src` | `mpx_bndc.asm` |
 | G12 | `avx.inc` listed `vpmuldq` in two `iterate` blocks; the later, EVEX-only one replaced the VEX/EVEX one | `vpmuldq xmm/ymm` (AVX/AVX2) refused | Remove it from the later block | `redefinition.asm` |
 | G13 | `avx.inc` defined `vcvtph2ps`/`vcvtps2ph` twice; the later F16C VEX-only pair replaced the VEX+EVEX pair | AVX-512 forms (zmm, masks, `{sae}`) refused | One definition each: VEX needs F16C, EVEX needs AVX512F (`F16C.gate`) | `redefinition.asm` |
+| G14 | `sse2.inc`/`sse4.inc` redefined `movd`, `movq`, `pinsrw`, `pextrw`, `pmovmskb` to add xmm (and memory) forms with one blanket `require SSE2+`/`SSE4.1+` and never passed on | Older forms got the newer gate: `movd mm1, eax` needed SSE2; `pextrw eax, mm1, 1` and `pextrw eax, xmm1, 1` needed SSE4.1 | Each layer gates only its own forms and passes the rest to the earlier definition (`movd`, `pinsrw`, SSE4.1 `pextrw`), or gates per form where it also added forms (`movq` mm↔r64, r64 destinations) | `stacking.asm` |
 
 ---
 
@@ -257,8 +269,10 @@ Each addition must settle all of the following. The per-extension plans in
 ### 3.3 Mnemonic ownership
 - Run the probe (§6) before writing anything, to see whether the mnemonic
   already exists.
-- **If it exists, change it in place, in the file that owns it.**
-  Never shadow it from a new file.
+- **If it exists, change it in place, in the file that owns it**, or
+  stack a new layer over it that gates only its own forms and passes
+  every other form to the earlier definition by calling its own name
+  (§1.3 rule 5). Never replace it.
 - **`python tests/iset/_dupnames.py` must pass.** It fails on any
   instruction name defined twice that is not one of the reviewed,
   deliberate stacks listed in it.

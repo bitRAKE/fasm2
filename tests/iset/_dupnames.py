@@ -8,11 +8,16 @@ after it gets the new definition, silently. For a mnemonic that means the
 later file wins for all code that follows, including user code.
 G12 (vpmuldq) and G13 (vcvtph2ps/vcvtps2ph) were exactly that.
 
+A second definition is a stack: inside it, the mnemonic's own name means
+the earlier definition, so a later layer can handle its new forms and pass
+the rest down ("not for me, try the earlier one"). A layer that does not
+pass on takes over every form (G12, G13, G14).
+
 This scans include/x86-2.inc and include/iset/*.inc for `macro name?` and
 `calminstruction name?` definitions, expanding `iterate` lists, and fails on
-any name defined twice that is not in REVIEWED: deliberate stacks, where a
-later definition handles new forms and falls back to the earlier one
-(each checked to still assemble its earlier forms on 2026-11-02).
+any name defined twice that is not in REVIEWED: stacks whose earlier forms
+were checked to still assemble under their own gates (2026-11-02; the
+MMX/SSE ones by tests/iset/stacking.asm).
 Names it cannot expand are reported, not guessed.
 """
 import os, re, sys, collections

@@ -75,6 +75,7 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `avx512_sae.asm` | G10 | `{sae}` on vcvttps2qq/vcvttps2uqq (a mistyped parser call made it an illegal instruction). |
 | `mpx_bndc.asm` | G11 | bndcl/bndcu/bndcn assemble at all (same mistyped parser call); bytes checked with ZydisInfo. |
 | `redefinition.asm` | G12, G13 | Mnemonics shadowed by a second definition: vpmuldq VEX forms, vcvtph2ps/vcvtps2ph EVEX forms, vpmullq's DQ gate. |
+| `stacking.asm` | G14 | MMX/SSE forms of movd/movq/pinsrw/pextrw/pmovmskb keep their own gates under the SSE2/SSE4.1 layers stacked over them. |
 
 `_dupnames.py` is a separate check: `python tests/iset/_dupnames.py` fails on any
 instruction name defined twice in `include/` that is not a reviewed, deliberate

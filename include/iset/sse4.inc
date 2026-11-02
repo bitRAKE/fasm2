@@ -137,12 +137,17 @@ macro pextrb? dest*,src*,sel*
 	end if
 end macro
 
+; Stacked over sse2.inc's pextrw: only the memory destination is SSE4.1;
+; register destinations are passed to the earlier definition.
 macro pextrw? dest*,src*,sel*
-	require SSE4.1+
 	x86.parse_operand@dest dest
 	SSE.parse_operand@src src
 	x86.parse_operand@aux sel
-	if @dest.type = 'reg' & @src.type = 'mmreg' & @aux.type = 'imm'
+	if @dest.type <> 'mem'
+		pextrw dest,src,sel
+	else if x86.simd < x86.SSE4.1.simd
+		require SSE4.1+
+	else if @dest.type = 'reg' & @src.type = 'mmreg' & @aux.type = 'imm'
 		if x86.mode = 64 & @dest.size = 8
 			@dest.size = 4
 		end if

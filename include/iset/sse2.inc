@@ -368,11 +368,20 @@ iterate <instr,ext>, paddq,0D4h, pmuludq,0F4h, psubq,0FBh
 	end macro
 end iterate
 
+; Stacked over mmx.inc's movq: xmm forms need SSE2 and the mm <-> r64 forms
+; need MMX (they are only here); the other mm forms are passed to the
+; earlier definition.
 macro movq? dest*,src*
-	require SSE2+
 	SSE.parse_operand@dest dest
 	SSE.parse_operand@src src
-	if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'mmreg')
+	if (@dest.type = 'mmreg' & @dest.size = 16) | (@src.type = 'mmreg' & @src.size = 16)
+		require SSE2+
+	else if @dest.type = 'reg' | @src.type = 'reg'
+		require MMX+
+	end if
+	if ~ ((@dest.type = 'mmreg' & @dest.size = 16) | (@src.type = 'mmreg' & @src.size = 16) | @dest.type = 'reg' | @src.type = 'reg')
+		movq dest,src
+	else if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'mmreg')
 		if (@src.type = 'mem' & @src.size and not 8) | (@src.type = 'mmreg' & @src.size <> @dest.size)
 			err 'invalid operand size'
 		end if
@@ -415,11 +424,16 @@ macro movq? dest*,src*
 	end if
 end macro
 
+; Stacked over mmx.inc's movd: xmm forms need SSE2; mm forms are passed to
+; the earlier definition (MMX).
 macro movd? dest*,src*
-	require SSE2+
 	SSE.parse_operand@dest dest
 	SSE.parse_operand@src src
-	if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'reg')
+	if ~ ((@dest.type = 'mmreg' & @dest.size = 16) | (@src.type = 'mmreg' & @src.size = 16))
+		movd dest,src
+	else if x86.simd < x86.SSE2.simd
+		require SSE2+
+	else if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'reg')
 		if @src.size and not 4
 			err 'invalid operand size'
 		end if
@@ -436,12 +450,17 @@ macro movd? dest*,src*
 	end if
 end macro
 
+; Stacked over sse.inc's pinsrw: the xmm form needs SSE2; the mm form is
+; passed to the earlier definition (SSE).
 macro pinsrw? dest*,src*,sel*
-	require SSE2+
 	SSE.parse_operand@dest dest
 	x86.parse_operand@src src
 	x86.parse_operand@aux sel
-	if @dest.type = 'mmreg' & (@src.type = 'reg' | @src.type = 'mem') & @aux.type = 'imm'
+	if ~ (@dest.type = 'mmreg' & @dest.size = 16)
+		pinsrw dest,src,sel
+	else if x86.simd < x86.SSE2.simd
+		require SSE2+
+	else if @dest.type = 'mmreg' & (@src.type = 'reg' | @src.type = 'mem') & @aux.type = 'imm'
 		if (@src.type = 'reg' & @src.size <> 4) | (@src.type = 'mem' & @src.size and not 2) | @aux.size and not 1
 			err 'invalid operand size'
 		end if
@@ -452,11 +471,17 @@ macro pinsrw? dest*,src*,sel*
 	end if
 end macro
 
+; Replaces sse.inc's pextrw (and adds r64 destinations): the xmm source
+; needs SSE2, the mm source SSE.
 macro pextrw? dest*,src*,sel*
-	require SSE2+
 	x86.parse_operand@dest dest
 	SSE.parse_operand@src src
 	x86.parse_operand@aux sel
+	if @src.type = 'mmreg' & @src.size = 16
+		require SSE2+
+	else
+		require SSE+
+	end if
 	if @dest.type = 'reg' & @src.type = 'mmreg' & @aux.type = 'imm'
 		if x86.mode = 64 & @dest.size = 8
 			@dest.size = 4
@@ -489,10 +514,16 @@ iterate <instr,pre>, pshufd,66h, pshuflw,0F2h, pshufhw,0F3h
 	end macro
 end iterate
 
+; Replaces sse.inc's pmovmskb (and adds r64 destinations): the xmm source
+; needs SSE2, the mm source SSE.
 macro pmovmskb? dest*,src*
-	require SSE2+
 	x86.parse_operand@dest dest
 	SSE.parse_operand@src src
+	if @src.type = 'mmreg' & @src.size = 16
+		require SSE2+
+	else
+		require SSE+
+	end if
 	if @dest.type = 'reg' & @src.type = 'mmreg'
 		if @dest.size <> 4 & (x86.mode < 64 | @dest.size <> 8)
 			err 'invalid operand size'
