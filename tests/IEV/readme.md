@@ -392,7 +392,7 @@ whenever it fits, 1 same-length alternative. Four where llvm-mc is shorter:
 | Line | fasm2 | llvm-mc | Verdict |
 |---|---|---|---|
 | `vaddps xmm0,xmm1,xmm8` | `C4 C1 70 58 C0` | `C5 B8 58 C1` | llvm-mc swaps the sources to reach VEX2. Not exact: with two NaN inputs x86 returns the first source's NaN. fasm2 is right. |
-| `vmovaps xmm0,xmm8` | `C4 C1 78 28 C0` | `C5 78 29 C0` | the store-direction opcode puts xmm8 in ModRM.reg, where VEX2 has R. Same result, 1 byte: open (xed-plan.md §3.3). |
+| `vmovaps xmm0,xmm8` | `C4 C1 78 28 C0` | `C5 78 29 C0` | the store-direction opcode puts xmm8 in ModRM.reg, where VEX2 has R. Same result, 1 byte: open. |
 | `xchg eax,eax` (32-bit) | `87 C0` | `90` | `90` is `xchg eax,eax` in 32-bit code (not in 64-bit, where it would not zero rax's upper half; there both write `87 C0`). 1 byte: open. |
 | `xchg rax,rax` | `48 90` | `90` | same operation, 1 byte: open. |
 

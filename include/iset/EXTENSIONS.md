@@ -798,17 +798,16 @@ How each source feeds the work:
 7. **Historical and vendor files** (§5.7): `padlock.inc` and 4FMAPS done;
    `cyrix.inc`/`undoc.inc` blocked on an authoritative reference.
 8. **APX / AVX10.2**, as a separate design (§5.8). APX: done
-   ([`apx-plan.md`](apx-plan.md)). AVX10.2: [`xed-plan.md`](xed-plan.md).
+   ([`apx-plan.md`](apx-plan.md)). AVX10.2: not started.
 
 **Status (end of this pass).** Every addition in §5 that has a reference
 is implemented and tested: `tests/iset/_run.ps1` runs every source there
 (53 on 2026-11-03), each of which fails on the tree before its change.
 APX is done since (its own plan, [`apx-plan.md`](apx-plan.md)). Still open:
 - `cyrix.inc`, `undoc.inc`: no reference available locally (§5.7);
-- AVX10.2: deferred (§5.8), now planned through generation from XED
-  ([`xed-plan.md`](xed-plan.md));
+- AVX10.2: deferred (§5.8);
 - RMPQUERY and ENCLV bits are marked *verify* in §4 (no XED entry);
 - not yet planned, from XED's folder list (§6.2): MOVRS, MSR-IMM,
-  PBNDKB, AMX-DMR, SM4-EVEX (all in xed-plan.md's P4);
+  PBNDKB, AMX-DMR, SM4-EVEX;
 - CALM versions of avx.inc's AVX-512 shape helpers (FP16 uses the macros);
 - `monitor`/`mwait` could move to the implicit-operand helpers (§5.5).
