@@ -356,6 +356,7 @@ iterate context, @dest,@src,@src2,@aux
 
 			compute size, 0
 			compute displacement_size, 0
+			compute egpr, 0
 
 			transform operand
 
@@ -559,6 +560,12 @@ iterate context, @dest,@src,@src2,@aux
 		end calminstruction
 
 		calminstruction AVX_512.store_instruction#context vsize*,vex_mpw*,evex_f*,opcode*,mask*,reg*,vreg:0,imm_size:0,immediate
+
+			check	egpr | (reg or vreg or rm) and x86.EGPR	; APX EVEX B4/X4/R4 not implemented
+			jno	egpr_ok
+			err	'extended register not supported by this encoding'
+			exit
+		    egpr_ok:
 
 			check	segment_prefix
 			jno	segment_prefix_ok

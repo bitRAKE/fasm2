@@ -76,7 +76,8 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `mpx_bndc.asm` | G11 | bndcl/bndcu/bndcn assemble at all (same mistyped parser call); bytes checked with ZydisInfo. |
 | `redefinition.asm` | G12, G13 | Mnemonics shadowed by a second definition: vpmuldq VEX forms, vcvtph2ps/vcvtps2ph EVEX forms, vpmullq's DQ gate. |
 | `stacking.asm` | G14 | MMX/SSE forms of movd/movq/pinsrw/pextrw/pmovmskb keep their own gates under the SSE2/SSE4.1 layers stacked over them. |
-| `apx_refuse.asm` | APX Phase 0 | r16–r31 exist as registers and are refused by all three operand parsers (GPR/address, VSIB, MPX/AMX MIB) in every mode; before, encoders masked them into rax–r15 silently. r8–r15 keep their bytes. |
+| `apx_rex2.asm` | APX Phases 0–1 | r16–r31 through REX2: register sizes, R4/X4/B4, SIB/displacement edge registers, map 0/1 (`0Fh` dropped), mandatory/67h/segment prefix order, x87/MMX/SSE memory forms, opcode-register forms (push/pop/mov/xchg/bswap), `{rex2}` and its fallback where Intel forbids REX2 (overruling llvm-mc on movbe/xsave); refusals: APX_F, 64-bit only, ah–bh, VEX/EVEX/XOP/AMX, maps 2/3, msr map 7, XSAVE*, MPX, VSIB. |
+| `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |
 
 `_dupnames.py` is a separate check: `python tests/iset/_dupnames.py` fails on any
 instruction name defined twice in `include/` that is not a reviewed, deliberate
@@ -85,7 +86,12 @@ that follows.
 
 `_apx_sweep.py` is the APX check: `python tests/iset/_apx_sweep.py [-v]`
 assembles every defined mnemonic with 117 operand patterns that name an
-extended register (r16–r31, as register, base or index) and fails if any line
-assembles. Its `ALLOWED` set holds the forms an APX phase encodes for real
-(see [`include/iset/apx-plan.md`](../../include/iset/apx-plan.md)). Re-run it
-after any change to an operand parser or an encoder. It takes about a minute.
+extended register (r16–r31, as register, base or index), with fasm2 and with
+llvm-mc (`_apx_diff.py`), and repeats each form fasm2 accepts with six edge
+registers. It fails when fasm2 accepts a form with other bytes than llvm-mc,
+or one llvm-mc refuses, unless a `REVIEWED` entry gives the reason (each was
+checked to behave the same with r8). `-v` lists the forms only llvm-mc has:
+the APX encodings still to do (see
+[`include/iset/apx-plan.md`](../../include/iset/apx-plan.md)). Re-run it after
+any change to an operand parser or an encoder. It takes about a minute.
+`python tests/iset/_apx_diff.py FILE` compares any list of lines the same way.

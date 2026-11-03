@@ -18,6 +18,9 @@ end repeat
 
 macro MPX.parse_operand ns,op
 	x86.parse_operand#ns op
+	if ns.egpr	; no CPU has both MPX and APX
+		err 'extended register not supported: ', `op
+	end if
 	if ns.type = 'imm' & ns.size = 0 & ns.imm eq 1 elementof ns.imm & 1 metadataof ns.imm relativeto MPX.bnd
 		ns.type = 'bnd'
 		ns.mod = 11b
@@ -29,6 +32,7 @@ end macro
 macro MPX.parse_sib_operand ns,op&
 	match [b=,si], op
 		ns.split = 1
+		ns.egpr = 0
 		ns.segment_prefix = 0
 		ns.prefix = 0
 		ns.opcode_prefix = 0
@@ -104,7 +108,7 @@ macro MPX.parse_sib_operand ns,op&
 		end if
 	else
 		ns.split = 0
-		x86.parse_operand#ns op
+		MPX.parse_operand ns,op
 	end match
 end macro
 
@@ -158,7 +162,7 @@ iterate <instr,prefix,ext>, bndcl,0F3h,1Ah, bndcu,0F2h,1Ah, bndcn,0F2h,1Bh
 	macro instr? dest*,src*
 		require MPX
 		MPX.parse_operand @dest,dest
-		x86.parse_operand@src src
+		MPX.parse_operand @src,src
 		if @dest.type = 'bnd' & (@src.type = 'reg' | @src.type = 'mem')
 			if (x86.mode = 64 & @src.size and not 8) | (x86.mode < 64 & @src.size and not 4)
 				err 'invalid operand size'

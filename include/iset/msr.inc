@@ -69,6 +69,11 @@ iterate <instr,prefix,pp,order>, urdmsr,0F2h,7Bh,0, uwrmsr,0F3h,7Ah,1
 		xcall	x86.store_instruction@src, <0Fh,38h,0F8h>,@dest.rm
 		exit
 	    immediate:
+		check	reg and x86.EGPR	; the APX EVEX form is not implemented
+		jno	range
+		err	'extended register not supported by this encoding'
+		exit
+	    range:
 		check	msr >= 0 & msr < 1 shl 32
 		jyes	encode
 		err	'value out of range'

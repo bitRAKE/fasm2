@@ -227,6 +227,7 @@ end macro
 	AVX_VNNI_INT16: 	ext | 192 + 10
 	PREFETCHI:		ext | 192 + 14
 	USER_MSR:		ext | 192 + 15
+	APX_F:			ext | 192 + 21
 	; CPUID.(EAX=80000001H):ECX
 	SVM: 			ext | 224 + 2
 	LZCNT:			ext | 224 + 5
@@ -320,6 +321,11 @@ end macro
 	vex2: vexsize = 2
 	vex3: vexsize = 3
 	evex: vexsize = 4
+
+	; REX2 (APX) for legacy instructions that need no extended register:
+
+	rexauto: rexsize = 0
+	rex2: rexsize = 2
 
 purge ?, c1, c2, c3
 
@@ -425,9 +431,11 @@ repeat 8, i:8
 	element r#i? : x86.r64 + i
 end repeat
 
-; APX extended GPRs. Register numbers 16-31 do not fit REX, so every
-; operand parser refuses them (x86.parse_operand, AVX_512.parse_vsib_operand,
-; MPX.parse_sib_operand) until an encoder that can store them accepts them.
+; APX extended GPRs. x86.parse_operand accepts them in 64-bit code with
+; APX_F, sets the operand's egpr and marks a register operand's number with
+; x86.EGPR. x86.store_instruction and x86.store_operand_prefix encode them
+; with REX2; every other encoder refuses an operand with egpr or a register
+; number with x86.EGPR (tests/iset/_apx_sweep.py checks that none is missed).
 repeat 16, i:16
 	element r#i#b? : x86.r8 + i
 	element r#i#l? : x86.r8 + i
@@ -477,6 +485,7 @@ define x86.zword? :64
 
 x86.REX_REQUIRED = 100h
 x86.REX_FORBIDDEN = 200h
+x86.EGPR = 400h		; marks a register operand r16-r31 (APX), see x86.require_egpr
 
 macro use16?
 	use bits16
@@ -514,7 +523,7 @@ iterate context, @dest,@src,@src2,@aux
 				imm, unresolved, displacement, displacement_size, auto_relative, \
 				address, address_registers, segment, offset, jump_type, \
 				mode, mod, rm, \
-				scale, index, base
+				scale, index, base, egpr
 			define name
 		end iterate
 
@@ -529,6 +538,7 @@ iterate context, @dest,@src,@src2,@aux
 
 			compute size, 0
 			compute displacement_size, 0
+			compute egpr, 0
 
 			transform operand
 
@@ -574,16 +584,22 @@ iterate context, @dest,@src,@src2,@aux
 			compute mode, x86.mode
 			compute mod, 11b
 			compute rm, 1 metadataof imm - 1 elementof (1 metadataof imm)
-			check	rm >= 16
-			jyes	extended_register
 			check	size & size <> 1 metadataof (1 metadataof imm) - x86.reg
 			jyes	operand_sizes_do_not_match
 			compute size, 1 metadataof (1 metadataof imm) - x86.reg
 			check	rm < 0
 			jyes	register_precluding_rex
+			check	rm >= 16
+			jyes	register_extended
 			check	size = 1 & rm >= 4 & rm < 8
 			jyes	register_requiring_rex
 
+			exit
+
+		      register_extended:
+			call	x86.require_egpr
+			compute egpr, 1
+			compute rm, x86.EGPR + rm
 			exit
 
 		      register_precluding_rex:
@@ -656,8 +672,6 @@ iterate context, @dest,@src,@src2,@aux
 			jyes	registers_extracted
 			check	i metadataof address relativeto x86.r16 | i metadataof address relativeto x86.r32 | i metadataof address relativeto x86.r64 | i metadataof address relativeto x86.ip
 			jno	next_term
-			check	i metadataof address - 1 elementof (i metadataof address) >= 16
-			jyes	extended_register
 			compute address_registers, address_registers + i elementof address * i scaleof address
 		      next_term:
 			compute i, i+1
@@ -829,6 +843,11 @@ iterate context, @dest,@src,@src2,@aux
 		      one_register:
 			compute scale, 1 scaleof address_registers
 			compute base, 1 metadataof address_registers - address_registers_type
+			check	base >= 16
+			jno	one_register_number_ok
+			compute egpr, 1
+			call	x86.require_egpr
+		      one_register_number_ok:
 			check	scale = 1
 			jyes	one_register_unscaled
 			check	base <> 4 & (scale = 4 | scale = 8)
@@ -872,6 +891,11 @@ iterate context, @dest,@src,@src2,@aux
 			compute index, 1 metadataof address_registers - address_registers_type
 			compute scale, 1 scaleof address_registers
 		      process_sib:
+			check	base >= 16 | index >= 16
+			jno	sib_numbers_ok
+			compute egpr, 1
+			call	x86.require_egpr
+		      sib_numbers_ok:
 			check	index = 4
 			jyes	forbidden_index
 			check	(x86.mode <> 64 & segment_prefix = 36h) & index = 5 & scale = 1
@@ -946,10 +970,6 @@ iterate context, @dest,@src,@src2,@aux
 			exit
 		  address_out_of_range:
 			err	'address out of range'
-			exit
-		  extended_register:
-			stringify operand
-			err	'extended register not supported: ' bappend operand
 			exit
 
 		end calminstruction
@@ -1093,9 +1113,29 @@ iterate context, @dest,@src,@src2,@aux
 			compute rex_prefix, rex_prefix or 44h
 		    rex_8:
 			check	prefix = 48h
-			jno	operand_prefix
+			jno	rex2_bits
 			compute rex_prefix, rex_prefix or 48h
-			jump	operand_prefix_ok
+
+		    rex2_bits:		; R4, X4, B4: bit 4 of each register number (APX)
+			local	rex2
+			compute rex2, 0
+			check	(reg or rm) and 10000b | (mod <> 11b & (index or base) and 10000b)
+			jno	rex2_ready
+			check	reg and 10000b
+			jno	rex2_x4
+			compute rex2, rex2 or 40h
+		    rex2_x4:
+			check	mod <> 11b & mode > 16 & rm = 4 & index and 10000b
+			jno	rex2_b4
+			compute rex2, rex2 or 20h
+		    rex2_b4:
+			check	rm and 10000b | (mod <> 11b & mode > 16 & rm = 4 & base and 10000b)
+			jno	rex2_ready
+			compute rex2, rex2 or 10h
+		    rex2_ready:
+
+			check	prefix = 48h
+			jyes	operand_prefix_ok
 
 		    operand_prefix:
 			check	prefix
@@ -1108,6 +1148,10 @@ iterate context, @dest,@src,@src2,@aux
 			emit	1, opcode_prefix
 		    opcode_prefix_ok:
 
+			check	rex2 | (x86.rexsize = 2 & x86.mode = 64)
+			jyes	store_rex2
+
+		    store_rex:
 			check	rex_prefix
 			jno	rex_prefix_ok
 			check	x86.mode < 64
@@ -1123,6 +1167,40 @@ iterate context, @dest,@src,@src2,@aux
 		    rex_prefix_ok:
 
 			asm	db opcode
+			jump	opcode_stored
+
+		    store_rex2:		; D5 [M0 R4 X4 B4 W R3 X3 B3], then the opcode without 0Fh
+			check	(reg or rm) and x86.REX_FORBIDDEN
+			jno	rex2_registers_ok
+			err	'disallowed combination of registers'
+		    rex2_registers_ok:
+			asm	virtual at 0
+			asm	db opcode
+			asm	x86.rex2_length = $
+			asm	load x86.rex2_opcode:$ from 0
+			asm	end virtual
+			check	x86.rex2_opcode and 0FFh = 0Fh
+			jyes	rex2_map1
+			check	(x86.rex2_opcode shr 4) and 0Fh = 4 | (x86.rex2_opcode shr 4) and 0Fh = 7 | (x86.rex2_opcode shr 4) and 0Fh = 0Ah | (x86.rex2_opcode shr 4) and 0Fh = 0Eh
+			jyes	rex2_reserved
+			emit	1, 0D5h
+			emit	1, rex2 + rex_prefix and 0Fh
+			emit	x86.rex2_length, x86.rex2_opcode
+			jump	opcode_stored
+		    rex2_map1:
+			check	(x86.rex2_opcode shr 12) and 0Fh = 3 | (x86.rex2_opcode shr 12) and 0Fh = 8 | (x86.rex2_opcode shr 8) and 0FFh = 0Fh
+			jyes	rex2_reserved
+			emit	1, 0D5h
+			emit	1, 80h + rex2 + rex_prefix and 0Fh
+			emit	x86.rex2_length - 1, x86.rex2_opcode shr 8
+			jump	opcode_stored
+		    rex2_reserved:	; maps 2 and 3 (0F 38, 0F 3A) are row 3 of map 1
+			check	rex2
+			jno	store_rex	; {rex2} is a preference: REX where REX2 is not allowed
+			err	'extended register not supported by this encoding'
+			exit
+
+		    opcode_stored:
 			emit	1, mod shl 6 + (reg and 111b) shl 3 + rm and 111b
 
 			check	mod <> 11b & rm = 4 & mode <> 16
@@ -1245,7 +1323,9 @@ calminstruction x86.implicit_operand operand, expected*
     done:
 end calminstruction
 
-calminstruction x86.store_operand_prefix size*, reg:0
+; the prefixes for an opcode with the register in its low bits (50h+r,
+; B8h+r, 0Fh C8h+r...); map 1 also stores the 0Fh escape, or REX2.M0
+calminstruction x86.store_operand_prefix size*, reg:0, map:0
 
 	check	size = 8 & x86.cpu < x86.x64.cpu
 	jyes	required64
@@ -1289,6 +1369,8 @@ calminstruction x86.store_operand_prefix size*, reg:0
 	compute rex_prefix, rex_prefix or 41h
 
     rex_ready:
+	check	reg and 10000b | (x86.rexsize = 2 & x86.mode = 64)
+	jyes	store_rex2
 	check	rex_prefix
 	jno	rex_prefix_ok
 	check	x86.mode < 64
@@ -1302,7 +1384,26 @@ calminstruction x86.store_operand_prefix size*, reg:0
     store_rex_prefix:
 	emit	1, rex_prefix
     rex_prefix_ok:
+	check	map
+	jno	done
+	emit	1, 0Fh
+	exit
 
+    store_rex2:		; D5 [M0 0 0 B4 W 0 0 B3]; map 1 needs no 0Fh after it
+	check	reg and x86.REX_FORBIDDEN
+	jno	rex2_registers_ok
+	err	'disallowed combination of registers'
+    rex2_registers_ok:
+	emit	1, 0D5h
+	emit	1, map shl 7 + (reg and 10000b) + rex_prefix and 0Fh
+
+    done:
+end calminstruction
+
+; r16-r31 exist only in 64-bit code with APX enabled
+calminstruction x86.require_egpr
+	call	x86.require.bits64
+	call	x86.require.APX_F
 end calminstruction
 
 calminstruction x86.simm32 immediate*
@@ -2143,12 +2244,7 @@ calminstruction x86.push_instruction size:0,src*
 	exit
 
     push_reg:
-	check	@src.rm and 1000b
-	jyes	push_new_reg
-	emit	1, 50h + @src.rm
-	exit
-      push_new_reg:
-	emit	1, 41h
+	xcall	x86.store_operand_prefix, (0),@src.rm
 	emit	1, 50h + @src.rm and 111b
 	exit
 
@@ -2269,12 +2365,7 @@ calminstruction x86.pop_instruction size:0,dest*
 	exit
 
     pop_reg:
-	check	@dest.rm and 1000b
-	jyes	pop_new_reg
-	emit	1, 58h + @dest.rm
-	exit
-      pop_new_reg:
-	emit	1, 41h
+	xcall	x86.store_operand_prefix, (0),@dest.rm
 	emit	1, 58h + @dest.rm and 111b
 	exit
 
@@ -3935,7 +4026,7 @@ calminstruction cmpxchg16b? dest*
 	jno	size_ok
 	err	'invalid operand size'
     size_ok:
-	xcall	x86.store_operand_prefix, (8)
+	xcall	x86.select_operand_prefix@dest, (8)	; REX.W in the same REX/REX2 as the address bits
 	xcall	x86.store_instruction@dest, <0Fh,0C7h>,(1)
 end calminstruction
 
@@ -3947,8 +4038,7 @@ calminstruction bswap? dest*
 	err	'invalid operand'
 	exit
     operand_ok:
-	call	x86.store_operand_prefix, @dest.size,@dest.rm
-	emit	1, 0Fh
+	xcall	x86.store_operand_prefix, @dest.size,@dest.rm,(1)
 	emit	1, 0C8h + @dest.rm and 111b
 end calminstruction
 
@@ -4139,8 +4229,12 @@ iterate <instr,opcode,postbyte,feature>, xsave,0AEh,4,XSAVE, xrstor,0AEh,5,XSAVE
 	macro instr? src*
 		require feature
 		x86.parse_operand@src src
-		if @src.type = 'mem'
+		if @src.egpr	; APX: XSAVE* and XRSTOR* #UD with REX2
+			err 'extended register not supported by this instruction'
+		else if @src.type = 'mem'
+			x86.rexsize =: 0
 			x86.store_instruction@src <0Fh,opcode>,postbyte
+			restore x86.rexsize
 		else
 			err 'invalid operand'
 		end if
@@ -4150,9 +4244,13 @@ iterate <instr,opcode,postbyte,feature>, xsave,0AEh,4,XSAVE, xrstor,0AEh,5,XSAVE
 		require feature
 		require bits64
 		x86.parse_operand@src src
-		if @src.type = 'mem'
+		if @src.egpr
+			err 'extended register not supported by this instruction'
+		else if @src.type = 'mem'
 			x86.select_operand_prefix@src 8
+			x86.rexsize =: 0
 			x86.store_instruction@src <0Fh,opcode>,postbyte
+			restore x86.rexsize
 		else
 			err 'invalid operand'
 		end if

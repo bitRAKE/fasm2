@@ -1,37 +1,39 @@
-"""_apx_sweep.py -- no instruction may accept an APX extended register silently.
+"""_apx_sweep.py -- every APX extended-register form fasm2 accepts must be right.
 
     python tests/iset/_apx_sweep.py [-v]
 
-r16-r31 are defined as register elements (x86-2.inc), so every mnemonic can
-see them. An encoder that does not know them masks the register number and
-writes another register (add rax, r16 -> add rax, rax). Phase 0 of
-include/iset/apx-plan.md makes the operand parsers refuse them; this sweep
-checks that nothing gets past.
+r16-r31 are register elements (x86-2.inc), so every mnemonic can see them.
+An encoder that does not know them masks the register number and writes
+another register (add rax, r16 -> add rax, rax), so an accepted form is
+only right if its bytes are. This sweep checks both directions at once.
 
 Every instruction name (from _dupnames.py's scan of x86-2.inc and iset/*.inc,
 plus the mnemonics in zydis-db) is first probed bare; names fasm2 does not
-define are dropped. Each defined name is then assembled, under
-`use everything` in 64-bit mode, with each operand pattern in PATTERNS, one
-line per form. Every line names an extended register, so every line must
-fail. fasmg reports each failing line; a line it does not report assembled,
-and is a leak.
+define are dropped. Each defined name is then assembled with each operand
+pattern in PATTERNS, which all name r16, by fasm2 and by llvm-mc
+(_apx_diff.py). Each form that fasm2 accepts is assembled again with r16
+replaced by each register in EDGE (r20: SIB escape, r21: needs a
+displacement, r24/r28/r29: bit 3 too, r31: all bits).
 
-ALLOWED lists (mnemonic, pattern) pairs that later APX phases encode for
-real; it starts empty and grows only with tested APX forms.
+Failures:
+  DIFF  fasm2 and llvm-mc both accept the form with different bytes;
+  FASM  fasm2 accepts a form llvm-mc refuses.
+Either is fine only when listed in REVIEWED with the reason (for example
+when Intel's specification, which outranks LLVM, says otherwise).
 
--v also prints how many lines failed with each error message.
+Reported, not failures: forms only llvm-mc accepts (APX encodings fasm2
+does not have yet; -v lists them by mnemonic).
 """
-import os, re, sys, json, subprocess, collections, tempfile
+import os, re, sys, json, collections
 
 here = os.path.dirname(os.path.abspath(__file__))
-root = os.path.dirname(os.path.dirname(here))
 sys.path.insert(0, here)
 from _dupnames import defs	# noqa: E402
+import _apx_diff	# noqa: E402
 
 ZYDIS_DB = r'C:\git\zyantific\zydis-db\datafiles\instructions.json'
 
-# Intel operand order; r16 stands for every extended register (the check is
-# on the register number, so r16 and r31 take the same path)
+# Intel operand order; r16 is replaced by the EDGE registers in pass 2
 PATTERNS = [
     # GPR alone and in pairs, each size
     'r16', 'r16d', 'r16w', 'r16b', 'r16l',
@@ -64,13 +66,31 @@ PATTERNS = [
     'zmm0{k1}, [r16+zmm1]', '[r16+zmm1]{k1}, zmm0', '[r16+zmm1]{k1}',
     'xmm0, [r16+xmm1], xmm2', 'ymm0, [r16+ymm1], ymm2',
     'bnd0, [r16]', 'bnd0, [r16,rax]', '[r16,rax], bnd0', 'bnd0, r16',
-    'tmm0, [r16,rax]', 'tmm0, [rax+r16]', '[r16,rax], tmm0', '[r16]',
+    'tmm0, [r16,rax]', 'tmm0, [rax+r16]', '[r16,rax], tmm0',
     # FPU memory forms
     'st0, [r16]', 'qword [r16], st0',
 ]
 PATTERNS = list(dict.fromkeys(PATTERNS))
+EDGE = ['r20', 'r21', 'r24', 'r28', 'r29', 'r31']
 
-ALLOWED = set()	# (mnemonic, pattern) pairs encoded by an APX phase
+# (mnemonic regex, pattern regex, reason); pass-2 forms match by their pass-1
+# pattern. Each was checked to behave the same with r8 in place of r16, i.e.
+# it is not an APX encoding question.
+REVIEWED = [
+    (r'call|jmp', r'(tword|far) \[.*', 'far m16:64 needs REX.W (SDM); llvm reads "tbyte ptr" without W, "far" as a symbol'),
+    (r'mov', r'(es|cs|ss|ds|fs|gs), r16w|r16w, (es|cs|ss|ds|fs|gs)', 'mov sreg: fasm2 and llvm-mc differ on the optional 66h'),
+    (r'fbld|fbstp', r'\w+ \[.*', 'fasm2 accepts any size for m80bcd; llvm-mc wants tbyte'),
+    (r'invlpg', r'(qword|dword|word|byte|tword) \[.*', 'fasm2 accepts any size for m; llvm-mc wants byte'),
+    (r'clrssbsy|rstorssp', r'qword \[.*', 'llvm-mc wants the m64 unsized'),
+    (r'nop', r'\[.*', 'fasm2 defaults nop m to dword; llvm-mc wants a size'),
+    (r'movsxd', r'.*', 'fasm2 allows movsxd with a 16/32-bit destination; llvm-mc does not'),
+    (r'ud0', r'.*', 'llvm-mc does not take this ud0 operand form'),
+    (r'f(n?(stenv|save)|ldenv|rstor)w', r'.*', 'fasm2-only 16-bit environment spellings (66h)'),
+    (r'bnd(cl|cu|cn|mk|ldx|stx|mov)', r'.*', 'MPX: llvm-mc no longer has it'),
+    (r'cvtt?ss2si', r'r16d?, mm0', 'G16b pre-existing: fasm2 takes an mm source (EXTENSIONS.md 2.4)'),
+    (r'rcppd|rcpsd|rsqrtpd|rsqrtsd', r'.*', 'G16 pre-existing: no such instructions (EXTENSIONS.md 2.4)'),
+    (r'v\w+', r'(xmm|ymm|zmm)0, (xmm|ymm|zmm)1, \[r16\]', 'G15 pre-existing: imm8 operand not checked (EXTENSIONS.md 2.4)'),
+]
 
 # not instructions: settings, prefixes that take an instruction, directives
 SKIP = re.compile(r'^(use\w*|require\w*|xacquire|xrelease)$')
@@ -86,62 +106,50 @@ def names():
     return sorted(n for n in out if not SKIP.match(n))
 
 
-def assemble(lines):
-    """Return {line number: [error messages]} for a source of `lines`."""
-    fd, src = tempfile.mkstemp(suffix='.asm')
-    with os.fdopen(fd, 'w') as f:
-        f.write('use64\nuse everything\n' + '\n'.join(lines) + '\n')
-    env = dict(os.environ, INCLUDE=os.path.join(root, 'include') + ';' + os.environ.get('INCLUDE', ''))
-    p = subprocess.run([os.path.join(root, 'fasmg.exe'), "-iInclude('fasm2.inc')", '-e1000000',
-                        src, src + '.bin'], capture_output=True, text=True, env=env)
-    errors = collections.defaultdict(list)
-    current = None
-    tag = os.path.basename(src)
-    for line in (p.stdout + p.stderr).splitlines():
-        m = re.match(r'.*%s \[(\d+)\]:' % re.escape(tag), line)
-        if m:
-            current = int(m.group(1)) - 2	# two header lines
-            continue
-        m = re.match(r'(?:Custom )?[Ee]rror: (.*)', line)
-        if m and current is not None:
-            errors[current].append(m.group(1).rstrip('.'))
-    for f in (src, src + '.bin'):
-        if os.path.exists(f):
-            os.remove(f)
-    return errors
-
-
 def main():
     verbose = '-v' in sys.argv
     candidates = names()
-    probe = assemble(candidates)
-    defined = [n for i, n in enumerate(candidates, 1)
-               if 'illegal instruction' not in probe.get(i, [])]
-    lines, forms = [], []
-    for n in defined:
-        for pat in PATTERNS:
-            if (n, pat) in ALLOWED:
-                continue
-            lines.append('%s %s' % (n, pat))
-            forms.append((n, pat))
-    leaks, messages = [], collections.Counter()
-    chunk = 20000
-    for start in range(0, len(lines), chunk):
-        errs = assemble(lines[start:start + chunk])
-        for i, form in enumerate(forms[start:start + chunk], 1):
-            if i not in errs:
-                leaks.append(form)
-            elif verbose:
-                messages[errs[i][-1]] += 1
-    print('%d names, %d defined by fasm2, %d forms tried, %d allowed'
-          % (len(candidates), len(defined), len(lines), len(ALLOWED)))
+    defined = []
+    # a bare mnemonic fasm2 does not define is 'illegal instruction'; any
+    # defined one either assembles or fails for its operands
+    fails = _apx_diff.fasm_errors(candidates)
+    for i, n in enumerate(candidates):
+        if 'illegal instruction' not in fails.get(i, ''):
+            defined.append(n)
+    forms = [(n, p) for n in defined for p in PATTERNS]
+    lines = ['%s %s' % f for f in forms]
+    result = _apx_diff.compare(lines)
+    edge_forms, edge_lines = [], []
+    for (n, p), (st, fb, lb) in zip(forms, result):
+        if st in ('same', 'DIFF', 'FASM'):
+            for r in EDGE:
+                edge_forms.append((n, p))
+                edge_lines.append('%s %s' % (n, re.sub(r'\br16', r, p)))
+    edge_result = _apx_diff.compare(edge_lines)
+
+    counts = collections.Counter()
+    failures, llvm_only = [], collections.defaultdict(list)
+    for (n, p), line, (st, fb, lb) in list(zip(forms, lines, result)) + list(zip(edge_forms, edge_lines, edge_result)):
+        counts[st] += 1
+        if st in ('DIFF', 'FASM'):
+            why = [r for m, q, r in REVIEWED if re.fullmatch(m, n) and re.fullmatch(q, p)]
+            if why:
+                counts['reviewed'] += 1
+            else:
+                failures.append((st, line, fb, lb))
+        elif st == 'llvm':
+            llvm_only[n].append(p)
+    print('%d names, %d defined by fasm2; %d forms, %d with edge registers'
+          % (len(candidates), len(defined), len(lines), len(edge_lines)))
+    print('  same %(same)d, DIFF %(DIFF)d, FASM only %(FASM)d, llvm only %(llvm)d, both refuse %(-)d' % counts)
+    print('  of DIFF/FASM, %d match a REVIEWED entry (%d entries)' % (counts['reviewed'], len(REVIEWED)))
     if verbose:
-        for msg, count in messages.most_common():
-            print('%7d  %s' % (count, msg))
-    for n, pat in leaks:
-        print('LEAK  %s %s' % (n, pat))
-    print('%d leak(s)' % len(leaks))
-    sys.exit(1 if leaks else 0)
+        for n in sorted(llvm_only):
+            print('llvm only  %-14s %s' % (n, ' | '.join(llvm_only[n])))
+    for st, line, fb, lb in failures:
+        print('%-4s  %-40s fasm %-30s llvm %s' % (st, line, fb.hex(' '), lb.hex(' ')))
+    print('%d failure(s)' % len(failures))
+    sys.exit(1 if failures else 0)
 
 
 if __name__ == '__main__':

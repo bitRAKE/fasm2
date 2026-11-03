@@ -204,7 +204,8 @@ through one of three parsers, and the direct-emit sites (`50h+rm`,
 - Cost: fasmg self-build 368 → 378 ms, fasmgw 871 → 884 ms (best of 3),
   identical output bytes.
 
-**What this changes for Phase 1.** The refusal is in the parser, so
+**What this changes for Phase 1** *(superseded: see the Phase 1 result).*
+The refusal is in the parser, so
 lifting it there would admit r16+ to every encoder at once, the hazard
 again. Phase 1 instead keeps the parser as the single place that decides,
 and makes it ask: the parser accepts 16–31 only when the calling encoder
@@ -236,6 +237,54 @@ base and index positions vs. llvm-mc; 8-bit `r16b`–`r31b` combined with
 **Discovery point 1.** Does this cover most of the GPR instructions
 without touching their definitions? If many macros bypass the central
 encoder, revise Phase 0's helper so they call it instead.
+
+**Phase 1 result (2026-11-02, done).**
+- *Pivot.* Intel 355828 §3.1.2.1 makes REX2 apply to **every** map 0/1
+  instruction with a GPR or memory operand: x87, MMX and SSE memory
+  forms and `mov cr/dr` included. The exceptions are XSAVE*/XRSTOR*, maps 2/3
+  and the reserved rows (map 0: 4x, 7x, Ax except `jmpabs`, Ex; map 1: 3x,
+  8x). A per-instruction opt-in flag would have meant editing hundreds of
+  definitions for a rule that belongs to the encoder. So the parser
+  accepts and the *encoders* decide, the original design, now with the tool
+  that was missing: a byte comparison against llvm-mc instead of a leak
+  count.
+- Parser: r16–r31 require 64-bit code and APX_F (`x86.require_egpr`), then
+  set `egpr` on the operand; a register number also gets the `x86.EGPR`
+  marker (400h, beside REX_REQUIRED/REX_FORBIDDEN), so an encoder can tell a
+  GPR 16–31 from zmm16–31. Address checks sit where `base`/`index` are
+  computed (32/64-bit addressing only).
+- `x86.store_instruction`: R4/X4/B4 from bit 4 of each number; REX2 is
+  `D5` + payload after the legacy/mandatory prefixes. The map comes from
+  the opcode bytes (assembled in `virtual` on the REX2 path only); `0Fh` is
+  dropped for map 1; maps 2/3 and reserved rows refuse an extended
+  register. `x86.store_operand_prefix` got the same for opcode-register
+  forms and a `map` argument (bswap). push/pop now use it instead of their
+  own `41h`.
+- Refused by encoder: `AVX_512.store_instruction` (VEX, EVEX, XOP, AMX: until
+  Phase 5), msr.inc map 7, XSAVE*/XRSTOR*, MPX (every MPX parse path now
+  goes through `MPX.parse_operand`).
+- `{rex2}` (`rexsize = 2`) is a preference like `{vex3}`: ignored where
+  REX2 is not allowed and outside 64-bit code. XSAVE* suspends it.
+- **Authority in practice:** llvm-mc writes `{rex2} movbe` as `D5 00 0F 38
+  F0` and `{rex2} xsave` as `D5 80 AE 20`; Intel says both #UD. fasm2
+  follows Intel; `apx_rex2.asm` records it.
+- Tests: `apx_rex2.asm` (68 byte checks from llvm-mc, 19 refusals);
+  `_apx_sweep.py` now differential: 14,427 extended-register forms
+  byte-identical with llvm-mc, 0 unreviewed differences; 13 REVIEWED
+  entries, each the same with r8 (fasm2/llvm syntax or size leniency).
+  The forms only llvm-mc has are all NDD/NF (Phase 3), map 2/3 and VEX
+  promotion (Phase 4) or EVEX (Phase 5), plus pre-existing fasm2
+  strictness (`shl r8` without a count, `call [r8]` unsized).
+- Found on the way (not APX): G17 `cmpxchg16b [r8]` executed as
+  `cmpxchg8b` (fixed, `cmpxchg16b.asm`); G15 stale imm8 in AVX `*_imm8`
+  helpers, G16 nonexistent `rcppd`/`rcpsd`/`rsqrtpd`/`rsqrtsd`, G16b
+  `cvtss2si r, mm` (open, EXTENSIONS.md §2.4).
+- Cost, Phases 0–1 together against win32: fasmg self-build 367 → 387 ms,
+  fasmgw 876 → 922 ms (about 5%, best of 5), identical bytes. The REX2 bit
+  computation is behind one test of bit 4; the remaining cost is a few CALM
+  checks per instruction and per operand.
+- Not done here: `push`/`pop` compact lists (`push rax r16`) still lack
+  r16–r31 (`x86.compact`); add them with Phase 2's push forms.
 
 ### Phase 2 — new mnemonics: `iset/apx.inc`
 
@@ -380,3 +429,7 @@ Gates: APX_F **and** the instruction's own feature (XED's
   others); LLVM checkout update has no APX encoding changes. Phase 0
   done: refusal in the three operand parsers, sweep 0 leaks; Phase 1
   revised to an opt-in flag on the parser.
+- 2026-11-02: Phase 1 done. Intel's "every map 0/1 instruction" rule
+  turned the opt-in back into encoder decisions, verified by a differential
+  sweep against llvm-mc. Intel overrules llvm-mc on `{rex2}` movbe/xsave.
+  G17 fixed; G15/G16/G16b recorded.

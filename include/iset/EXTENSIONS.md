@@ -196,8 +196,10 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G14 are fixed. Each has a test in `tests/iset/` that passes on this branch
-and fails on the tree before the fix (see `tests/iset/readme.md`).
+G1–G14 and G17 are fixed. Each has a test in `tests/iset/` that passes on
+this branch and fails on the tree before the fix (see `tests/iset/readme.md`).
+G15, G16 and G16b are open: the APX sweep found them (`tests/iset/_apx_sweep.py`
+lists them as reviewed, with the same behaviour for r8 as for r16).
 
 | # | Defect | Effect | Fix | Test |
 |---|--------|--------|-----|------|
@@ -215,6 +217,10 @@ and fails on the tree before the fix (see `tests/iset/readme.md`).
 | G12 | `avx.inc` listed `vpmuldq` in two `iterate` blocks; the later, EVEX-only one replaced the VEX/EVEX one | `vpmuldq xmm/ymm` (AVX/AVX2) refused | Remove it from the later block | `redefinition.asm` |
 | G13 | `avx.inc` defined `vcvtph2ps`/`vcvtps2ph` twice; the later F16C VEX-only pair replaced the VEX+EVEX pair | AVX-512 forms (zmm, masks, `{sae}`) refused | One definition each: VEX needs F16C, EVEX needs AVX512F (`F16C.gate`) | `redefinition.asm` |
 | G14 | `sse2.inc`/`sse4.inc` redefined `movd`, `movq`, `pinsrw`, `pextrw`, `pmovmskb` to add xmm (and memory) forms with one blanket `require SSE2+`/`SSE4.1+` and never passed on | Older forms got the newer gate: `movd mm1, eax` needed SSE2; `pextrw eax, mm1, 1` and `pextrw eax, xmm1, 1` needed SSE4.1 | Each layer gates only its own forms and passes the rest to the earlier definition (`movd`, `pinsrw`, SSE4.1 `pextrw`), or gates per form where it also added forms (`movq` mm↔r64, r64 destinations) | `stacking.asm` |
+| G15 *(open)* | `AVX_512.single_source_instruction_imm8` (and possibly other `*_imm8` helpers) never checks that the imm8 operand is an immediate | `vroundpd xmm0, xmm1, [rax]` assembles when an earlier line left `@aux.imm` defined, with that stale value as imm8: wrong bytes, no error. Seen on `vround*`, `vcvtps2ph`, `vpcmp[ei]str[im]` | Check `@aux.type = 'imm'` in each `*_imm8` helper | — |
+| G16 *(open)* | `sse2.inc` reuses SSE's `iterate` list, so `rsqrt`/`rcp` also generate `rsqrtpd`, `rsqrtsd`, `rcppd`, `rcpsd` | Four instructions that do not exist (66h/F2h on 0F 52/53) assemble without error | Drop `rsqrt` and `rcp` from the SSE2 list | — |
+| G16b *(open)* | `cvtss2si`/`cvttss2si` (`sse.inc`) accept an `mm` source | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | Accept xmm/m32 only | — |
+| G17 | `cmpxchg16b` wrote REX.W with `x86.store_operand_prefix` before `x86.store_instruction`'s own REX | `cmpxchg16b [r8]` was `48 41 0F C7 08`; only the REX next to the opcode counts, so it executed `cmpxchg8b [r8]` | `x86.select_operand_prefix@dest 8`, so W joins the one REX (or REX2) | `cmpxchg16b.asm` |
 
 ---
 
