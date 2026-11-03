@@ -476,7 +476,86 @@ Gates: APX_F **and** the instruction's own feature (XED's
    manuals (§1.1). NASM 3.02 is the only other Intel-syntax assembler here
    with APX.
 
-## 5. Change log
+## 5. Post-APX review (to revisit when APX is complete)
+
+The layering stays for now (user decision, 2026-11-02). This section
+collects what to reengineer with the whole picture in view.
+
+### 5.1 Cost findings
+
+Best of five runs, against the win32 tree before Phase 0 (output bytes
+identical in every row):
+
+| After | fasmg self-build | fasmgw | Source of the added cost |
+|-------|------------------|--------|--------------------------|
+| Phase 0 | +10 ms (+2.7%) | +13 ms (+1.5%) | a register-number check per register operand and per address register term (moved later to where base/index are computed) |
+| Phase 1 | +20 ms (+5.4%) | +46 ms (+5.3%) | per operand: `compute egpr, 0` and one compare; per instruction in `x86.store_instruction`: the REX2 bit test (behind a single test of bit 4), `check x86.rexsize`, the duplicated `prefix = 48h` test |
+| Phase 2 | no change | no change | new mnemonics only |
+| Phase 3 | +30 ms (+7.8%) | +60 ms (+6.6%) | the layers: a second dispatch (`arrange` + `assemble`) for every add/or/and/sub/xor/adc/sbb/inc/dec/neg/not/mul/div/idiv/imul/shift/shld/shrd/popcnt/lzcnt/tzcnt, plus two `match`es and constant checks; `check x86.apx.evex` in `x86.store_instruction` |
+
+The ALU/shift-heavy sources pay most. Per-instruction work dominates:
+the code paths that only APX uses (REX2 opcode capture in `virtual`, EVEX
+emission, `APX.promote`) are not on the plain path at all.
+
+### 5.2 Alternatives, cheapest change first
+
+1. **One dispatcher instead of 28 layer bodies** (plan option a): the match
+   logic is already shared through `APX.promote`; the fast path is what
+   costs, so this saves little. Low value.
+2. **Test in the legacy definitions** (option b): put the `{`/operand-count
+   test at the top of each legacy CALM body (the ALU `iterate`, the shift
+   `iterate`, inc/dec, not/neg/mul/div/idiv, imul, shld/shrd, and the
+   popcnt/lzcnt/tzcnt macros) and drop the layers. Removes the second
+   dispatch (most of Phase 3's cost); the legacy files then know about
+   APX, the opposite of today's separation. `_dupnames.py` would lose 28
+   reviewed layers.
+3. **Opt-out setting**: `use noapx` (or APX off in the settings) could
+   skip layer and EGPR checks wholesale. Rejected so far: it is a second
+   scheme beside the CPUID gates, and gates must not change encodings.
+4. **Cheaper REX/REX2/EVEX selection**: fold `prefix = 48h`, `rexsize`
+   and `apx.evex` into one precomputed mode value per instruction (set by
+   the parser and the layers), so `x86.store_instruction` tests once.
+5. **Extension table instead of `x86.ext` big integers** (raised before
+   APX): independent of APX, but measured in the same way; worth doing in
+   the same reengineering pass if the gate checks show up in a profile.
+
+Before choosing: profile with a source that is mostly ALU/shift (where 2
+matters) and one that is mostly vector (where 4 and 5 matter).
+
+### 5.3 Errors found, and where to report them
+
+fasm2 upstream (tgrysztar/fasm2; all present on `master` aab8758,
+2026-06-22). Fixed here only where APX needed it:
+
+| # | Defect | Repro | Root cause | Here |
+|---|--------|-------|------------|------|
+| G17 | `cmpxchg16b [r8]` assembles `48 41 0F C7 08`; the CPU ignores the 48h and runs cmpxchg8b | `use64` / `cmpxchg16b [r8]` | `x86.store_operand_prefix, (8)` emits REX.W as its own byte before `x86.store_instruction`'s REX | fixed, `tests/iset/cmpxchg16b.asm` |
+| G15 | AVX `*_imm8` helpers accept a memory operand as the imm8 and use a stale value | `vroundpd xmm0, xmm1, 3` then `vroundpd xmm0, xmm1, [rax]`: both `C4 E3 79 09 C1 03`, no error | `AVX_512.single_source_instruction_imm8` never checks `@aux.type = 'imm'` | open |
+| G16 | `rcppd`, `rcpsd`, `rsqrtpd`, `rsqrtsd` assemble (no such instructions) | `rcppd xmm0, xmm1` | `sse2.inc` reuses SSE's iterate list including `rsqrt`/`rcp` | open |
+| G16b | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | as shown | `sse.inc`: `@src.size = 'mem'` / `@src.size = 'mmreg'` compare the *size* with a type string (meant `@src.type`), so the size check never applies | open |
+
+LLVM (llvm-project, X86 AsmParser/MCCodeEmitter), all on LLVM 23 (build
+4d58566 and source fc16f15, no tests cover them). Intel's spec says each
+form #UDs; llvm-mc encodes it without a diagnostic:
+
+| Form | llvm-mc bytes | Spec 355828-009 |
+|------|---------------|-----------------|
+| `{rex2} movbe eax, [rcx]` | `D5 00 0F 38 F0 01` | 3.1.2.1: REX2 followed by 0x0F triggers #UD; maps 2/3 have no REX2 |
+| `{rex2} xsave [rax]` | `D5 80 AE 20` | 3.1.2.1: REX2 on XSAVE*/XRSTOR* triggers #UD |
+| `push2 rsp, rax` / `push2 rax, rsp` | `62 F4 5C 18 FF F0` / `…FF F4` | 3.1.3.1.1: neither register may be RSP |
+| `pop2 rax, rax` | `62 F4 7C 18 8F C0` | 3.1.3.1.1: POP2's two registers must differ |
+
+Intel (spec 355828-009, possible erratum): 3.1.2.3.1 says "EVEX.X4 is
+defined only when ModRM.Mod = 3", but X4 extends the SIB index, which
+exists only when Mod ≠ 3. LLVM and fasm2 both encode X4 for the index
+(`add rax, [rax+r20*4], rcx` = `62 F4 F8 …`, U = 0). Ask before relying on
+the sentence.
+
+NASM 3.02rc7: rejects Intel's recommended `setzuCC` mnemonic (817241 §3)
+and accepts only `{zu}`; not a defect (fasm2 chose `{zu}` too), noted for
+syntax comparisons.
+
+## 6. Change log
 
 - 2026-11-02: plan written from the LLVM 23 reference encodings and the
   r16 hazard test. QEMU 11.1-rc2 found to know `apxf` (execution untested).
