@@ -36,18 +36,31 @@ running the code needs emulation (§2).
 
 User decision: align with fasm/fasmg x86 syntax; learn from the processor
 manuals and Intel's syntax recommendations (817241) where fasm has no
-precedent. Intel's recommendations, with fasm's position:
+precedent.
+
+**Placement rule (decided).** Braces have two roles, kept apart by
+position:
+- **Before the mnemonic:** encoding selection only, through the existing
+  `{settings} instr` hook: `{rex2}`, `{evex}`. These never change what
+  the instruction does.
+- **After the mnemonic:** instruction options that change what it does:
+  `{nf}`, `{zu}`, `{dfv=…}`. The instruction's own CALM code splits them
+  off the operand text. Start with after-only; Intel's and NASM's
+  prefix spelling (`{nf} add`) is not accepted, and can be added later if
+  wanted.
+
+Intel's recommendations, with fasm's position:
 
 | Feature | Intel (817241) | NASM 3.02 | fasm2 plan |
 |---------|----------------|-----------|------------|
 | EGPR names | `r16`–`r31`, `r16d/w/b` | same | same |
 | NDD | destination first: `sub eax, [rbx], ecx` | same | same |
-| NF | `{nf}` pseudo-prefix (preferred); `addnf` suffix if no pseudo-prefixes | `{nf} add`, `add {nf}`, `add{nf}` | `{nf}` before the mnemonic **or** after it (decided), consumed before the first operand is examined. No `addnf` names. |
-| ZU | `setzuCC`, `imulzu` mnemonics | `{zu}` pseudo-prefix; `setb eax/rax` | *Open:* Intel mnemonics, `{zu}`, or both. fasm precedent leans to distinct mnemonics for distinct encodings. |
+| NF | `{nf}` pseudo-prefix (preferred); `addnf` suffix if no pseudo-prefixes | `{nf} add`, `add {nf}`, `add{nf}` | `add {nf} rax, rbx` (after the mnemonic only), split off before the first operand is examined. No `addnf` names. |
+| ZU | `setzuCC`, `imulzu` mnemonics | `{zu}` pseudo-prefix; `setb eax/rax` | `setb {zu} al`, `imul {zu} ax, [rbx], 0xab`: same rule as NF. No `setzuCC`/`imulzu` names. |
 | PUSH2/POP2 | `push2 rax, rbx` pushes RAX first; `pop2 rbx, rax` | same (first operand → `vvvv`) | same |
 | PPX | `pushp`, `popp`, `push2p`, `pop2p` | same | same |
 | CCMP/CTEST | `ccmpCC {dfv=sf,cf,of} …`, SCC `t`/`f` for 1010/1011; immediate form `ccmpnz 13, …` | same, comma after `{dfv=}` optional, `pf` alias for `cf` | `{dfv=…}` set, and the immediate form |
-| Prefix selection | `{rex2}`, `{evex}` | same | same; `{evex}` already exists (`vexsize = 4`) |
+| Prefix selection | `{rex2}`, `{evex}` | same | `{rex2} add rax, rbx`, before the mnemonic (settings hook); `{evex}` already exists (`vexsize = 4`) |
 
 The NF list (Intel 817241 §4): `inc dec neg add sub and or xor sal sar shl
 shr rol ror shld shrd imul idiv mul div lzcnt tzcnt popcnt andn bextr blsi
@@ -226,16 +239,19 @@ Rules from what we learned about fasmg:
 
 Syntax:
 - NDD: three operands, `add rax, rbx, rcx` (destination first, Intel order).
-- `{nf} add rax, rbx` and `add {nf} rax, rbx` (decided). The prefix form
-  comes through the `{settings} instr` hook; the suffix form is the first
-  textual `match` in the layer (`{=nf} rest`), stripped before any operand
-  is examined. NF changes meaning, not just encoding, so it is per
-  instruction only: no `use nf`. *Verify:* how fasmg tokenises `add{nf}`
-  with no space (braces are special characters, so it should split).
-- `{evex} add rax, rbx`: force map 4 (the existing `vexsize = 4` setting).
+- `add {nf} rax, rbx` (decided): after the mnemonic only. The layer's
+  first textual `match` splits the brace options (`{nf}`, `{zu}`) off the
+  operand text before any operand is examined; their presence is itself
+  the cheap test that selects the APX path. Options are per instruction:
+  there is no `use nf`.
+- `{evex} add rax, rbx`, `{rex2} add rax, rbx`: encoding selection before
+  the mnemonic, through the settings hook (`{evex}` is the existing
+  `vexsize = 4`; `{rex2}` is new, Phase 1).
 
 Tests: bytes for each form; NF without APX_F refused; NDD in 32-bit mode
-refused; `{nf}` on an instruction with no NF form refused; and the
+refused; `{nf}` on an instruction with no NF form refused; `{nf} add`
+(option before the mnemonic) is an error, never silently ignored by the
+settings hook; and the
 **timing check**: assembly time of a large non-APX source before and after
 including the layer.
 
@@ -251,10 +267,12 @@ scheme, which we are avoiding).
 - `ccmpSCC` / `ctestSCC` with `{dfv=of,sf,zf,cf}` as the first operand
   (comma after it optional, as NASM), or an immediate 0–15 (OF,SF,ZF,CF =
   bits 3–0). SCC names are the condition codes plus `t`/`f` for
-  1010/1011. The braces sit after the mnemonic, so they reach the
-  instruction as operand text, not through the `??` hook.
+  1010/1011. Like `{nf}`, the braces sit after the mnemonic and are split
+  off the operand text by the instruction.
 - `cfcmovcc` (load/store forms, and NDD form).
-- ZU forms: `setzucc`, `imulzu` (§1.1, syntax open).
+- ZU forms: `setCC {zu} r8`, `imul {zu} r, r/m, imm` (§1.1). Check whether
+  `{nf}` and `{zu}` may appear together on `imul` (Intel's `imulnfzu`);
+  if so, accept them in either order.
 - EVEX promotion of the VEX-encoded GPR instructions so they can take
   r16+: BMI1/BMI2 (`andn`, `bextr`, `bzhi`, `mulx`, `pdep`, `pext`, `rorx`,
   `sarx`, `shlx`, `shrx`, `blsi`…), CMPccXADD, RAO-INT, USER_MSR,
@@ -284,11 +302,10 @@ Gates: APX_F **and** the instruction's own feature (XED's
 
 ## 4. Open questions
 
-1. ~~`{nf}` as hook-only vs. a normal `use` setting~~ Decided: `{nf}`
-   before or after the mnemonic, per instruction only (§1.1).
-2. ~~`{dfv=…}` syntax~~ Settled by Intel 817241 / NASM (Phase 4).
-   Still open: ZU as Intel's `setzuCC`/`imulzu` mnemonics, NASM's `{zu}`,
-   or both.
+1. ~~`{nf}` as hook-only vs. a normal `use` setting~~ Decided: options
+   (`{nf}`, `{zu}`, `{dfv=…}`) after the mnemonic only; encoding
+   selection (`{rex2}`, `{evex}`) before it (§1.1).
+2. ~~`{dfv=…}` and ZU syntax~~ Decided (§1.1, Phase 4).
 3. Which execution emulator (§2, discovery point E).
 4. Whether `x86.ext` needs a new window: APX_F is in 7.1:EDX (window 192,
    already allocated). `apx-nci-ndd-nf` (QEMU's name) is APX_NCI_NDD_NF,
@@ -305,3 +322,6 @@ Gates: APX_F **and** the instruction's own feature (XED's
 - 2026-11-02: syntax decisions (`{nf}` before or after the mnemonic; fasm
   first, manuals next). Added Intel 817241, NASM 3.02rc7 and MSVC
   `/feature:APX` as references; NF list corrected from 817241.
+- 2026-11-02: placement rule: options after the mnemonic only (`{nf}`,
+  `{zu}`, `{dfv=…}`), encoding selection before it (`{rex2}`, `{evex}`).
+  ZU as `{zu}`, not `setzuCC`/`imulzu`.
