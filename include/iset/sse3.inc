@@ -44,7 +44,7 @@ end macro
 
 macro lddqu? dest*,src*
 	require SSE3+
-	SSE.parse_operand@src dest
+	SSE.parse_operand@dest dest
 	SSE.parse_operand@src src
 	if (@dest.size or @src.size) and not 16
 		err 'invalid operand size'

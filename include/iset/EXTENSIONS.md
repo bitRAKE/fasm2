@@ -218,13 +218,15 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G22, G26 and G27 are fixed (G23–G25 are numbered on the `claude/apx-gas`
-branch, from its GNU as comparison). Each has a test in `tests/iset/` that passes on this
-branch and fails on the tree before the fix (see `tests/iset/readme.md`;
-`_on_tree.py` runs a test's cases with another tree). G15–G22, G26 and G27 are upstream
-defects (present on `master`); repros and root causes for an upstream report
-are in [`apx-plan.md`](apx-plan.md) §5.3. G15's class is checked over every
-mnemonic by `tests/iset/_imm_probe.py`, G26/G27's by `_internal_errors.py`.
+G1–G24, G26 and G27 are fixed; G25 is open. Each fixed defect has a test
+in `tests/iset/` that passes on this branch and fails on the tree before
+the fix (see `tests/iset/readme.md`; `_on_tree.py` runs a test's cases with
+another tree). G15–G24, G26 and G27 are upstream defects (present on
+`master`); G25 is in this branch's own `msr.inc` (b3b0669). The GNU as
+comparison (`tests/iset/_apx_gas.py`) found G23–G25. Repros and root causes
+for an upstream report are in [`apx-plan.md`](apx-plan.md) §5.3. G15's class
+is checked over every mnemonic by `tests/iset/_imm_probe.py`, G26/G27's by
+`_internal_errors.py`.
 
 | # | Defect | Effect | Fix | Test |
 |---|--------|--------|-----|------|
@@ -251,6 +253,9 @@ mnemonic by `tests/iset/_imm_probe.py`, G26/G27's by `_internal_errors.py`.
 | G20 | `vpinsrq` and `vlddqu` (`avx.inc`) parsed the operand they store with `x86.parse_operand`, which leaves `mask`, `evex_b`, `memsize` unset | first in a source: `invalid expression`; after another AVX instruction: whatever it left behind | `AVX_512.parse_operand` | `avx_operand_state.asm` |
 | G21 | `vpbroadcastq` xmm/m64 form used W0 for EVEX too; `vpbroadcastd/q` lacked `EVEX_VL` | `vpbroadcastq zmm0, [rax]` decoded as `vbroadcasti32x2` (AVX512DQ, per-dword masking); masked xmm/ymm forms did not require AVX512VL | `EVEX_W1` for q, `EVEX_VL` for both | `vpbroadcastq.asm` |
 | G22 | `vcompressps/vcompresspd` declared map 1 (`VEX_66_0F_…`) instead of map 2 | `vcompresspd [rax], xmm0` = `62 F1 FD 08 8A 00`, undecodable (#UD) | `VEX_66_0F38_…` | `vcompress.asm` |
+| G23 | `lddqu` (`sse3.inc`) parsed its destination with `SSE.parse_operand@src` | first in a source: `invalid expression`; after `addps xmm5, xmm1`, `lddqu xmm0, [rax]` assembled as `lddqu xmm5, [rax]`: wrong register, no error | `SSE.parse_operand@dest dest` | `sse3_lddqu.asm` |
+| G24 | `AMX.parse_sib_operand` (`amx.inc`) forced SIB with `take`/`compute`/`take` on `x86.usesib` | under a `{settings}` prefix (`{evex}`, `{vex3}`, `{imm8}` …) on tileloadd/tileloaddt1/tilestored, `x86.usesib` stayed 1: every later memory operand got a SIB byte (`lea eax, [rax]` = `8D 04 20`) | save and restore the value with `compute` | `amx_sib.asm` |
+| G25 *(open)* | `urdmsr r64, r64` (`msr.inc`) puts the destination in ModRM.reg | `urdmsr rax, rcx` = `F2 0F 38 F8 C1`, which is `urdmsr rcx, rax` (SDM 093: Op/En MR; XED; GNU as `…C8`); llvm-mc does the same | destination in ModRM.rm, as the imm32 form already does; `msr.asm` and `apx_promoted.asm` expectations change | — |
 | G26 | `aes.inc`: `vaeskeygenassist` passed `opcode`, its block's parameter is `supp` | `vaeskeygenassist` never assembled: "symbol 'opcode' is undefined" | `supp` (upstream d4be069 fixed the same swap in `vaesenc`/`vaesdec`) | `aes_forms.asm` |
 | G27 | `aes.inc`: `aesimc` (SSE) passed `supp`, its block's parameter is `opcode` | `aesimc` never assembled: "symbol 'supp' is undefined" | `opcode` | `aes_forms.asm` |
 

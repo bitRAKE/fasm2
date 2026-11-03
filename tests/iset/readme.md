@@ -99,6 +99,8 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `crc32.asm` | G18 | `crc32 r64, r/m8` carries REX.W. |
 | `cet_wrss.asm` | G19 | WRSS/WRUSS take a memory destination only. |
 | `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |
+| `sse3_lddqu.asm` | G23 | lddqu takes its own destination: first in a source, and after an SSE instruction with another destination. |
+| `amx_sib.asm` | G24 | a `{settings}` prefix on tileloadd/tilestored no longer leaves `{sib}` on for the lines after it; `{sib}` itself still applies to its own line only. |
 
 `_dupnames.py` is a separate check: `python tests/iset/_dupnames.py` fails on any
 instruction name defined twice in `include/` that is not a reviewed, deliberate
@@ -120,6 +122,22 @@ any change to an operand parser or an encoder. It takes about a minute.
 Intel-syntax tests (`llvm/test/MC/X86/apx/*-intel.s`, a local checkout) and
 compares each encoding; it is the progress measure for the APX phases, not
 a regression test (it needs the LLVM tree).
+`python tests/iset/_apx_gas.py [-v] [-x] [FILE]` compares fasm2 with GNU as,
+an encoder independent of LLVM (binutils 2.47, built in WSL under
+`~/opt/binutils-latest`; `GAS_PREFIX` names another build). It assembles
+the sweep's forms (every defined mnemonic × `PATTERNS`, then the `EDGE`
+registers for each form either side accepts) and LLVM's corpus lines with
+`as --64` in `.intel_syntax noprefix` (operands spelled as `to_llvm` does),
+one `L<n>:` label per line. A first run finds the lines with errors, a
+second assembles the rest, and the bytes of each line run from its label
+to the next (`nm`, `objcopy -O binary`). It prints the counts (same, DIFF,
+fasm-only, gas-only, both refuse) and every DIFF or fasm-only form not in
+its `REVIEWED` list. Entries whose reason starts with `open` are known
+defects (G15, G16b, G25) and are listed apart. `-x` decodes the printed
+forms with XED, and also the gas-only forms: bytes XED refuses are #UD
+written by GNU as (3DNow! with REX2). `-v` lists gas-only forms by
+mnemonic and gas's warnings. With FILE it compares that file's lines only.
+It takes about 15 minutes (about 300,000 lines, two GNU runs).
 `python tests/iset/_apx_xed.py [-v]` decodes every form fasm2 accepts in the
 sweep (also with r8) and in that corpus with XED, Intel's decoder, which
 refuses bytes that raise #UD. fasm2 must emit none (policy in
