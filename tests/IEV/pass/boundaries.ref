@@ -1,0 +1,179 @@
+; boundaries.ref -- encoding boundary conditions: correctness and the shortest form
+
+; Each line is checked by tests\IEV\_ref_check.py against llvm-mc and XED
+; (where fasm2 is shorter than llvm-mc the line says why). The bytes are
+; fasm2's, reviewed; _run.ps1 checks them with iev.alm.
+
+use32
+; disp8 range, both edges, and the base that needs a displacement (ebp)
+mov eax,[ebx+7Fh]                       ; 8B 43 7F
+mov eax,[ebx+80h]                       ; 8B 83 80 00 00 00
+mov eax,[ebx-80h]                       ; 8B 43 80
+mov eax,[ebx-81h]                       ; 8B 83 7F FF FF FF
+mov eax,[ebp]                           ; 8B 45 00
+mov eax,[ebp+0]                         ; 8B 45 00
+mov eax,[esp]                           ; 8B 04 24
+mov eax,[esp+7Fh]                       ; 8B 44 24 7F
+mov eax,[ebx]                           ; 8B 03
+; index without base: scale 1 is a base, scale 2 can be base+index
+mov eax,[ecx*1]                         ; 8B 01
+mov eax,[ecx*2]                         ; 8B 04 09
+mov eax,[ecx*2+7Fh]                     ; 8B 44 09 7F
+mov eax,[ecx*4]                         ; 8B 04 8D 00 00 00 00
+mov eax,[ecx*8+12345678h]               ; 8B 04 CD 78 56 34 12
+mov eax,[ebp*1]                         ; 8B 45 00
+mov eax,[esp+ecx]                       ; 8B 04 0C
+mov eax,[ecx+esp]                       ; 8B 04 0C
+; default segment: ss for ebp/esp base, ds otherwise; an override that
+; restates the default is dropped, base/index swapped to change it
+mov eax,[ds:ebx]                        ; 8B 03
+mov eax,[ss:ebp+4]                      ; 8B 45 04
+mov eax,[ss:esp]                        ; 8B 04 24
+mov eax,[ds:ebp+4]                      ; 3E 8B 45 04
+mov eax,[ss:ebx+4]                      ; 36 8B 43 04
+inc dword [ds:ebp+ebp+7Fh]              ; 3E FF 44 2D 7F
+inc dword [ds:ebp+ebp+80h]              ; FF 04 6D 80 00 00 00
+mov eax,[ds:ebp+ecx]                    ; 8B 04 29
+; absolute addresses and moffs
+mov eax,[12345678h]                     ; A1 78 56 34 12
+mov ebx,[12345678h]                     ; 8B 1D 78 56 34 12
+mov al,[0]                              ; A0 00 00 00 00
+mov [12345678h],ax                      ; 66 A3 78 56 34 12
+; immediates: sign-extended imm8 edges and the accumulator forms
+add ecx,7Fh                             ; 83 C1 7F
+add ecx,80h                             ; 81 C1 80 00 00 00
+add ecx,-80h                            ; 83 C1 80
+add ecx,-81h                            ; 81 C1 7F FF FF FF
+add ecx,0FFFFFFFFh                      ; 83 C1 FF
+add eax,1                               ; 83 C0 01
+add eax,80h                             ; 05 80 00 00 00
+add al,1                                ; 04 01
+add ax,0FFFFh                           ; 66 83 C0 FF
+and eax,0FFFFFF80h                      ; 83 E0 80
+test eax,1                              ; A9 01 00 00 00
+test al,1                               ; A8 01
+test ecx,1                              ; F7 C1 01 00 00 00
+cmp eax,-1                              ; 83 F8 FF
+imul eax,ecx,7Fh                        ; 6B C1 7F
+imul eax,ecx,80h                        ; 69 C1 80 00 00 00
+push 7Fh                                ; 6A 7F
+push 80h                                ; 68 80 00 00 00
+push -80h                               ; 6A 80
+mov eax,0                               ; B8 00 00 00 00
+mov ax,1                                ; 66 B8 01 00
+shl eax,1                               ; D1 E0
+shl eax,2                               ; C1 E0 02
+xchg eax,ecx                            ; 91
+xchg ecx,eax                            ; 91
+xchg eax,eax                            ; 87 C0
+; 16-bit addressing from 32-bit code
+mov ax,[bx+si]                          ; 67 66 8B 00
+mov ax,[bp]                             ; 67 66 8B 46 00
+mov ax,[bx+7Fh]                         ; 67 66 8B 47 7F
+mov ax,[bx+80h]                         ; 67 66 8B 87 80 00
+; relative jumps: short/near at the edges ($ is this instruction)
+jmp $+2+7Fh                             ; EB 7F
+jmp $+2+80h                             ; E9 7D 00 00 00
+jmp $+2-80h                             ; EB 80
+jmp $+2-81h                             ; E9 7C FF FF FF
+jz $+2+7Fh                              ; 74 7F
+jz $+2+80h                              ; 0F 84 7C 00 00 00
+loop $+2+7Fh                            ; E2 7F
+call $+5                                ; E8 00 00 00 00
+
+use16
+mov ax,[bx+si+7Fh]                      ; 8B 40 7F
+mov ax,[bp+0]                           ; 8B 46 00
+mov eax,[eax]                           ; 67 66 8B 00
+add ax,80h                              ; 05 80 00
+push 80h                                ; 68 80 00
+jmp $+2+7Fh                             ; EB 7F
+jmp $+2+80h                             ; E9 7F 00
+
+use64
+; RIP-relative is the default, absolute needs a SIB in 64-bit code
+mov eax,[rbx+7Fh]                       ; 8B 43 7F
+mov eax,[rbx+80h]                       ; 8B 83 80 00 00 00
+mov eax,[rbp]                           ; 8B 45 00
+mov eax,[r13]                           ; 41 8B 45 00
+mov eax,[r13+0]                         ; 41 8B 45 00
+mov eax,[rsp]                           ; 8B 04 24
+mov eax,[r12]                           ; 41 8B 04 24
+mov eax,[r12+r13]                       ; 43 8B 04 2C
+mov eax,[r13+r12]                       ; 43 8B 04 2C
+mov eax,[rcx*1]                         ; 8B 01
+mov eax,[rcx*2]                         ; 8B 04 09
+mov eax,[r13*1]                         ; 41 8B 45 00
+; base with low bits 101 (rbp, r13, r21, r29) needs a disp8; the index
+; as base does not (scale 1, 64-bit: no ss default to keep)
+mov eax,[rbp+rcx]                       ; 8B 04 29
+mov eax,[r13+rcx]                       ; 42 8B 04 29
+mov eax,[r13+r12]                       ; 43 8B 04 2C
+mov eax,[r13+rcx+8]                     ; 42 8B 44 29 08
+mov eax,[r13+rbp]                       ; 41 8B 44 2D 00
+mov eax,[r13+rcx*2]                     ; 41 8B 44 4D 00
+mov eax,[r21+rcx]                       ; D5 20 8B 04 29
+mov eax,[rbp+rbp]                       ; 8B 44 2D 00
+mov eax,[eax]                           ; 67 8B 00
+mov eax,[r8d+r9d*4]                     ; 67 43 8B 04 88
+; moffs: 32-bit address (67h) is shorter than 64-bit and than SIB
+mov eax,[gs:30h]                        ; 65 67 A1 30 00 00 00
+mov eax,[gs:000000000FFFFFFFFh]         ; 65 67 A1 FF FF FF FF
+mov eax,[gs:0FFFFFFFFFFFFFFFFh]         ; 65 8B 04 25 FF FF FF FF
+mov eax,[gs:0CCCCCCCCCCCCCCCCh]         ; 65 A1 CC CC CC CC CC CC CC CC
+mov rax,[gs:0CCCCCCCCCCCCCCCCh]         ; 65 48 A1 CC CC CC CC CC CC CC CC
+mov al,[fs:10h]                         ; 64 67 A0 10 00 00 00
+; immediates in 64-bit code
+mov rax,1                               ; 48 C7 C0 01 00 00 00
+mov rax,7FFFFFFFh                       ; 48 C7 C0 FF FF FF 7F
+mov rax,80000000h                       ; 48 B8 00 00 00 80 00 00 00 00
+mov rax,0FFFFFFFFh                      ; 48 B8 FF FF FF FF 00 00 00 00
+mov rax,-1                              ; 48 C7 C0 FF FF FF FF
+mov rax,100000000h                      ; 48 B8 00 00 00 00 01 00 00 00
+mov rax,-80000000h                      ; 48 C7 C0 00 00 00 80
+mov rax,-80000001h                      ; 48 B8 FF FF FF 7F FF FF FF FF
+mov r8,1                                ; 49 C7 C0 01 00 00 00
+add rax,7Fh                             ; 48 83 C0 7F
+add rax,80h                             ; 48 05 80 00 00 00
+add rax,7FFFFFFFh                       ; 48 05 FF FF FF 7F
+add rax,-80000000h                      ; 48 05 00 00 00 80
+push 7Fh                                ; 6A 7F
+push 80h                                ; 68 80 00 00 00
+push rax                                ; 50
+push r8                                 ; 41 50
+push qword [rax]                        ; FF 30
+xchg rax,rax                            ; 48 90
+xchg eax,eax                            ; 87 C0
+xchg r8,rax                             ; 49 90
+; byte registers that need REX
+mov sil,al                              ; 40 88 C6
+mov al,sil                              ; 40 88 F0
+mov ah,al                               ; 88 C4
+; VEX: two-byte form when possible, three-byte when X/B/W/map need it
+vaddps xmm0,xmm1,xmm2                   ; C5 F0 58 C2
+vaddps xmm8,xmm1,xmm2                   ; C5 70 58 C2
+vaddps xmm0,xmm8,xmm2                   ; C5 B8 58 C2
+vaddps xmm0,xmm1,xmm8                   ; C4 C1 70 58 C0
+vaddps xmm0,xmm1,[r8]                   ; C4 C1 70 58 00
+vaddps xmm0,xmm1,[rax+r8]               ; C4 A1 70 58 04 00
+vpshufb xmm0,xmm1,xmm2                  ; C4 E2 71 00 C2
+vaddpd ymm0,ymm1,ymm2                   ; C5 F5 58 C2
+vmovaps xmm8,xmm0                       ; C5 78 28 C0
+vmovaps xmm0,xmm8                       ; C4 C1 78 28 C0
+; EVEX only when it has to be; disp8*N compression edges
+vaddps xmm16,xmm1,xmm2                  ; 62 E1 74 08 58 C2
+vaddps zmm0,zmm1,[rax+40h]              ; 62 F1 74 48 58 40 01
+vaddps zmm0,zmm1,[rax+64*127]           ; 62 F1 74 48 58 40 7F
+vaddps zmm0,zmm1,[rax+64*128]           ; 62 F1 74 48 58 80 00 20 00 00
+vaddps zmm0,zmm1,[rax-64*128]           ; 62 F1 74 48 58 40 80
+vaddps zmm0,zmm1,[rax-64*129]           ; 62 F1 74 48 58 80 C0 DF FF FF
+vaddps zmm0,zmm1,[rax+20h]              ; 62 F1 74 48 58 80 20 00 00 00
+vaddps zmm0,zmm1,[rax+4]{1to16}         ; 62 F1 74 58 58 40 01
+vaddps zmm0,zmm1,[rax+4*127]{1to16}     ; 62 F1 74 58 58 40 7F
+vaddps zmm0,zmm1,[rax+4*128]{1to16}     ; 62 F1 74 58 58 80 00 02 00 00
+vaddps ymm16,ymm1,[rax+32*127]          ; 62 E1 74 28 58 40 7F
+vaddps xmm16,xmm1,[rax+16*127]          ; 62 E1 74 08 58 40 7F
+vaddss xmm16,xmm1,[rax+4*127]           ; 62 E1 76 08 58 40 7F
+vaddss xmm16,xmm1,[rax+4*128]           ; 62 E1 76 08 58 80 00 02 00 00
+vaddps ymm6{k1}{z},ymm12,ymm24          ; 62 91 1C A9 58 F0
+vsubps zmm1,zmm2,dword [rsi] {1to16}    ; 62 F1 6C 58 5C 0E

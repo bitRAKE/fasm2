@@ -4,7 +4,8 @@
    line instruction after instruction. Writes one line per input:
        OK <Intel-syntax text>[; <next instruction>...]
        ERR <xed error name> at <byte offset>
-   64-bit mode, all chips (XED's default).
+   64-bit mode unless the line starts with "16:" or "32:"; all chips
+   (XED's default).
 
    Build against an XED kit (see readme.md):
        cl /nologo /O2 /I<kit>\include _xedcheck.c <kit>\lib\xed.lib
@@ -29,7 +30,18 @@ int main(void)
 		xed_uint8_t buf[XED_MAX_INSTRUCTION_BYTES * 2];
 		unsigned n = 0;
 		int hi = -1;
-		for (char *p = line; *p && n < sizeof buf; p++) {
+		char *p = line;
+		/* an optional mode: "16:" or "32:" before the bytes (default 64) */
+		xed_machine_mode_enum_t mode = XED_MACHINE_MODE_LONG_64;
+		xed_address_width_enum_t width = XED_ADDRESS_WIDTH_64b;
+		if (!strncmp(p, "16:", 3)) {
+			mode = XED_MACHINE_MODE_LEGACY_16; width = XED_ADDRESS_WIDTH_16b; p += 3;
+		} else if (!strncmp(p, "32:", 3)) {
+			mode = XED_MACHINE_MODE_LEGACY_32; width = XED_ADDRESS_WIDTH_32b; p += 3;
+		} else if (!strncmp(p, "64:", 3)) {
+			p += 3;
+		}
+		for (; *p && n < sizeof buf; p++) {
 			int v = hexval(*p);
 			if (v < 0) continue;
 			if (hi < 0) hi = v;
@@ -44,7 +56,7 @@ int main(void)
 			xed_decoded_inst_t xedd;
 			unsigned left = n - at;
 			xed_decoded_inst_zero(&xedd);
-			xed_decoded_inst_set_mode(&xedd, XED_MACHINE_MODE_LONG_64, XED_ADDRESS_WIDTH_64b);
+			xed_decoded_inst_set_mode(&xedd, mode, width);
 			err = xed_decode(&xedd, buf + at, left > XED_MAX_INSTRUCTION_BYTES ? XED_MAX_INSTRUCTION_BYTES : left);
 			if (err != XED_ERROR_NONE)
 				break;

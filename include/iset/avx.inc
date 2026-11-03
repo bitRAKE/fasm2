@@ -1190,7 +1190,7 @@ macro AVX_512.single_source_instruction_imm8 vex_mpw,evex_f,opcode,unit,dest,src
 	AVX_512.parse_k1z_operand@dest dest
 	AVX_512.parse_operand@src src
 	x86.parse_operand@aux aux
-	if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'mmreg')
+	if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'mmreg') & @aux.type = 'imm'
 		if @aux.size and not 1
 			err 'invalid operand size'
 		else if unit & ( @dest.size <> (unit-1) and not 15 + 16 | (@src.type = 'mem' & @src.size and not unit) )
@@ -2022,7 +2022,7 @@ macro vcvtps2ph? dest*,src*,aux*&
 	else
 		x86.parse_operand@aux aux
 	end match
-	if (@dest.type = 'mem' | @dest.type = 'mmreg') & @src.type = 'mmreg'
+	if (@dest.type = 'mem' | @dest.type = 'mmreg') & @src.type = 'mmreg' & @aux.type = 'imm'
 		if (@dest.type = 'mem' & @dest.size and not (@src.size shr 1)) | (@dest.type = 'mmreg' & (@src.size shr 1 - 1) and not 15 + 16 <> @dest.size)
 			err 'invalid operand size'
 		end if

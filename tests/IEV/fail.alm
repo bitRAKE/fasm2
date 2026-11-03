@@ -1,0 +1,26 @@
+; Instruction Encoding Verifier for fasm g, the fail form (fasm2's companion
+; to iev.alm). A line's comment names the error it must stop with:
+;
+;	{rex2} xsave [rax]		; '{rex2} cannot encode this instruction'
+;
+; fasmg cannot catch an error from inside the source, so this module only
+; assembles each line without its comment; tests\IEV\_run.ps1 matches
+; fasmg's error reports to the lines. A line without a comment is setup
+; and must assemble without error.
+
+; (comment? also matches a line holding only ';'. No comments below this
+; point: retaincomments would make them part of the code.)
+
+	retaincomments
+
+	calminstruction ? line&
+		local comment
+
+		match ;comment?, line
+		jyes done
+
+		match line;comment, line
+		assemble line
+
+	done:
+	end calminstruction

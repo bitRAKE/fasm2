@@ -33,7 +33,7 @@ iterate <instr,opcode>, aesimc,0DBh
 
 	macro instr? dest*,src*
 		require AESNI
-		SSE.basic_instruction 66h,<38h,supp>,16,dest,src
+		SSE.basic_instruction 66h,<38h,opcode>,16,dest,src
 	end macro
 
 	macro v#instr? dest*,src*
@@ -52,7 +52,7 @@ iterate <instr,supp>, aeskeygenassist,0DFh
 
 	macro v#instr? dest*,src*,imm*
 		require AESNI
-		AVX_512.single_source_instruction_imm8 VEX_66_0F3A_W0,EVEX_FORBIDDEN,opcode,16,dest,src,imm
+		AVX_512.single_source_instruction_imm8 VEX_66_0F3A_W0,EVEX_FORBIDDEN,supp,16,dest,src,imm
 	end macro
 
 end iterate

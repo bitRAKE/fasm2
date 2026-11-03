@@ -161,6 +161,14 @@ llvm-mc and GNU as write (e.g. `01 /r` over `03 /r` for `add r, r`). The
 rule is a generator decision recorded per mnemonic group, so it is tested,
 not implied by row order.
 
+Cases already measured (`tests/IEV/pass/boundaries.ref`, against llvm-mc): fasm2
+is shorter in 20 address/moffs/segment forms and must stay so. Open: the
+store-direction opcode for a register move when it allows VEX2
+(`vmovaps xmm0,xmm8`, 1 byte), `90` for `xchg eax,eax` in 32-bit code and
+for `xchg rax,rax` (1 byte each). Not to take from llvm-mc: swapping the
+sources of a "commutative" floating-point operation to reach VEX2, which
+changes which NaN the result carries.
+
 ### 3.4 Hand-written parts that stay
 
 - The alias layer (2.2: condition-code synonyms, predicates, size

@@ -36,6 +36,10 @@
 ; FAIL 6: 'invalid combination of operands'
 ; FAIL 7: '{evex} cannot encode this instruction'
 ; FAIL 8: '{evex} cannot encode this instruction'
+; FAIL 9: '{nf} not supported by this instruction'
+; FAIL 10: '{nf} not supported by this instruction'
+; FAIL 11: '{zu} not supported by this instruction'
+; FAIL 12: '{dfv} not supported by this instruction'
 
 macro expect bytes*, line&
 	local n, got, k, want
@@ -155,5 +159,21 @@ else if FAIL = 7	; a one-line {evex} is a request: SSE is not promoted
 else if FAIL = 8	; without APX_F a legacy instruction has no EVEX form
 	use AMD64, AVX512
 	{evex} add rax, rbx
+
+else if FAIL = 9	; an option after a mnemonic that has no such form
+	use everything
+	mulx {nf} eax, ebx, ecx
+
+else if FAIL = 10
+	use everything
+	vaddpd {nf} xmm0, xmm1, xmm2
+
+else if FAIL = 11
+	use everything
+	pdep {zu} eax, ebx, ecx
+
+else if FAIL = 12
+	use everything
+	cmp {dfv=of} rax, rbx
 
 end if

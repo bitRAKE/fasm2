@@ -127,7 +127,7 @@ macro pextrb? dest*,src*,sel*
 		if x86.mode = 64 & @dest.type = 'reg' & @dest.size = 8
 			@dest.size = 4
 		end if
-		if (@dest.type = 'reg' & @dest.size <> 4) | (@dest.size = 'mem' & @dest.size and not 1) | @aux.size and not 1
+		if (@dest.type = 'reg' & @dest.size <> 4) | (@dest.type = 'mem' & @dest.size and not 1) | @aux.size and not 1
 			err 'invalid operand size'
 		end if
 		@dest.opcode_prefix = 66h

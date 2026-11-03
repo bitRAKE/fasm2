@@ -140,6 +140,10 @@ expect both.
 
 ## 2. Executing APX code before hardware
 
+*Superseded 2026-11-03:* emulators are not trusted as a source of truth
+(authority order, §1); XED stands in until hardware exists, and no
+execution path was chosen. The table records what was found.
+
 Encoding checks (bytes vs. llvm-mc, decode with XED/Zydis) need nothing
 more. Execution tests do: flag results of NF forms, CCMP flag
 substitution, PUSH2/POP2 alignment faults, upper-32 zeroing of ZU forms.
@@ -152,7 +156,8 @@ substitution, PUSH2/POP2 alignment faults, upper-32 zeroing of ZU forms.
 
 **Discovery point E.** Pick one execution path before Phase 3 (the first
 phase whose semantics, not just bytes, can be wrong). Until then, tests are
-byte tests only.
+byte tests only. *Outcome:* none picked; all APX tests are byte tests,
+checked against llvm-mc and decoded by XED.
 
 ---
 
@@ -543,7 +548,11 @@ Gates: APX_F **and** the instruction's own feature (XED's
   (e.g. `mulx {nf} …`, which has no NF form) reaches that instruction's
   operand parser and gives a parser error ("invalid expression") instead
   of "{nf} not supported". Layers with no flags would fix it at layer
-  cost; left for the post-APX review (§5).
+  cost; left for the post-APX review (§5). *Fixed 2026-11-03:*
+  `x86.parse_operand` reports an option it is handed (`{nf} not supported
+  by this instruction`, also `{zu}`, `{dfv}`); the layers take theirs
+  before parsing, so no layer is needed. (The `??` line hook cannot do
+  it: it sees only lines that do not start with an instruction.)
 
 **Phase 4 complete.** Every APX form in LLVM's Intel-syntax tests that
 does not involve a vector register with r16–r31 assembles to the same
@@ -597,11 +606,12 @@ is its own extension (`MSR_IMM`, not planned yet).
    (`{nf}`, `{zu}`, `{dfv=…}`) after the mnemonic only; encoding
    selection (`{rex2}`, `{evex}`) before it (§1.1).
 2. ~~`{dfv=…}` and ZU syntax~~ Decided (§1.1, Phase 4).
-3. Which execution emulator (§2, discovery point E).
-4. Whether `x86.ext` needs a new window: APX_F is in 7.1:EDX (window 192,
-   already allocated). `apx-nci-ndd-nf` (QEMU's name) is APX_NCI_NDD_NF,
-   a later sub-feature; find its CPUID bit (XED/SDM) before Phase 3, since
-   it may gate the NDD/NF forms of some instructions.
+3. ~~Which execution emulator~~ Decided: none; emulators are not trusted
+   (§1, §2).
+4. ~~Whether `x86.ext` needs a new window~~ Decided: no. APX_F is in
+   7.1:EDX (window 192). XED v2026.08.23 gates every APX form on APX_F plus
+   the instruction's own feature (`APX_F_ADX`, `APX_F_BMI1`, ...); it has
+   no NDD/NF sub-feature, so fasm2's gating matches.
 5. ~~Syntax in other assemblers~~ Decided: fasm's choices first, then the
    manuals (§1.1). NASM 3.02 is the only other Intel-syntax assembler here
    with APX.
@@ -669,9 +679,11 @@ fasm2 upstream (tgrysztar/fasm2; all present on `master` aab8758,
 | # | Defect | Repro | Root cause | Here |
 |---|--------|-------|------------|------|
 | G17 | `cmpxchg16b [r8]` assembles `48 41 0F C7 08`; the CPU ignores the 48h and runs cmpxchg8b | `use64` / `cmpxchg16b [r8]` | `x86.store_operand_prefix, (8)` emits REX.W as its own byte before `x86.store_instruction`'s REX | fixed, `tests/iset/cmpxchg16b.asm` |
-| G15 | AVX `*_imm8` helpers accept a memory operand as the imm8 and use a stale value | `vroundpd xmm0, xmm1, 3` then `vroundpd xmm0, xmm1, [rax]`: both `C4 E3 79 09 C1 03`, no error | `AVX_512.single_source_instruction_imm8` never checks `@aux.type = 'imm'` | open |
+| G15 | AVX `*_imm8` helpers accept a memory operand as the imm8 and use a stale value | `vroundpd xmm0, xmm1, 3` then `vroundpd xmm0, xmm1, [rax]`: both `C4 E3 79 09 C1 03`, no error | `AVX_512.single_source_instruction_imm8` and `vcvtps2ph` never check `@aux.type = 'imm'` | fixed, `tests/iset/avx_imm8.asm` |
 | G16 | `rcppd`, `rcpsd`, `rsqrtpd`, `rsqrtsd` assemble (no such instructions; XED: GENERAL_ERROR) | `rcppd xmm0, xmm1` | `sse2.inc` reuses SSE's iterate list including `rsqrt`/`rcp` | fixed, `tests/iset/sse2_rcp.asm` |
-| G16b | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | as shown | `sse.inc`: `@src.size = 'mem'` / `@src.size = 'mmreg'` compare the *size* with a type string (meant `@src.type`), so the size check never applies | open |
+| G16b | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0`; same for `cvtps2pi mm0, mm1`; `pextrb dword [rax], xmm0, 1` accepted | as shown | `sse.inc`, `sse4.inc`: `@src.size = 'mem'` / `'mmreg'` compare the *size* with a type string (meant `.type`), so the size check never applies | fixed, `tests/iset/sse_operand_size.asm` |
+| G26 | `vaeskeygenassist` never assembles ("symbol 'opcode' is undefined") | `vaeskeygenassist xmm0, xmm1, 1` | `aes.inc`: the macro names the other iterate block's parameter; d4be069 fixed the same swap in `vaesenc`/`vaesdec` only | fixed, `tests/iset/aes_forms.asm` |
+| G27 | `aesimc` (SSE) never assembles ("symbol 'supp' is undefined") | `aesimc xmm0, xmm1` | `aes.inc`: as G26, the other way round | fixed, `tests/iset/aes_forms.asm` |
 | G18 | `crc32 rbx, al` assembles `F2 0F 38 F0 D8` (the `crc32 ebx, al` encoding; same result) | as shown | `sse4.inc` crc32: no `select_operand_prefix` for an 8-bit source | fixed, `tests/iset/crc32.asm` |
 | G19 | `wrssq rax, r8` assembles (`4C 0F 38 F6 C0`, Mod=11); WRSS/WRUSS are `m, r` only | as shown | `cet.inc`: `@dest.type = 'reg' \| @dest.type = 'mem'` | fixed, `tests/iset/cet_wrss.asm` |
 | G20 | `vpinsrq xmm0, xmm1, rax, 1` and `vlddqu xmm0, [rax]` fail with "invalid expression" when first in a source | either line alone after `use64` | `avx.inc`: the stored operand is parsed with `x86.parse_operand`, leaving `mask`/`evex_b`/`memsize` undefined (or stale) | fixed, `tests/iset/avx_operand_state.asm` |
@@ -762,3 +774,9 @@ syntax comparisons.
   an error where they cannot apply (`x86.select_check`); `use` keeps
   them preferences. Corpus, sweep and XED check unchanged (0 DIFF,
   0 failures, 44,560 decoded).
+- 2026-11-03: pre-review pass: G15, G16b fixed (and the same size/type
+  mix-up in cvtps2pi, pextrb), G26/G27 (aes.inc) found and fixed; `{nf}`
+  etc. after a mnemonic without that form now says so; `[a,b]` outside
+  MPX/AMX is "invalid address". IEV (Tomasz Grysztar's form) added in
+  tests/IEV with the iset checks and a boundary set; the boundary set made
+  fasm2 swap an r13/r21/r29 base with its index like rbp's (1 byte).

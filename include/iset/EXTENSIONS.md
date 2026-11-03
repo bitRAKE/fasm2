@@ -218,12 +218,13 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G14 and G16–G22 are fixed. Each has a test in `tests/iset/` that passes on
-this branch and fails on the tree before the fix (see `tests/iset/readme.md`).
-G15 and G16b are open: the APX sweep found them (`tests/iset/_apx_sweep.py`
-lists them as reviewed, with the same behaviour for r8 as for r16). G15–G22
-are upstream defects (present on `master`); repros and root causes for an
-upstream report are in [`apx-plan.md`](apx-plan.md) §5.3.
+G1–G22, G26 and G27 are fixed (G23–G25 are numbered on the `claude/apx-gas`
+branch, from its GNU as comparison). Each has a test in `tests/iset/` that passes on this
+branch and fails on the tree before the fix (see `tests/iset/readme.md`;
+`_on_tree.py` runs a test's cases with another tree). G15–G22, G26 and G27 are upstream
+defects (present on `master`); repros and root causes for an upstream report
+are in [`apx-plan.md`](apx-plan.md) §5.3. G15's class is checked over every
+mnemonic by `tests/iset/_imm_probe.py`, G26/G27's by `_internal_errors.py`.
 
 | # | Defect | Effect | Fix | Test |
 |---|--------|--------|-----|------|
@@ -241,15 +242,17 @@ upstream report are in [`apx-plan.md`](apx-plan.md) §5.3.
 | G12 | `avx.inc` listed `vpmuldq` in two `iterate` blocks; the later, EVEX-only one replaced the VEX/EVEX one | `vpmuldq xmm/ymm` (AVX/AVX2) refused | Remove it from the later block | `redefinition.asm` |
 | G13 | `avx.inc` defined `vcvtph2ps`/`vcvtps2ph` twice; the later F16C VEX-only pair replaced the VEX+EVEX pair | AVX-512 forms (zmm, masks, `{sae}`) refused | One definition each: VEX needs F16C, EVEX needs AVX512F (`F16C.gate`) | `redefinition.asm` |
 | G14 | `sse2.inc`/`sse4.inc` redefined `movd`, `movq`, `pinsrw`, `pextrw`, `pmovmskb` to add xmm (and memory) forms with one blanket `require SSE2+`/`SSE4.1+` and never passed on | Older forms got the newer gate: `movd mm1, eax` needed SSE2; `pextrw eax, mm1, 1` and `pextrw eax, xmm1, 1` needed SSE4.1 | Each layer gates only its own forms and passes the rest to the earlier definition (`movd`, `pinsrw`, SSE4.1 `pextrw`), or gates per form where it also added forms (`movq` mm↔r64, r64 destinations) | `stacking.asm` |
-| G15 *(open)* | `AVX_512.single_source_instruction_imm8` (and possibly other `*_imm8` helpers) never checks that the imm8 operand is an immediate | `vroundpd xmm0, xmm1, [rax]` assembles when an earlier line left `@aux.imm` defined, with that stale value as imm8: wrong bytes, no error. Seen on `vround*`, `vcvtps2ph`, `vpcmp[ei]str[im]` | Check `@aux.type = 'imm'` in each `*_imm8` helper | — |
+| G15 | `AVX_512.single_source_instruction_imm8` (`vroundpd/ps`, `vaeskeygenassist`, `vpcmp[ei]str[im]`) and `vcvtps2ph` never checked that the imm8 operand is an immediate | `vroundpd xmm0, xmm1, [rax]` assembled when an earlier line left `@aux.imm` defined, with that stale value as imm8: wrong bytes, no error | `@aux.type = 'imm'` in both conditions; `_imm_probe.py` finds no other helper (79,994 pairs) | `avx_imm8.asm` |
 | G16 | `sse2.inc` reuses SSE's `iterate` list, so `rsqrt`/`rcp` also generate `rsqrtpd`, `rsqrtsd`, `rcppd`, `rcpsd` | Four instructions that do not exist (66h/F2h on 0F 52/53) assemble without error; XED refuses the bytes (#UD) | Dropped `rsqrt` and `rcp` from the SSE2 list | `sse2_rcp.asm` |
-| G16b *(open)* | `cvtss2si`/`cvttss2si` (`sse.inc`) accept an `mm` source | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | The size check compares `@src.size` with `'mem'`/`'mmreg'` (meant `@src.type`), so it never applies; fix the comparison and accept xmm/m32 only | — |
+| G16b | `cvtss2si`/`cvttss2si`, `cvtps2pi`/`cvttps2pi` (`sse.inc`) and `pextrb` (`sse4.inc`) compared an operand's *size* with `'mem'`/`'mmreg'` (meant `.type`), so their size check never applied | `cvtss2si eax, mm0` assembled as `cvtss2si eax, xmm0`; `cvtps2pi mm0, mm1` as `cvtps2pi mm0, xmm1`; `pextrb dword [rax], xmm0, 1` took a dword destination (m8 only) | `.type` in the three comparisons | `sse_operand_size.asm` |
 | G17 | `cmpxchg16b` wrote REX.W with `x86.store_operand_prefix` before `x86.store_instruction`'s own REX | `cmpxchg16b [r8]` was `48 41 0F C7 08`; only the REX next to the opcode counts, so it executed `cmpxchg8b [r8]` | `x86.select_operand_prefix@dest 8`, so W joins the one REX (or REX2) | `cmpxchg16b.asm` |
 | G18 | `crc32 r64, r/m8` (`sse4.inc`) wrote no REX.W | `crc32 rbx, al` was `F2 0F 38 F0 D8`, the `crc32 ebx, al` encoding (same result, as the destination is zero-extended; not the SDM form) | W for a 64-bit destination | `crc32.asm` |
 | G19 | `wrssd/wrssq/wrussd/wrussq` (`cet.inc`) accepted a register destination | `wrssq rax, r8` assembled with ModRM.mod = 11; only `m32/m64, r` exists | memory destination only | `cet_wrss.asm` |
 | G20 | `vpinsrq` and `vlddqu` (`avx.inc`) parsed the operand they store with `x86.parse_operand`, which leaves `mask`, `evex_b`, `memsize` unset | first in a source: `invalid expression`; after another AVX instruction: whatever it left behind | `AVX_512.parse_operand` | `avx_operand_state.asm` |
 | G21 | `vpbroadcastq` xmm/m64 form used W0 for EVEX too; `vpbroadcastd/q` lacked `EVEX_VL` | `vpbroadcastq zmm0, [rax]` decoded as `vbroadcasti32x2` (AVX512DQ, per-dword masking); masked xmm/ymm forms did not require AVX512VL | `EVEX_W1` for q, `EVEX_VL` for both | `vpbroadcastq.asm` |
 | G22 | `vcompressps/vcompresspd` declared map 1 (`VEX_66_0F_…`) instead of map 2 | `vcompresspd [rax], xmm0` = `62 F1 FD 08 8A 00`, undecodable (#UD) | `VEX_66_0F38_…` | `vcompress.asm` |
+| G26 | `aes.inc`: `vaeskeygenassist` passed `opcode`, its block's parameter is `supp` | `vaeskeygenassist` never assembled: "symbol 'opcode' is undefined" | `supp` (upstream d4be069 fixed the same swap in `vaesenc`/`vaesdec`) | `aes_forms.asm` |
+| G27 | `aes.inc`: `aesimc` (SSE) passed `supp`, its block's parameter is `opcode` | `aesimc` never assembled: "symbol 'supp' is undefined" | `opcode` | `aes_forms.asm` |
 
 ---
 
@@ -794,15 +797,18 @@ How each source feeds the work:
    `bmi.inc`): done, with tests.
 7. **Historical and vendor files** (§5.7): `padlock.inc` and 4FMAPS done;
    `cyrix.inc`/`undoc.inc` blocked on an authoritative reference.
-8. **APX / AVX10.2**, as a separate design (§5.8).
+8. **APX / AVX10.2**, as a separate design (§5.8). APX: done
+   ([`apx-plan.md`](apx-plan.md)). AVX10.2: [`xed-plan.md`](xed-plan.md).
 
 **Status (end of this pass).** Every addition in §5 that has a reference
-is implemented and tested: `tests/iset/_run.ps1` runs 33 sources (209 checks), each of
-which fails on the tree before its change. Still open:
+is implemented and tested: `tests/iset/_run.ps1` runs every source there
+(53 on 2026-11-03), each of which fails on the tree before its change.
+APX is done since (its own plan, [`apx-plan.md`](apx-plan.md)). Still open:
 - `cyrix.inc`, `undoc.inc`: no reference available locally (§5.7);
-- APX, AVX10.2: deferred (§5.8);
+- AVX10.2: deferred (§5.8), now planned through generation from XED
+  ([`xed-plan.md`](xed-plan.md));
 - RMPQUERY and ENCLV bits are marked *verify* in §4 (no XED entry);
 - not yet planned, from XED's folder list (§6.2): MOVRS, MSR-IMM,
-  PBNDKB, AMX-DMR, SM4-EVEX;
+  PBNDKB, AMX-DMR, SM4-EVEX (all in xed-plan.md's P4);
 - CALM versions of avx.inc's AVX-512 shape helpers (FP16 uses the macros);
 - `monitor`/`mwait` could move to the implicit-operand helpers (§5.5).

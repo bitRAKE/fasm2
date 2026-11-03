@@ -1,0 +1,13 @@
+use32
+inc dword [ds:ebp+ebp+7Fh]		; 3E FF 44 2D 7F
+inc dword [ds:ebp+ebp+80h]		; FF 04 6D 80 00 00 00
+
+use64
+mov eax,[gs:30h]			; 65 67 A1 30 00 00 00
+mov eax,[gs:000000000FFFFFFFFh]		; 65 67 A1 FF FF FF FF
+mov eax,[gs:0FFFFFFFFFFFFFFFFh]		; 65 8B 04 25 FF FF FF FF
+mov eax,[gs:0CCCCCCCCCCCCCCCCh]		; 65 A1 CC CC CC CC CC CC CC CC
+
+use64
+vaddps ymm6{k1}{z},ymm12,ymm24		; 62 91 1C A9 58 F0
+vsubps zmm1,zmm2,dword [rsi] {1to16}	; 62 F1 6C 58 5C 0E

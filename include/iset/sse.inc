@@ -275,7 +275,7 @@ iterate <instr,ext>, cvttps2pi,2Ch, cvtps2pi,2Dh
 		SSE.parse_operand@dest dest
 		SSE.parse_operand@src src
 		if @dest.type = 'mmreg' & (@src.type = 'mem' | @src.type = 'mmreg')
-			if @dest.size <> 8 | (@src.size = 'mem' & @src.size and not 8) | (@src.size = 'mmreg' & @src.size <> 16)
+			if @dest.size <> 8 | (@src.type = 'mem' & @src.size and not 8) | (@src.type = 'mmreg' & @src.size <> 16)
 				err 'invalid operand size'
 			end if
 			x86.store_instruction@src <0Fh,ext>,@dest.rm
@@ -291,7 +291,7 @@ iterate <instr,ext>, cvttss2si,2Ch, cvtss2si,2Dh
 		SSE.parse_operand@dest dest
 		SSE.parse_operand@src src
 		if @dest.type = 'reg' & (@src.type = 'mem' | @src.type = 'mmreg')
-			if @dest.size < 4 | (@src.size = 'mem' & @src.size and not 4) | (@src.size = 'mmreg' & @src.size <> 16)
+			if @dest.size < 4 | (@src.type = 'mem' & @src.size and not 4) | (@src.type = 'mmreg' & @src.size <> 16)
 				err 'invalid operand size'
 			end if
 			x86.select_operand_prefix@src @dest.size

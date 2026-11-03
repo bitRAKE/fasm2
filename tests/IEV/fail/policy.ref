@@ -1,0 +1,57 @@
+; policy.ref -- what fasm2 must refuse, and with which message
+;
+; The refusal side of pass\boundaries.ref and of the policies in
+; include\iset\apx-plan.md §5.3: no #UD instruction, an encoding requested
+; for one line is honoured or refused, an option only where the form
+; exists, no stale operand state, no out-of-range value silently cut.
+
+use64
+use everything
+
+; no #UD instruction (XED refuses these bytes; llvm-mc writes them)
+push2 rsp, rax			; 'rsp not allowed'
+push2 rax, rsp			; 'rsp not allowed'
+pop2 rax, rax			; 'pop2 registers must differ'
+rcppd xmm0, xmm1		; 'illegal instruction'
+rsqrtsd xmm0, xmm1		; 'illegal instruction'
+
+; a one-line encoding request is honoured or refused
+{rex2} movbe eax, [rcx]		; '{rex2} cannot encode this instruction'
+{rex2} xsave [rax]		; '{rex2} cannot encode this instruction'
+{rex2} vaesimc xmm0, xmm1	; '{rex2} cannot encode this instruction'
+{vex2} vpaddd xmm0, xmm1, [r8]	; '{vex2} cannot encode this instruction'
+{vex3} add eax, ebx		; '{vex3} cannot encode this instruction'
+{evex} vaesimc xmm0, xmm1	; '{evex} cannot encode this instruction'
+{evex} paddd xmm0, xmm1		; '{evex} cannot encode this instruction'
+
+; an option after the mnemonic only where that form exists
+mulx {nf} eax, ebx, ecx		; '{nf} not supported by this instruction'
+adc {nf} rax, rbx		; '{nf} not supported by this instruction'
+pdep {zu} eax, ebx, ecx		; '{zu} not supported by this instruction'
+cmp {dfv=of} rax, rbx		; '{dfv} not supported by this instruction'
+
+; no stale operand state: the line before leaves an immediate behind
+vroundpd xmm0, xmm1, 3
+vroundpd xmm0, xmm1, [rax]	; 'invalid combination of operands'
+vcvtps2ph xmm0, xmm1, 2
+vcvtps2ph xmm0, xmm1, [rax]	; 'invalid combination of operands'
+
+; operand classes and sizes
+cvtss2si eax, mm0		; 'invalid operand size'
+cvtps2pi mm0, mm1		; 'invalid operand size'
+pextrb dword [rax], xmm0, 1	; 'invalid operand size'
+wrssq rax, r8			; 'invalid combination of operands'
+fadd st0, [r8,rax]		; 'invalid address'
+mov ah, r16b			; 'disallowed combination of registers'
+mov ah, sil			; 'disallowed combination of registers'
+
+; values that do not fit are refused, not cut
+add al, 100h			; 'value out of allowed range'
+add ax, 10000h			; 'value out of allowed range'
+mov eax, 100000000h		; 'value out of allowed range'
+imul eax, ecx, 100000000h	; 'value out of allowed range'
+mov eax, [rax+100000000h]	; 'address value out of signed range'
+mov eax, [eax+100000000h]	; 'value out of allowed range'
+push 100000000h			; 'immediate value out of signed range'
+; open: below the signed minimum fasmg's emit wraps instead of refusing
+; (add al,-81h is add al,7Fh; db -129 is 7Fh): see the IEV readme

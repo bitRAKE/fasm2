@@ -5,6 +5,11 @@ One source per fix in `include/iset` or the extension table in
 it runs in and the failure mode it resolves. The plan behind the fixes is in
 [`include/iset/EXTENSIONS.md`](../../include/iset/EXTENSIONS.md).
 
+The same checks also exist in IEV form (`tests/IEV`, Tomasz Grysztar's
+instruction-encoding-verification layout): `pass/iset` and `fail/iset` are
+generated from these tests by `tests/IEV/_iset2ref.py`, next to hand-written
+boundary and policy references. Write new checks here; regenerate there.
+
 ## Running
 
 ```
@@ -88,6 +93,9 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `vcompress.asm` | G22 | vcompressps/pd in map 2 (map 1 was undecodable). |
 | `sse2_rcp.asm` | G16 | no rcppd/rcpsd/rsqrtpd/rsqrtsd (#UD; the SSE2 list reused rsqrt/rcp); rcpps/rsqrtss and the rest of the SSE2 list keep their bytes. |
 | `encoding_request.asm` | new | a one-line `{vex2}`/`{vex3}`/`{evex}`/`{rex2}` is a request: honoured (also after legacy prefixes, in 32-bit code) or an error; `use` keeps them preferences. |
+| `avx_imm8.asm` | G15 | an imm8 operand must be an immediate: `vroundpd`, `vpcmp[ei]str[im]`, `vaeskeygenassist`, `vcvtps2ph` after a valid line refuse memory or a register in its place (no stale value). |
+| `sse_operand_size.asm` | G16b | `cvtss2si`/`cvttss2si` xmm/m32 only, `cvtps2pi`/`cvttps2pi` xmm/m64 only, `pextrb` m8 only (the size checks compared a size with a type). |
+| `aes_forms.asm` | G26, G27 | `aesimc` and `vaeskeygenassist` assemble (each named the other block's parameter). |
 | `crc32.asm` | G18 | `crc32 r64, r/m8` carries REX.W. |
 | `cet_wrss.asm` | G19 | WRSS/WRUSS take a memory destination only. |
 | `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |
@@ -118,3 +126,13 @@ refuses bytes that raise #UD. fasm2 must emit none (policy in
 `include/iset/apx-plan.md` §5.3). It needs `_xedcheck.exe`, built from
 `_xedcheck.c` against an XED kit (the command is in the file); it takes a
 few minutes.
+`python tests/iset/_imm_probe.py` assembles every mnemonic with operand
+patterns ending in an immediate, then the same line with `[rbx]` in its place,
+and reports a form accepted only after another line (stale operand state,
+G15). `python tests/iset/_internal_errors.py` reports every mnemonic and
+operand pattern that fails with an internal error ("undefined or out of
+scope", "invalid expression") instead of an operand diagnosis: a macro bug
+(G26, G27). Both take about ten minutes.
+`python tests/iset/_on_tree.py TREE test.asm ...` runs a test and its FAIL
+cases with another fasm2 tree (for example the win32 checkout), to show the
+test fails there.

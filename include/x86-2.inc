@@ -626,6 +626,8 @@ iterate context, @dest,@src,@src2,@aux
 			jyes	memory_operand
 			match	segment:offset, operand
 			jyes	far_operand
+			match	{pre} suf, operand	; an option the mnemonic did not take
+			jyes	option_operand
 
 		  immediate_operand:
 			compute type, 'imm'
@@ -695,6 +697,9 @@ iterate context, @dest,@src,@src2,@aux
 
 		  memory_operand:
 			compute type, 'mem'
+
+			match	pre=,suf, address	; [base, index] is MPX/AMX syntax, parsed there
+			jyes	invalid_address
 
 			match	segment:address, address
 			jno	segment_prefix_ok
@@ -971,6 +976,10 @@ iterate context, @dest,@src,@src2,@aux
 			jyes	switch_to_index
 			check	(x86.mode = 64 | segment_prefix = 3Eh) & base = 5 & scale = 1
 			jyes	switch_to_base
+			; r13, r21, r29 as base also need a displacement: the index as base
+			; does not, unless it is one of them too (64-bit: no ss default)
+			check	x86.mode = 64 & base and 111b = 5 & index and 111b <> 5 & scale = 1
+			jyes	switch_registers
 			check	scale and (scale-1) | scale > 8
 			jyes	invalid_address
 			jump	setup_displacement
@@ -987,6 +996,11 @@ iterate context, @dest,@src,@src2,@aux
 		      switch_to_base:
 			compute base, index
 			compute index, 5
+			jump	setup_displacement
+		      switch_registers:
+			compute i, base
+			compute base, index
+			compute index, i
 			jump	setup_displacement
 
 		      setup_displacement:
@@ -1039,6 +1053,21 @@ iterate context, @dest,@src,@src2,@aux
 			exit
 		  address_out_of_range:
 			err	'address out of range'
+			exit
+		  option_operand:		; {nf} {zu} {dfv=} after a mnemonic without that form
+			match	=nf?, pre
+			jyes	no_nf
+			match	=zu?, pre
+			jyes	no_zu
+			match	=dfv?==suf, pre
+			jno	immediate_operand
+			err	'{dfv} not supported by this instruction'
+			exit
+		  no_nf:
+			err	'{nf} not supported by this instruction'
+			exit
+		  no_zu:
+			err	'{zu} not supported by this instruction'
 			exit
 
 		end calminstruction

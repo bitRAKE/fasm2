@@ -87,8 +87,6 @@ REVIEWED = [
     (r'ud0', r'.*', 'llvm-mc does not take this ud0 operand form'),
     (r'f(n?(stenv|save)|ldenv|rstor)w', r'.*', 'fasm2-only 16-bit environment spellings (66h)'),
     (r'bnd(cl|cu|cn|mk|ldx|stx|mov)', r'.*', 'MPX: llvm-mc no longer has it'),
-    (r'cvtt?ss2si', r'r16d?, mm0', 'G16b pre-existing: fasm2 takes an mm source (EXTENSIONS.md 2.4)'),
-    (r'v\w+', r'(xmm|ymm|zmm)0, (xmm|ymm|zmm)1, \[r16\]', 'G15 pre-existing: imm8 operand not checked (EXTENSIONS.md 2.4)'),
     (r'tile\w+', r'.*\[r16,rax\].*', "fasm2's AMX [base, index] syntax, which llvm-mc lacks; bytes equal [base+index] (apx_vex.asm)"),
     (r'v(gather|scatter)pf[01][dq]p[sd]', r'\[r16\+zmm1\]\{k1\}', 'AVX512PF: llvm-mc wants a size on the memory operand; bytes checked with one in apx_vector.asm'),
 ]
