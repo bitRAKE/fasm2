@@ -102,6 +102,7 @@ EVEX_VL_AVX2 = 1 shl 32
 EVEX_BW = 1 shl 23
 EVEX_DQ = 1 shl 24
 VEX_GPR = 1 shl 33		; VEX-encoded general-purpose instruction (BMI, CMPccXADD): no AVX needed
+APX_PROMOTED = 1 shl 34	; VEX instruction with an APX EVEX form (BMI, CMPccXADD, KMOV, AMX tile load/store)
 
 iterate context, @dest,@src,@src2,@aux
 
@@ -556,12 +557,30 @@ iterate context, @dest,@src,@src2,@aux
 		calminstruction AVX.store_gpr_instruction#context vsize*,vex_mpw*,opcode*,reg*,vreg:0,imm_size:0,immediate
 			compute evex_b, 0
 			compute memsize, 0
-			xcall	AVX_512.store_instruction#context, vsize,vex_mpw,(EVEX_FORBIDDEN or VEX_GPR),opcode,(0),reg,vreg,imm_size,immediate
+			xcall	AVX_512.store_instruction#context, vsize,vex_mpw,(EVEX_FORBIDDEN or VEX_GPR or APX_PROMOTED),opcode,(0),reg,vreg,imm_size,immediate
+		end calminstruction
+
+		calminstruction AVX.store_apx_instruction#context vsize*,vex_mpw*,opcode*,reg*,vreg:0,imm_size:0,immediate
+			compute evex_b, 0
+			compute memsize, 0
+			xcall	AVX_512.store_instruction#context, vsize,vex_mpw,(EVEX_FORBIDDEN or APX_PROMOTED),opcode,(0),reg,vreg,imm_size,immediate
 		end calminstruction
 
 		calminstruction AVX_512.store_instruction#context vsize*,vex_mpw*,evex_f*,opcode*,mask*,reg*,vreg:0,imm_size:0,immediate
 
-			check	egpr | (reg or vreg or rm) and x86.EGPR	; APX EVEX B4/X4/R4 not implemented
+			local	apx		; APX EVEX form of a promoted VEX instruction (spec 3.1.2.3.2)
+			compute apx, 0
+			check	evex_f and APX_PROMOTED & vex_mpw and 11111b < 8	; XOP (maps 8-10) is not promoted
+			jno	apx_not_promoted
+			check	egpr | (reg or vreg or rm) and x86.EGPR | x86.apx.evex | (x86.vexsize = 4 & x86.ext and x86.APX_F.ext)
+			jno	egpr_ok
+			call	x86.require.bits64
+			call	x86.require.APX_F
+			compute apx, 1
+			compute memsize, 1		; disp8 is not scaled for promoted instructions
+			jump	egpr_ok
+		    apx_not_promoted:
+			check	egpr | (reg or vreg or rm) and x86.EGPR	; vector instructions: APX EVEX not implemented yet
 			jno	egpr_ok
 			err	'extended register not supported by this encoding'
 			exit
@@ -640,7 +659,7 @@ iterate context, @dest,@src,@src2,@aux
 			compute evex, evex or mask shl 16
 
 		    evex_X:
-			check	rm and 10000b | (mod <> 11b & mode > 16 & rm = 4 & index and 1000b)
+			check	(mod = 11b & rm and 10000b & rm and x86.EGPR = 0) | (mod <> 11b & mode > 16 & rm = 4 & index and 1000b)
 			jno	evex_B
 			compute evex, evex or 1 shl 6
 		    evex_B:
@@ -661,6 +680,17 @@ iterate context, @dest,@src,@src2,@aux
 			compute evex, evex or 1 shl 19
 		    evex_vvvv:
 			compute evex, evex or (vreg and 1111b) shl 11
+
+			check	apx
+			jno	apx_bits_ok
+			check	(mod = 11b & rm and x86.EGPR & rm and 10000b) | (mod <> 11b & mode > 16 & rm = 4 & base and 10000b) | (mod <> 11b & (rm <> 4 | mode = 16) & rm and 10000b)
+			jno	apx_x4
+			compute evex, evex or 1 shl 3		; B4 (P0 bit 3, not inverted)
+		    apx_x4:
+			check	x86.apx.evex & x86.apx.nf
+			jno	apx_bits_ok
+			compute evex, evex or 1 shl 18		; NF (P2 bit 2)
+		    apx_bits_ok:
 
 			check	x86.mode < 64 & evex and 00001000_01000000_11110000b
 			jno	allowed
@@ -699,6 +729,8 @@ iterate context, @dest,@src,@src2,@aux
 			compute evex_displacement_size, displacement_size
 
 		    choose_prefix:
+			check	apx
+			jyes	apx_evex
 			check	evex_flags and EVEX_REQUIRED | evex and 11011111_00000000_00010000b | rm and 10000b
 			jyes	evex_required
 			check	~ evex_flags and (EVEX_FORBIDDEN or EVEX_FORBIDDEN_VL) & ( (evex_displacement_size + 1 < displacement_size & ~ x86.vexsize) | x86.vexsize = 4)
@@ -738,6 +770,12 @@ iterate context, @dest,@src,@src2,@aux
 			emit	1, (vex shr 8) xor 01111000b
 			jump	evex_done
 
+		    apx_evex:		; promoted VEX: [R3 X3 B3 R4 B4 mmm] [W vvvv ~X4 pp] [0 0 L 0 ~V4 NF 0 0]
+			compute x86.apx.done, 1
+			check	mod <> 11b & mode > 16 & rm = 4 & egpr & index and 10000b
+			jyes	evex_4byte_w		; X4 = 1: U stays 0
+			compute evex, evex or 1 shl 10
+			jump	evex_4byte_w
 		    evex:
 			call	x86.require.AVX512F
 			check	evex_flags and EVEX_BW
@@ -749,6 +787,7 @@ iterate context, @dest,@src,@src2,@aux
 			call	x86.require.AVX512DQ
 		      dq_ok:
 			compute evex, evex or 1 shl 10
+		    evex_4byte_w:
 			check	evex_flags and EVEX_W1
 			jno	evex_4byte
 			compute evex, evex or 1 shl 15
@@ -1666,22 +1705,22 @@ macro kmovw? dest*,src*
 		if @src.type = 'mem' & @src.size and not 2
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_0F_W0,90h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_0F_W0,90h,@dest.rm
 	else if @dest.type = 'mem' & @src.type = 'maskreg'
 		if @dest.size and not 2
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@dest 16,VEX_0F_W0,91h,@src.rm
+		AVX.store_apx_instruction@dest 16,VEX_0F_W0,91h,@src.rm
 	else if @dest.type = 'maskreg' & @src.type = 'reg'
 		if @src.size <> 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_0F_W0,92h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_0F_W0,92h,@dest.rm
 	else if @dest.type = 'reg' & @src.type = 'maskreg'
 		if @dest.size <> 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_0F_W0,93h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_0F_W0,93h,@dest.rm
 	else
 		err 'invalid combination of operands'
 	end if
@@ -1695,22 +1734,22 @@ macro kmovb? dest*,src*
 		if @src.type = 'mem' & @src.size and not 1
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_66_0F_W0,90h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_66_0F_W0,90h,@dest.rm
 	else if @dest.type = 'mem' & @src.type = 'maskreg'
 		if @dest.size and not 1
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@dest 16,VEX_66_0F_W0,91h,@src.rm
+		AVX.store_apx_instruction@dest 16,VEX_66_0F_W0,91h,@src.rm
 	else if @dest.type = 'maskreg' & @src.type = 'reg'
 		if @src.size <> 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_66_0F_W0,92h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_66_0F_W0,92h,@dest.rm
 	else if @dest.type = 'reg' & @src.type = 'maskreg'
 		if @dest.size <> 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_66_0F_W0,93h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_66_0F_W0,93h,@dest.rm
 	else
 		err 'invalid combination of operands'
 	end if
@@ -1724,22 +1763,22 @@ macro kmovd? dest*,src*
 		if @src.type = 'mem' & @src.size and not 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_66_0F_W1,90h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_66_0F_W1,90h,@dest.rm
 	else if @dest.type = 'mem' & @src.type = 'maskreg'
 		if @dest.size and not 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@dest 16,VEX_66_0F_W1,91h,@src.rm
+		AVX.store_apx_instruction@dest 16,VEX_66_0F_W1,91h,@src.rm
 	else if @dest.type = 'maskreg' & @src.type = 'reg'
 		if @src.size <> 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_F2_0F_W0,92h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_F2_0F_W0,92h,@dest.rm
 	else if @dest.type = 'reg' & @src.type = 'maskreg'
 		if @dest.size <> 4
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_F2_0F_W0,93h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_F2_0F_W0,93h,@dest.rm
 	else
 		err 'invalid combination of operands'
 	end if
@@ -1753,26 +1792,26 @@ macro kmovq? dest*,src*
 		if @src.type = 'mem' & @src.size and not 8
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@src 16,VEX_0F_W1,90h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_0F_W1,90h,@dest.rm
 	else if @dest.type = 'mem' & @src.type = 'maskreg'
 		if @dest.size and not 8
 			err 'invalid operand size'
 		end if
-		AVX.store_instruction@dest 16,VEX_0F_W1,91h,@src.rm
+		AVX.store_apx_instruction@dest 16,VEX_0F_W1,91h,@src.rm
 	else if @dest.type = 'maskreg' & @src.type = 'reg'
 		if @src.size <> 8
 			err 'invalid operand size'
 		else if x86.mode < 64
 			err 'instruction requires long mode'
 		end if
-		AVX.store_instruction@src 16,VEX_F2_0F_W1,92h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_F2_0F_W1,92h,@dest.rm
 	else if @dest.type = 'reg' & @src.type = 'maskreg'
 		if @dest.size <> 8
 			err 'invalid operand size'
 		else if x86.mode < 64
 			err 'instruction requires long mode'
 		end if
-		AVX.store_instruction@src 16,VEX_F2_0F_W1,93h,@dest.rm
+		AVX.store_apx_instruction@src 16,VEX_F2_0F_W1,93h,@dest.rm
 	else
 		err 'invalid combination of operands'
 	end if

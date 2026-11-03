@@ -32,7 +32,8 @@
 ;		ror rcl rcr shld shrd, imul r, r, r/m
 ;	{nf}	add {nf} rax, rbx	no flags update, after the mnemonic only:
 ;		add or and sub xor inc dec neg shl sal shr sar rol ror shld
-;		shrd imul mul div idiv popcnt lzcnt tzcnt
+;		shrd imul mul div idiv popcnt lzcnt tzcnt, and the promoted VEX
+;		andn bextr blsi blsmsk blsr bzhi (AVX_512.store_instruction)
 ;	{zu}	setb {zu} al		zero the upper bits: set<cc>, imul r, r/m, imm
 ;	{evex}	{evex} add rax, rbx	EVEX encoding of the legacy form (also
 ;		set<cc>; cmp/test as ccmpt/ctestt {dfv=})
@@ -309,6 +310,7 @@ iterate <instr,count,flags>, \
 	rol,2,APX.NF+APX.NDD, ror,2,APX.NF+APX.NDD, rcl,2,APX.NDD, rcr,2,APX.NDD, \
 	shld,3,APX.NF+APX.NDD+APX.SIZED, shrd,3,APX.NF+APX.NDD+APX.SIZED, \
 	popcnt,2,APX.NF, lzcnt,2,APX.NF, tzcnt,2,APX.NF, \
+	andn,3,APX.NF, bextr,3,APX.NF, blsi,2,APX.NF, blsmsk,2,APX.NF, blsr,2,APX.NF, bzhi,3,APX.NF, \
 	seto,1,APX.ZU, setno,1,APX.ZU, setc,1,APX.ZU, setb,1,APX.ZU, setnae,1,APX.ZU, \
 	setnc,1,APX.ZU, setnb,1,APX.ZU, setae,1,APX.ZU, setz,1,APX.ZU, sete,1,APX.ZU, \
 	setnz,1,APX.ZU, setne,1,APX.ZU, setna,1,APX.ZU, setbe,1,APX.ZU, seta,1,APX.ZU, \

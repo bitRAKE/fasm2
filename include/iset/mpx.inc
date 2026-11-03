@@ -85,8 +85,9 @@ macro MPX.parse_sib_operand ns,op&
 		else
 			err 'invalid address'
 		end if
-		if ns.base >= 16 | ns.index >= 16	; no CPU has both MPX and APX
-			err 'extended register not supported: ', `op
+		if ns.base >= 16 | ns.index >= 16	; AMX takes them (APX EVEX); MPX refuses them
+			ns.egpr = 1
+			x86.require_egpr
 		end if
 		ns.auto_relative = 0
 		ns.displacement_size = 4
@@ -116,6 +117,9 @@ macro bndmk? dest*,src*&
 	require MPX
 	MPX.parse_operand @dest,dest
 	MPX.parse_sib_operand @src,src
+	if @src.egpr	; no CPU has both MPX and APX
+		err 'extended register not supported: ', `src
+	end if
 	if @dest.type = 'bnd' & @src.type = 'mem'
 		if @src.split & ~ 0 scaleof @src.base_part eq 0
 			err 'invalid base address'
@@ -183,6 +187,9 @@ macro bndldx? dest*,src*&
 	require MPX
 	MPX.parse_operand @dest,dest
 	MPX.parse_sib_operand @src,src
+	if @src.egpr	; no CPU has both MPX and APX
+		err 'extended register not supported: ', `src
+	end if
 	if @dest.type = 'bnd' & @src.type = 'mem'
 		if @src.mode <> x86.mode | @src.scale > 1 | ( @src.split & ~ 0 scaleof @src.index_part eq 0 )
 			err 'invalid address'
@@ -197,6 +204,9 @@ macro bndstx? operands*&
 	require MPX
 	match [dest] =, src, operands
 		MPX.parse_sib_operand @dest,[dest]
+		if @dest.egpr	; no CPU has both MPX and APX
+			err 'extended register not supported: [', `dest, ']'
+		end if
 		MPX.parse_operand @src,src
 		if @dest.type = 'mem' & @src.type = 'bnd'
 			if @dest.mode <> x86.mode | @dest.scale > 1 | ( @dest.split & ~ 0 scaleof @dest.index_part eq 0 )

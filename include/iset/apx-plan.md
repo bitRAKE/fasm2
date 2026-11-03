@@ -508,6 +508,32 @@ Gates: APX_F **and** the instruction's own feature (XED's
 - Not done: MSR-IMM (`rdmsr`/`wrmsrns` with an immediate, its own CPUID
   feature) is not implemented at all (4 corpus lines refused).
 
+**Phase 4c result (2026-11-02, done): promoted VEX instructions.**
+- `AVX_512.store_instruction` writes the APX EVEX form (spec Figure 3.4)
+  for instructions marked `APX_PROMOTED`: `VEX_GPR` implies it (BMI1/2,
+  CMPccXADD; not XOP, maps 8–10), and KMOV* and AMX's ldtilecfg/
+  sttilecfg/tileload*/tilestored pass it through the new
+  `AVX.store_apx_instruction`. It is taken for r16–r31, for `{nf}` (layers
+  over andn, bextr, blsi, blsmsk, blsr, bzhi) and for `{evex}` with APX_F
+  on. B4 (P0 bit 3), X4 (U cleared), NF (P2 bit 2) added; R4/V4 already
+  came from bit 4 of the register numbers; the vector X bit no longer
+  fires for a GPR in r/m; disp8 is not scaled (memsize 1).
+- AMX's `[base, index]` form takes r16–r31 now (`MPX.parse_sib_operand`
+  marks `egpr`; the MPX instructions themselves refuse it).
+- Tests: `apx_vex.asm` (43 byte checks, 5 refusals). Corpus: **3,028 same,
+  0 DIFF**, 195 refused (180 implied-count shifts by design, 11 vector
+  forms for Phase 5, 4 MSR-IMM). Sweep 23,590 same, 0 failures. No
+  measurable cost (branch 421–422 ms / 982–992 ms, as after 4b).
+- Rough edge, recorded: `{nf}`/`{zu}` on a mnemonic that has no layer
+  (e.g. `mulx {nf} …`, which has no NF form) reaches that instruction's
+  operand parser and gives a parser error ("invalid expression") instead
+  of "{nf} not supported". Layers with no flags would fix it at layer
+  cost; left for the post-APX review (§5).
+
+**Phase 4 complete.** Every APX form in LLVM's Intel-syntax tests that
+does not involve a vector register with r16–r31 assembles to the same
+bytes as llvm-mc (or, where Intel's spec disagrees, to the spec).
+
 ### Phase 5 — extended GPRs in vector instructions
 
 - EVEX: put B4 (P0 bit 3) and X4 (inverted P1 bit 2, the old `U` bit) in
@@ -556,6 +582,8 @@ identical in every row):
 | Phase 3 | +30 ms (+7.8%) | +60 ms (+6.6%) | the layers: a second dispatch (`arrange` + `assemble`) for every add/or/and/sub/xor/adc/sbb/inc/dec/neg/not/mul/div/idiv/imul/shift/shld/shrd/popcnt/lzcnt/tzcnt, plus two `match`es and constant checks; `check x86.apx.evex` in `x86.store_instruction` |
 | Phase 4a | +28 ms (+7.1%) | +73 ms (+8.0%) | layers also over set<cc>, cmov<cc> and (for `{evex}` only, one check) cmp/test; within noise of Phase 3 (±1%) |
 | Phase 4b | +40 ms (+10.5%) | +75 ms (+8.3%) | one more check in `x86.store_instruction` (r16+ or `{evex}` on the map-2 path); the branch itself is unchanged (420–423 ms, 977–980 ms in both measurements); the ratio moves with the baseline, which drifted 378–395 ms between sessions |
+
+| Phase 4c | +36 ms (+9.4%) | +70 ms (+7.6%) | none on the plain path (the APX test in `AVX_512.store_instruction` runs only for APX_PROMOTED instructions); branch time unchanged from 4b |
 
 Measurement note: best of 5–7 runs, but the baseline tree varies by ±2–4%
 between sessions; compare branch times measured in one session (interleaved

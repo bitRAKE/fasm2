@@ -191,8 +191,8 @@ else if FAIL = 4	; like REX, REX2 turns ah-bh into spl-dil
 else if FAIL = 5	; VEX/EVEX: APX EVEX bits not implemented yet
 	vpaddd zmm2, zmm1, [r16]
 
-else if FAIL = 6	; VEX-encoded GPR instruction
-	andn r16, rax, rbx
+else if FAIL = 6	; a VEX instruction with no EVEX form is not promoted
+	vaesimc xmm0, [r16]
 
 else if FAIL = 7	; GPR in ModRM.reg of a VEX instruction
 	vcvtss2si r16d, xmm0
@@ -206,8 +206,8 @@ else if FAIL = 9	; map 2 (0F 38): no REX2, and SSE is not promoted to EVEX
 else if FAIL = 10	; map 3 (0F 3A): no REX2, not promoted
 	pextrd r16d, xmm0, 1
 
-else if FAIL = 11	; AMX (VEX)
-	tileloadd tmm0, [rax+r16]
+else if FAIL = 11	; XOP (AMD) is not promoted either
+	blcfill r16, rax
 
 else if FAIL = 12	; legacy AES (map 2) is not promoted either
 	aesenc xmm0, [r16]
@@ -227,8 +227,8 @@ else if FAIL = 16
 else if FAIL = 17	; VSIB base (EVEX)
 	vpgatherdd zmm0{k1}, [r16+zmm1]
 
-else if FAIL = 18	; AMX/MPX [base, index]
-	tileloadd tmm0, [r16,rax]
+else if FAIL = 18	; MPX [base, index] (AMX's takes r16-r31: apx_vex.asm)
+	bndstx [r16,rax], bnd0
 
 else if FAIL = 19	; no 16-bit addressing with extended registers
 	mov ax, [r16w]

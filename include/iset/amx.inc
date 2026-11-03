@@ -93,7 +93,7 @@ iterate <instr,vex_mpw>, ldtilecfg,VEX_0F38_W0, sttilecfg,VEX_66_0F38_W0
 			if @src.size and not 64
 				err 'invalid operand size'
 			end if
-			AVX.store_instruction@src 16,vex_mpw,49h,0
+			AVX.store_apx_instruction@src 16,vex_mpw,49h,0
 		else
 			err 'invalid operand'
 		end if
@@ -108,7 +108,7 @@ iterate <instr,vex_mpw>, tileloadd,VEX_F2_0F38_W0, tileloaddt1,VEX_66_0F38_W0
 		AMX.parse_operand@dest dest
 		AMX.parse_sib_operand@src src
 		if @dest.type = 'tmmreg' & @src.type = 'mem'
-			AVX.store_instruction@src 16,vex_mpw,4Bh,@dest.rm
+			AVX.store_apx_instruction@src 16,vex_mpw,4Bh,@dest.rm
 		else
 			err 'invalid operand'
 		end if
@@ -126,7 +126,7 @@ macro tilestored? dest*,src*&
 		AMX.parse_operand@src src
 	end match
 	if @dest.type = 'mem' & @src.type = 'tmmreg'
-		AVX.store_instruction@dest 16,VEX_F3_0F38_W0,4Bh,@src.rm
+		AVX.store_apx_instruction@dest 16,VEX_F3_0F38_W0,4Bh,@src.rm
 	else
 		err 'invalid operand'
 	end if

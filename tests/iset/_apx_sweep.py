@@ -90,6 +90,7 @@ REVIEWED = [
     (r'cvtt?ss2si', r'r16d?, mm0', 'G16b pre-existing: fasm2 takes an mm source (EXTENSIONS.md 2.4)'),
     (r'rcppd|rcpsd|rsqrtpd|rsqrtsd', r'.*', 'G16 pre-existing: no such instructions (EXTENSIONS.md 2.4)'),
     (r'v\w+', r'(xmm|ymm|zmm)0, (xmm|ymm|zmm)1, \[r16\]', 'G15 pre-existing: imm8 operand not checked (EXTENSIONS.md 2.4)'),
+    (r'tile\w+', r'.*\[r16,rax\].*', "fasm2's AMX [base, index] syntax, which llvm-mc lacks; bytes equal [base+index] (apx_vex.asm)"),
 ]
 
 # not instructions: settings, prefixes that take an instruction, directives
