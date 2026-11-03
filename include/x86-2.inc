@@ -495,6 +495,9 @@ x86.apx.done = 0
 x86.apx.nd = 0
 x86.apx.nf = 0
 x86.apx.v = 0
+x86.apx.ccmp = 0	; CCMP/CTEST: P1.vvvv = default flags value, P2[3:0] = source condition
+x86.apx.dfv = 0
+x86.apx.scc = 0
 x86.apx.legacy_prefix = 0	; the lock/rep/segment prefix instruction around this one
 
 macro use16?
@@ -1253,8 +1256,10 @@ iterate context, @dest,@src,@src2,@aux
 			jyes	evex_map1_f3
 			check	opcode_prefix
 			jyes	evex_none
-			check	x86.rex2_opcode = 0AFh | x86.rex2_opcode = 0A5h | x86.rex2_opcode = 0ADh
-			jyes	evex_store
+			check	x86.rex2_opcode = 0AFh | x86.rex2_opcode = 0A5h | x86.rex2_opcode = 0ADh | x86.rex2_opcode and 0F0h = 40h
+			jyes	evex_store		; imul, shld/shrd cl, cmovcc keep their opcodes
+			check	x86.rex2_opcode and 0F0h = 90h
+			jyes	evex_setcc
 			check	x86.rex2_opcode = 0A4h | x86.rex2_opcode = 0ACh
 			jno	evex_none
 			compute x86.rex2_opcode, x86.rex2_opcode - 80h		; shld/shrd imm8: 24h, 2Ch
@@ -1268,11 +1273,22 @@ iterate context, @dest,@src,@src2,@aux
 			jump	evex_store
 		    evex_popcnt:
 			compute x86.rex2_opcode, 88h
+			jump	evex_store
+		    evex_setcc:		; setcc shares row 4 with cmovcc, told apart by pp = F2
+			compute x86.rex2_opcode, x86.rex2_opcode - 50h
+			compute evex_pp, 3
 		    evex_store:
 			emit	1, 62h
 			emit	1, ((((reg and 1000b) shl 4) or ((evex_x and 1000b) shl 3) or ((evex_b and 1000b) shl 2) or (reg and 10000b)) xor 0F0h) or ((evex_b and 10000b) shr 1) or 100b
+			check	x86.apx.ccmp
+			jyes	evex_ccmp
 			emit	1, ((rex_prefix and 1000b) shl 4) or (((not x86.apx.v) and 1111b) shl 3) or ((((evex_x shr 4) and 1) xor 1) shl 2) or evex_pp
 			emit	1, (x86.apx.nd shl 4) or ((((x86.apx.v shr 4) and 1) xor 1) shl 3) or (x86.apx.nf shl 2)
+			jump	evex_opcode
+		    evex_ccmp:		; [W OF SF ZF CF ~X4 pp] [0 0 0 0 SCC3-SCC0]
+			emit	1, ((rex_prefix and 1000b) shl 4) or (x86.apx.dfv shl 3) or ((((evex_x shr 4) and 1) xor 1) shl 2) or evex_pp
+			emit	1, x86.apx.scc
+		    evex_opcode:
 			emit	x86.rex2_length, x86.rex2_opcode
 			compute x86.apx.done, 1
 			jump	opcode_stored
@@ -2016,7 +2032,7 @@ calminstruction test? dest*,src*
     test_rm_imm:
 	check	size > 1
 	jno	test_rm_imm_8bit
-	check	@dest.type = 'reg' & @dest.rm = 0
+	check	@dest.type = 'reg' & @dest.rm = 0 & x86.apx.evex = 0	; A8h/A9h: no ModRM, no EVEX form
 	jyes	test_ax_imm
 	call	x86.select_operand_prefix@dest, size
 	xcall	x86.store_instruction@dest, (0F7h),(0),size,@src.imm
@@ -2039,7 +2055,7 @@ calminstruction test? dest*,src*
 	exit
 
       test_rm_imm_8bit:
-	check	@dest.type = 'reg' & @dest.rm = 0
+	check	@dest.type = 'reg' & @dest.rm = 0 & x86.apx.evex = 0
 	jyes	test_al_imm
 	xcall	x86.store_instruction@dest, (0F6h),(0),byte,@src.imm
 	exit

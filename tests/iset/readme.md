@@ -79,6 +79,7 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `apx_rex2.asm` | APX Phases 0–1 | r16–r31 through REX2: register sizes, R4/X4/B4, SIB/displacement edge registers, map 0/1 (`0Fh` dropped), mandatory/67h/segment prefix order, x87/MMX/SSE memory forms, opcode-register forms (push/pop/mov/xchg/bswap), `{rex2}` and its fallback where Intel forbids REX2 (overruling llvm-mc on movbe/xsave); refusals: APX_F, 64-bit only, ah–bh, VEX/EVEX/XOP/AMX, maps 2/3, msr map 7, XSAVE*, MPX, VSIB. |
 | `apx_instructions.asm` | APX Phase 2 | push2/pop2 and PPX forms (APX EVEX layout: B4 not inverted, V4 inverted, ND/U set; operand roles), pushp/popp (REX2.W even for rax–r15), jmpabs, r16–r31 in push/pop register lists; refusals: APX_F, 64-bit only, rsp and pop2 with one register twice (#UD, which llvm-mc encodes), memory and non-64-bit operands. |
 | `apx_ndd.asm` | APX Phase 3 | EVEX map 4 of the legacy integer instructions: NDD, `{nf}` after the mnemonic, `{evex}`; operand roles, map 1 → map 4 opcodes, pp for 66h, X4/B4, NDD size for an unsized memory source, imul's NDD vs imm form; legacy forms (04h/05h short forms included) unchanged; refusals: `{nf}` where only NDD exists, unknown options, NDD size, ah–bh, LOCK/REP, APX_F, 64-bit only, the instruction's own feature. |
+| `apx_conditional.asm` | APX Phase 4a | cmov<cc> NDD, cfcmov<cc> (load/store/register/NDD forms), set<cc> in map 4 and `{zu}`, imul `{zu}` (with `{nf}`), ccmp/ctest (DFV set or number, SCC incl. t/f), `{evex}` cmp/test; refusals for forms that do not exist. |
 | `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |
 
 `_dupnames.py` is a separate check: `python tests/iset/_dupnames.py` fails on any
@@ -97,3 +98,7 @@ the APX encodings still to do (see
 [`include/iset/apx-plan.md`](../../include/iset/apx-plan.md)). Re-run it after
 any change to an operand parser or an encoder. It takes about a minute.
 `python tests/iset/_apx_diff.py FILE` compares any list of lines the same way.
+`python tests/iset/_apx_corpus.py [-v] [name ...]` assembles LLVM's APX
+Intel-syntax tests (`llvm/test/MC/X86/apx/*-intel.s`, a local checkout) and
+compares each encoding; it is the progress measure for the APX phases, not
+a regression test (it needs the LLVM tree).

@@ -158,8 +158,8 @@ else if FAIL = 1	; NDD only: adc, sbb, not, rcl, rcr
 else if FAIL = 2
 	not {nf} rax
 
-else if FAIL = 3	; {zu} is not implemented yet (Phase 4)
-	add {zu} rax, rbx
+else if FAIL = 3	; options are {nf} and {zu} only
+	add {nx} rax, rbx
 
 else if FAIL = 4	; the NDD has the operation's size
 	add r16d, rax, rbx

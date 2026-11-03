@@ -56,6 +56,9 @@ MNEMONICS = {'pushq': 'push', 'popq': 'pop', 'pushw': 'push', 'popw': 'pop',
 def to_llvm(line):
     # fasm2 writes instruction options after the mnemonic, llvm-mc before it
     line = re.sub(r'^(\{\w+\}\s*)?(\w+)\s+\{(nf)\}\s*', r'\1{\3} \2 ', line)
+    # ZU: setCC {zu} -> setzuCC, imul {zu} -> imulzu
+    line = re.sub(r'\bset(\w+)\s+\{zu\}\s*', r'setzu\1 ', line)
+    line = re.sub(r'\bimul\s+\{zu\}\s*', 'imulzu ', line)
     m = re.match(r'(\{\w+\}\s*)?(\w+)(.*)', line)
     if m and m.group(2) in MNEMONICS:
         rest = m.group(3)

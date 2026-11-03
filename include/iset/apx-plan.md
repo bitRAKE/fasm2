@@ -446,6 +446,37 @@ scheme, which we are avoiding).
 Gates: APX_F **and** the instruction's own feature (XED's
 `apx-f/cpuid*.xed.txt` lists them as pairs).
 
+**Phase 4a result (2026-11-02, done): map 4 conditionals and ZU.**
+- *New test oracle:* `tests/iset/_apx_corpus.py` assembles LLVM's 63
+  `llvm/test/MC/X86/apx/*-intel.s` files (authority 2) after translating
+  their syntax (`ptr` dropped, `{nf}` after the mnemonic, `setzuCC` →
+  `setCC {zu}`, `imulzu` → `imul {zu}`). Before 4a: 1,535 same, 228 DIFF,
+  1,477 refused. After: 2,692 same, 137 DIFF (all `{evex}` forms of
+  map 2/3 and VEX instructions: 4b, 4c), 394 refused (180 are shifts with
+  an implied count, `shl bl`, `shl dx, dx`: fasm2 requires the count, by
+  design), 17 reviewed (`lea r, [1*rN]`: fasm2 makes it a base register).
+- cmov<cc> NDD (ND=1); `{evex} cmov<cc>` is refused: ND=0 NF=0 in row 4 is
+  cfcmov's load form (llvm-mc refuses it too). cfcmov<cc> (new, apx.inc)
+  maps its three forms onto the legacy cmov<cc> through `APX.promote`
+  (store and register forms swap the operands and force NF).
+- set<cc>: map 4 row 4 with pp = F2; `{zu}` = ND. imul `{zu}` only on the
+  imm form; `{nf}` with `{zu}` is accepted (Intel 817241 4.1 shows it;
+  llvm-mc has no such form).
+- ccmp<scc>/ctest<scc> (new): a CCMP mode in `x86.store_instruction` puts
+  the DFV in P1.vvvv uninverted and the SCC in P2[3:0]; legacy cmp/test do
+  the operands (their A8h/A9h short forms are skipped in EVEX mode, like
+  the ALU's). `{dfv=…}` with optional comma, or Intel's numeric form
+  (817241 7.2; llvm-mc lacks it). `{evex} cmp/test` = ccmpt/ctestt
+  `{dfv=}`, as llvm-mc encodes them.
+- `APX.promote` takes flags (APX.NF, NDD, ZU, SIZED, NDD_ONLY, FORCE_NF)
+  and an option loop ({nf}/{zu} in any order).
+- *Trap found:* apx.inc needs `define APX APX`; without it `APX.NF` is
+  "undefined or out of scope" inside every CALM body (EXTENSIONS.md §1.3
+  rule 8).
+- Tests: `apx_conditional.asm` (48 byte checks, 16 refusals); corpus files
+  ccmp 440, ctest 272, cfcmov 210, cmov 96, setcc 32, setzucc 46,
+  imulzu 12 all byte-identical; sweep 21,840 same, 0 failures.
+
 ### Phase 5 — extended GPRs in vector instructions
 
 - EVEX: put B4 (P0 bit 3) and X4 (inverted P1 bit 2, the old `U` bit) in
@@ -492,6 +523,7 @@ identical in every row):
 | Phase 1 | +20 ms (+5.4%) | +46 ms (+5.3%) | per operand: `compute egpr, 0` and one compare; per instruction in `x86.store_instruction`: the REX2 bit test (behind a single test of bit 4), `check x86.rexsize`, the duplicated `prefix = 48h` test |
 | Phase 2 | no change | no change | new mnemonics only |
 | Phase 3 | +30 ms (+7.8%) | +60 ms (+6.6%) | the layers: a second dispatch (`arrange` + `assemble`) for every add/or/and/sub/xor/adc/sbb/inc/dec/neg/not/mul/div/idiv/imul/shift/shld/shrd/popcnt/lzcnt/tzcnt, plus two `match`es and constant checks; `check x86.apx.evex` in `x86.store_instruction` |
+| Phase 4a | +28 ms (+7.1%) | +73 ms (+8.0%) | layers also over set<cc>, cmov<cc> and (for `{evex}` only, one check) cmp/test; within noise of Phase 3 (±1%) |
 
 The ALU/shift-heavy sources pay most. Per-instruction work dominates:
 the code paths that only APX uses (REX2 opcode capture in `virtual`, EVEX

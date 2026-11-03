@@ -128,6 +128,11 @@ These are easy to get wrong. Each one was confirmed while writing this note.
    definition; a helper (`APX.promote`) that assembles `add …` reaches the
    layer again. The APX layers pass straight down while `x86.apx.evex` is
    set.
+8. **A file's namespace root needs `define NS NS` to be usable in CALM.**
+   `x86-2.inc` starts with `define x86 x86`, `define AVX AVX`…, `mpx.inc`
+   with `define MPX MPX`. Without it, `APX.NF` inside a CALM body (or an
+   `xcall` argument) is "undefined or out of scope" although `APX.NF := 1`
+   is defined just above.
 
 ---
 
