@@ -22,7 +22,40 @@ running the code needs emulation (§2).
 | LLVM 23 `llvm-mc` (`C:\git\llvm-project\build-native\bin`) | Encodes every form tried with `-triple=x86_64 --show-encoding -mattr=+egpr,+push2pop2,+ppx,+ndd,+ccmp,+nf,+cf,+zu` (plus `+avx512f`, `+bmi` for those forms). |
 | XED v2025.12.14 | Decodes REX2 and EVEX map 4 (`xed -64 -d D54801C0` → ADD). `data\src\xed\datafiles\apx-f\` holds the patterns and `cpuid*.xed.txt` the gates. |
 | ZydisInfo | Decodes REX2 (`D5 48 01 C0` → `add rax, r16`). |
-| zydis-db | APX forms are in `instructions.json`, for generating test cases. |
+| zydis-db (`C:\git\zyantific\zydis-db\datafiles`, 2026-06) | APX forms are in `instructions.json`, for generating test cases. |
+| NASM 3.02rc7 (`C:\git\nasm\nasm.exe`) | Intel-syntax reference: assembles REX2, NDD, `{nf}` (before or after the mnemonic), `push2`, `ccmp {dfv=…}`, `{zu} setb`. Doc: `doc\syntax.src` §`apx_*`. Rejects Intel's `setzuCC` mnemonic. |
+| MSVC 14.51 `cl /feature:APX` | Accepted; emits APX when it helps (a trivial function did not). A source of real compiler output (`/FA`) to assemble and compare once Phase 3 exists. |
+| YASM, ASMC | No APX (checked: no REX2/EGPR in the trees). |
+
+**Documents** (`C:\git\_DOC\APX\`):
+- `355828-009-intel-apx-arch-spec.pdf`: the architecture spec (encoding, REX2 reserved rows, which instructions take NDD/NF/ZU).
+- `356112-intel-apx-sw-enabling.pdf`: OS/compiler enabling (XSAVE state, CPUID).
+- `817241-apx-asm-syntax.pdf`: Intel's assembly-syntax recommendations (summarised in §1.1).
+
+### 1.1 Syntax: fasm's choices first, Intel's recommendations next
+
+User decision: align with fasm/fasmg x86 syntax; learn from the processor
+manuals and Intel's syntax recommendations (817241) where fasm has no
+precedent. Intel's recommendations, with fasm's position:
+
+| Feature | Intel (817241) | NASM 3.02 | fasm2 plan |
+|---------|----------------|-----------|------------|
+| EGPR names | `r16`–`r31`, `r16d/w/b` | same | same |
+| NDD | destination first: `sub eax, [rbx], ecx` | same | same |
+| NF | `{nf}` pseudo-prefix (preferred); `addnf` suffix if no pseudo-prefixes | `{nf} add`, `add {nf}`, `add{nf}` | `{nf}` before the mnemonic **or** after it (decided), consumed before the first operand is examined. No `addnf` names. |
+| ZU | `setzuCC`, `imulzu` mnemonics | `{zu}` pseudo-prefix; `setb eax/rax` | *Open:* Intel mnemonics, `{zu}`, or both. fasm precedent leans to distinct mnemonics for distinct encodings. |
+| PUSH2/POP2 | `push2 rax, rbx` pushes RAX first; `pop2 rbx, rax` | same (first operand → `vvvv`) | same |
+| PPX | `pushp`, `popp`, `push2p`, `pop2p` | same | same |
+| CCMP/CTEST | `ccmpCC {dfv=sf,cf,of} …`, SCC `t`/`f` for 1010/1011; immediate form `ccmpnz 13, …` | same, comma after `{dfv=}` optional, `pf` alias for `cf` | `{dfv=…}` set, and the immediate form |
+| Prefix selection | `{rex2}`, `{evex}` | same | same; `{evex}` already exists (`vexsize = 4`) |
+
+The NF list (Intel 817241 §4): `inc dec neg add sub and or xor sal sar shl
+shr rol ror shld shrd imul idiv mul div lzcnt tzcnt popcnt andn bextr blsi
+blsmsk blsr bzhi`. ADC, SBB, RCL, RCR and NOT take NDD but **not** NF.
+
+Test note: llvm-mc picks opcode `01` for `add r, r`, NASM `03`. Both are
+valid. fasm2 already uses `01`, so compare against llvm-mc bytes, and use
+NASM as a second check of operand order and syntax, not of exact bytes.
 
 **Reference encodings** (llvm-mc 23, AT&T operand order):
 
@@ -157,8 +190,9 @@ with the same register twice is refused (#UD).
 
 This is the part that uses fasmg stacking. `apx.inc` defines, for the
 promotable group (`add or adc sbb and sub xor` `inc dec neg not`
-`shl shr sar rol ror rcl rcr shld shrd` `imul` `popcnt lzcnt tzcnt`
-`cmovcc` `adcx adox` …; take the list from XED `apx-f`), a **layer** with
+`shl sal shr sar rol ror rcl rcr shld shrd` `imul mul div idiv`
+`popcnt lzcnt tzcnt` `cmovcc` `adcx adox` …; take the list from XED
+`apx-f` and check NF/NDD per instruction against §1.1), a **layer** with
 the same name:
 
 ```
@@ -192,11 +226,12 @@ Rules from what we learned about fasmg:
 
 Syntax:
 - NDD: three operands, `add rax, rbx, rcx` (destination first, Intel order).
-- `{nf} add rax, rbx`: through the `{settings} instr` hook.
-  **Decision needed:** NF changes meaning (flags are not written), not
-  just encoding. Proposal: accept it only through the one-line hook, and
-  refuse `use nf`, so a forgotten `use` can't strip flags from the rest of
-  the file.
+- `{nf} add rax, rbx` and `add {nf} rax, rbx` (decided). The prefix form
+  comes through the `{settings} instr` hook; the suffix form is the first
+  textual `match` in the layer (`{=nf} rest`), stripped before any operand
+  is examined. NF changes meaning, not just encoding, so it is per
+  instruction only: no `use nf`. *Verify:* how fasmg tokenises `add{nf}`
+  with no space (braces are special characters, so it should split).
 - `{evex} add rax, rbx`: force map 4 (the existing `vexsize = 4` setting).
 
 Tests: bytes for each form; NF without APX_F refused; NDD in 32-bit mode
@@ -213,11 +248,13 @@ scheme, which we are avoiding).
 
 ### Phase 4 — the rest of APX_F
 
-- `ccmpSCC` / `ctestSCC` with `{dfv=of,sf,zf,cf}`. `dfv` is a new
-  operand-like brace syntax. Check how the `??` hook would see it
-  before choosing between a leading operand and a brace setting.
+- `ccmpSCC` / `ctestSCC` with `{dfv=of,sf,zf,cf}` as the first operand
+  (comma after it optional, as NASM), or an immediate 0–15 (OF,SF,ZF,CF =
+  bits 3–0). SCC names are the condition codes plus `t`/`f` for
+  1010/1011. The braces sit after the mnemonic, so they reach the
+  instruction as operand text, not through the `??` hook.
 - `cfcmovcc` (load/store forms, and NDD form).
-- ZU forms: `setzucc`, `imulzu`.
+- ZU forms: `setzucc`, `imulzu` (§1.1, syntax open).
 - EVEX promotion of the VEX-encoded GPR instructions so they can take
   r16+: BMI1/BMI2 (`andn`, `bextr`, `bzhi`, `mulx`, `pdep`, `pext`, `rorx`,
   `sarx`, `shlx`, `shrx`, `blsi`…), CMPccXADD, RAO-INT, USER_MSR,
@@ -247,17 +284,24 @@ Gates: APX_F **and** the instruction's own feature (XED's
 
 ## 4. Open questions
 
-1. `{nf}` as hook-only vs. a normal `use` setting (Phase 3).
-2. `{dfv=…}` syntax (Phase 4).
+1. ~~`{nf}` as hook-only vs. a normal `use` setting~~ Decided: `{nf}`
+   before or after the mnemonic, per instruction only (§1.1).
+2. ~~`{dfv=…}` syntax~~ Settled by Intel 817241 / NASM (Phase 4).
+   Still open: ZU as Intel's `setzuCC`/`imulzu` mnemonics, NASM's `{zu}`,
+   or both.
 3. Which execution emulator (§2, discovery point E).
 4. Whether `x86.ext` needs a new window: APX_F is in 7.1:EDX (window 192,
    already allocated). `apx-nci-ndd-nf` (QEMU's name) is APX_NCI_NDD_NF,
    a later sub-feature; find its CPUID bit (XED/SDM) before Phase 3, since
    it may gate the NDD/NF forms of some instructions.
-5. Intel syntax for APX in other assemblers (NASM, GAS `-msyntax=intel`,
-   MASM) to stay compatible where there is a choice.
+5. ~~Syntax in other assemblers~~ Decided: fasm's choices first, then the
+   manuals (§1.1). NASM 3.02 is the only other Intel-syntax assembler here
+   with APX.
 
 ## 5. Change log
 
 - 2026-11-02: plan written from the LLVM 23 reference encodings and the
   r16 hazard test. QEMU 11.1-rc2 found to know `apxf` (execution untested).
+- 2026-11-02: syntax decisions (`{nf}` before or after the mnemonic; fasm
+  first, manuals next). Added Intel 817241, NASM 3.02rc7 and MSVC
+  `/feature:APX` as references; NF list corrected from 817241.
