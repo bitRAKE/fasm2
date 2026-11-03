@@ -81,11 +81,12 @@ for path in files:
         for n in names:
             defs[n.lower()].append('%s:%d' % (os.path.relpath(path, root), no))
 
-new = {k: v for k, v in defs.items() if len(v) > 1 and k not in REVIEWED}
-gone = sorted(k for k in REVIEWED if len(defs.get(k, [])) < 2)
-print('%d names scanned, %d reviewed stacks' % (len(defs), len(REVIEWED)))
-for k in sorted(new):
-    print('NEW DUPLICATE  %-24s %s' % (k, ', '.join(new[k])))
-for k in gone:
-    print('note: reviewed name no longer duplicated: %s' % k)
-sys.exit(1 if new else 0)
+if __name__ == '__main__':	# imported by _apx_sweep.py for `defs`
+    new = {k: v for k, v in defs.items() if len(v) > 1 and k not in REVIEWED}
+    gone = sorted(k for k in REVIEWED if len(defs.get(k, [])) < 2)
+    print('%d names scanned, %d reviewed stacks' % (len(defs), len(REVIEWED)))
+    for k in sorted(new):
+        print('NEW DUPLICATE  %-24s %s' % (k, ', '.join(new[k])))
+    for k in gone:
+        print('note: reviewed name no longer duplicated: %s' % k)
+    sys.exit(1 if new else 0)

@@ -470,6 +470,8 @@ iterate context, @dest,@src,@src2,@aux
 			jump	ready
 		      base_and_index:
 			compute base, 0 scaleof (1 metadataof base_registers)
+			check	base >= 16
+			jyes	extended_register
 			check	mode & mode <> 0 scaleof (1 metadataof (1 metadataof base_registers)) shl 3
 			jyes	invalid_address
 			compute mode, 0 scaleof (1 metadataof (1 metadataof base_registers)) shl 3
@@ -517,6 +519,10 @@ iterate context, @dest,@src,@src2,@aux
 			exit
 		  invalid_address_size:
 			err	'invalid address size'
+			exit
+		  extended_register:
+			stringify operand
+			err	'extended register not supported: ' bappend operand
 			exit
 
 		end calminstruction

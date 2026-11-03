@@ -425,6 +425,17 @@ repeat 8, i:8
 	element r#i? : x86.r64 + i
 end repeat
 
+; APX extended GPRs. Register numbers 16-31 do not fit REX, so every
+; operand parser refuses them (x86.parse_operand, AVX_512.parse_vsib_operand,
+; MPX.parse_sib_operand) until an encoder that can store them accepts them.
+repeat 16, i:16
+	element r#i#b? : x86.r8 + i
+	element r#i#l? : x86.r8 + i
+	element r#i#w? : x86.r16 + i
+	element r#i#d? : x86.r32 + i
+	element r#i? : x86.r64 + i
+end repeat
+
 element x86.ip
 
 element eip? : x86.ip + 4
@@ -563,6 +574,8 @@ iterate context, @dest,@src,@src2,@aux
 			compute mode, x86.mode
 			compute mod, 11b
 			compute rm, 1 metadataof imm - 1 elementof (1 metadataof imm)
+			check	rm >= 16
+			jyes	extended_register
 			check	size & size <> 1 metadataof (1 metadataof imm) - x86.reg
 			jyes	operand_sizes_do_not_match
 			compute size, 1 metadataof (1 metadataof imm) - x86.reg
@@ -643,6 +656,8 @@ iterate context, @dest,@src,@src2,@aux
 			jyes	registers_extracted
 			check	i metadataof address relativeto x86.r16 | i metadataof address relativeto x86.r32 | i metadataof address relativeto x86.r64 | i metadataof address relativeto x86.ip
 			jno	next_term
+			check	i metadataof address - 1 elementof (i metadataof address) >= 16
+			jyes	extended_register
 			compute address_registers, address_registers + i elementof address * i scaleof address
 		      next_term:
 			compute i, i+1
@@ -931,6 +946,10 @@ iterate context, @dest,@src,@src2,@aux
 			exit
 		  address_out_of_range:
 			err	'address out of range'
+			exit
+		  extended_register:
+			stringify operand
+			err	'extended register not supported: ' bappend operand
 			exit
 
 		end calminstruction

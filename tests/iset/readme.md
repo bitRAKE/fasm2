@@ -76,8 +76,16 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `mpx_bndc.asm` | G11 | bndcl/bndcu/bndcn assemble at all (same mistyped parser call); bytes checked with ZydisInfo. |
 | `redefinition.asm` | G12, G13 | Mnemonics shadowed by a second definition: vpmuldq VEX forms, vcvtph2ps/vcvtps2ph EVEX forms, vpmullq's DQ gate. |
 | `stacking.asm` | G14 | MMX/SSE forms of movd/movq/pinsrw/pextrw/pmovmskb keep their own gates under the SSE2/SSE4.1 layers stacked over them. |
+| `apx_refuse.asm` | APX Phase 0 | r16–r31 exist as registers and are refused by all three operand parsers (GPR/address, VSIB, MPX/AMX MIB) in every mode; before, encoders masked them into rax–r15 silently. r8–r15 keep their bytes. |
 
 `_dupnames.py` is a separate check: `python tests/iset/_dupnames.py` fails on any
 instruction name defined twice in `include/` that is not a reviewed, deliberate
 stack. In fasmg a second definition silently replaces the first for all code
 that follows.
+
+`_apx_sweep.py` is the APX check: `python tests/iset/_apx_sweep.py [-v]`
+assembles every defined mnemonic with 117 operand patterns that name an
+extended register (r16–r31, as register, base or index) and fails if any line
+assembles. Its `ALLOWED` set holds the forms an APX phase encodes for real
+(see [`include/iset/apx-plan.md`](../../include/iset/apx-plan.md)). Re-run it
+after any change to an operand parser or an encoder. It takes about a minute.

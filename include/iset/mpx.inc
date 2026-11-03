@@ -81,6 +81,9 @@ macro MPX.parse_sib_operand ns,op&
 		else
 			err 'invalid address'
 		end if
+		if ns.base >= 16 | ns.index >= 16	; no CPU has both MPX and APX
+			err 'extended register not supported: ', `op
+		end if
 		ns.auto_relative = 0
 		ns.displacement_size = 4
 		ns.mod = 2

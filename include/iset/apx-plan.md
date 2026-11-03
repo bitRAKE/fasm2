@@ -15,6 +15,22 @@ running the code needs emulation (§2).
 
 ## 1. Ground truth so far
 
+**Encoding authority, in order** (user decision). When sources disagree,
+the higher one wins, and the disagreement is noted in the test source:
+1. Intel's APX documents (`C:\git\_DOC\APX\`, below).
+2. LLVM source: the X86 target and its `llvm/test/MC/X86/apx/` tests,
+   largely written by Intel engineers. `*-intel.s` (63 files) are an
+   Intel-syntax corpus with expected bytes, one file per mnemonic group.
+3. The latest XED.
+4. Others: Zydis/zydis-db, NASM, MSVC output, QEMU/SDE behaviour.
+
+LLVM state: the build in `build-native` is at 4d58566 (2026-07-11). The
+checkout was updated to fc16f15 (2026-11-02); the 18k commits between
+contain APX **codegen** changes only (PPX CSR cost, SHLD/SHRD NF
+commuting, BLSI/BLSMSK i8 with EGPR, CCMP miscompile) and one
+Intel-syntax print fix (`vscatterpf0dps` mask position). No APX encoding
+changed, so the existing build stays a valid reference.
+
 **References that already encode/decode APX** (checked):
 
 | Tool | APX status |
@@ -164,6 +180,41 @@ many, a register-validation helper (`x86.check_register`) called by each is
 better than fixing them one by one. Also measure the cost of the check on a
 large source (`tests` corpus, fasm2 self-build). The check is a compare on
 every register operand.
+
+**Phase 0 result (2026-11-02, done).** The refusal went into the operand
+parsers, not the encoders (steps 2–3 above were the guess before looking):
+every GPR number, as a register or as an address base/index, enters
+through one of three parsers, and the direct-emit sites (`50h+rm`,
+`B8h+rm`, `90h+rm`, `0Fh,C8h+rm`) all get `rm` from `x86.parse_operand`.
+- `x86.parse_operand` (registers and addresses; also reached by
+  `AVX_512.parse_operand`, `AMX.parse_operand`, `MMX`/`SSE` parsers and
+  the jump-operand parser), `AVX_512.parse_vsib_operand` (gather/scatter
+  base) and `MPX.parse_sib_operand` (bndldx/bndstx and AMX's
+  `[base, index]` form; MPX and APX never coexist).
+- Message: `extended register not supported: <operand>`, not
+  `APX_F or higher required`. That message would be wrong under
+  `use everything` and stays wrong for instructions APX cannot encode;
+  this one is true in every phase.
+- Elements: `r16`–`r31`, `r16d`, `r16w`, `r16b` and `r16l` (as r8l–r15l).
+- Tests: `tests/iset/apx_refuse.asm` (20 refused forms across all three
+  parsers and both modes; r8–r15 neighbours keep llvm's bytes) and
+  `tests/iset/_apx_sweep.py`: 2,073 mnemonics × 117 operand patterns =
+  242,541 lines, 0 leaks, 76 s. A control run confirms it reports lines
+  that assemble.
+- Cost: fasmg self-build 368 → 378 ms, fasmgw 871 → 884 ms (best of 3),
+  identical output bytes.
+
+**What this changes for Phase 1.** The refusal is in the parser, so
+lifting it there would admit r16+ to every encoder at once, the hazard
+again. Phase 1 instead keeps the parser as the single place that decides,
+and makes it ask: the parser accepts 16–31 only when the calling encoder
+has said it can store them (a flag the caller sets before parsing, cleared
+by the parser), otherwise it refuses as now. `x86.store_instruction`'s
+callers then opt in group by group, each with tests, and the sweep's
+ALLOWED set grows by exactly those forms. The direct-emit sites (`push`,
+`pop`, `bswap`, `mov r, imm`, `xchg`) need their own REX2 path when they
+opt in. The compact `push rax rbx` register list (`x86.compact`) needs
+r16–r31 then too.
 
 ### Phase 1 — REX2 for legacy maps 0 and 1
 
@@ -325,3 +376,7 @@ Gates: APX_F **and** the instruction's own feature (XED's
 - 2026-11-02: placement rule: options after the mnemonic only (`{nf}`,
   `{zu}`, `{dfv=…}`), encoding selection before it (`{rex2}`, `{evex}`).
   ZU as `{zu}`, not `setzuCC`/`imulzu`.
+- 2026-11-02: encoding authority order recorded (Intel docs, LLVM, XED,
+  others); LLVM checkout update has no APX encoding changes. Phase 0
+  done: refusal in the three operand parsers, sweep 0 leaks; Phase 1
+  revised to an opt-in flag on the parser.
