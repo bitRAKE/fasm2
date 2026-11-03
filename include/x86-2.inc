@@ -487,6 +487,16 @@ x86.REX_REQUIRED = 100h
 x86.REX_FORBIDDEN = 200h
 x86.EGPR = 400h		; marks a register operand r16-r31 (APX), see x86.require_egpr
 
+; APX EVEX map 4 (iset/apx.inc): a layer sets evex, nd, nf, v (the NDD
+; register) and calls the legacy instruction; x86.store_instruction then
+; writes the EVEX prefix where it would write REX/REX2, and sets done.
+x86.apx.evex = 0
+x86.apx.done = 0
+x86.apx.nd = 0
+x86.apx.nf = 0
+x86.apx.v = 0
+x86.apx.legacy_prefix = 0	; the lock/rep/segment prefix instruction around this one
+
 macro use16?
 	use bits16
 end macro
@@ -1133,6 +1143,8 @@ iterate context, @dest,@src,@src2,@aux
 			jno	rex2_ready
 			compute rex2, rex2 or 10h
 		    rex2_ready:
+			check	x86.apx.evex
+			jyes	store_evex
 
 			check	prefix = 48h
 			jyes	operand_prefix_ok
@@ -1198,6 +1210,75 @@ iterate context, @dest,@src,@src2,@aux
 			check	rex2
 			jno	store_rex	; {rex2} is a preference: REX where REX2 is not allowed
 			err	'extended register not supported by this encoding'
+			exit
+
+		    store_evex:		; APX: 62 [~R3 ~X3 ~B3 ~R4 B4 1 0 0] [W ~V3-V0 ~X4 pp] [0 0 0 ND ~V4 NF 0 0], map 4
+			local	evex_b, evex_x, evex_pp
+			check	x86.apx.legacy_prefix >= 0F0h	; LOCK, REP: #UD before EVEX
+			jno	evex_prefix_ok
+			compute x86.apx.done, 1
+			err	'prefix not allowed with EVEX'
+			exit
+		    evex_prefix_ok:
+			check	(reg or rm) and x86.REX_FORBIDDEN
+			jno	evex_registers_ok
+			err	'disallowed combination of registers'
+		    evex_registers_ok:
+			compute evex_b, rm
+			compute evex_x, 0
+			check	mod <> 11b & mode > 16 & rm = 4
+			jno	evex_sib_ok
+			compute evex_b, base
+			compute evex_x, index
+		    evex_sib_ok:
+			compute evex_pp, 0
+			check	prefix = 66h		; pp = 66; the byte itself would #UD
+			jno	evex_osize_ok
+			compute evex_pp, 1
+		    evex_osize_ok:
+			asm	virtual at 0
+			asm	db opcode
+			asm	x86.rex2_length = $
+			asm	load x86.rex2_opcode:$ from 0
+			asm	end virtual
+			check	x86.rex2_opcode and 0FFh = 0Fh
+			jyes	evex_map1
+			check	opcode_prefix
+			jno	evex_store
+			jump	evex_none
+		    evex_map1:		; promoted map 1 instructions get map 4 opcodes (spec 3.1.5)
+			compute x86.rex2_length, x86.rex2_length - 1
+			compute x86.rex2_opcode, x86.rex2_opcode shr 8
+			check	opcode_prefix = 0F3h
+			jyes	evex_map1_f3
+			check	opcode_prefix
+			jyes	evex_none
+			check	x86.rex2_opcode = 0AFh | x86.rex2_opcode = 0A5h | x86.rex2_opcode = 0ADh
+			jyes	evex_store
+			check	x86.rex2_opcode = 0A4h | x86.rex2_opcode = 0ACh
+			jno	evex_none
+			compute x86.rex2_opcode, x86.rex2_opcode - 80h		; shld/shrd imm8: 24h, 2Ch
+			jump	evex_store
+		    evex_map1_f3:		; popcnt 88h, tzcnt F4h, lzcnt F5h; F3 is not kept
+			check	x86.rex2_opcode = 0B8h
+			jyes	evex_popcnt
+			check	x86.rex2_opcode = 0BCh | x86.rex2_opcode = 0BDh
+			jno	evex_none
+			compute x86.rex2_opcode, x86.rex2_opcode + 38h
+			jump	evex_store
+		    evex_popcnt:
+			compute x86.rex2_opcode, 88h
+		    evex_store:
+			emit	1, 62h
+			emit	1, ((((reg and 1000b) shl 4) or ((evex_x and 1000b) shl 3) or ((evex_b and 1000b) shl 2) or (reg and 10000b)) xor 0F0h) or ((evex_b and 10000b) shr 1) or 100b
+			emit	1, ((rex_prefix and 1000b) shl 4) or (((not x86.apx.v) and 1111b) shl 3) or ((((evex_x shr 4) and 1) xor 1) shl 2) or evex_pp
+			emit	1, (x86.apx.nd shl 4) or ((((x86.apx.v shr 4) and 1) xor 1) shl 3) or (x86.apx.nf shl 2)
+			emit	x86.rex2_length, x86.rex2_opcode
+			compute x86.apx.done, 1
+			jump	opcode_stored
+		    evex_none:
+			compute x86.apx.done, 1		; reported here, not again by the layer
+			err	'no EVEX form for this instruction'
 			exit
 
 		    opcode_stored:
@@ -1497,7 +1578,7 @@ iterate <instr,basecode>, add,0, or,8, adc,10h, sbb,18h, and,20h, sub,28h, xor,3
 	    rm_imm:
 		check	size > 1
 		jyes	rm_imm_word
-		check	@dest.type = 'reg' & @dest.rm = 0
+		check	@dest.type = 'reg' & @dest.rm = 0 & x86.apx.evex = 0	; 04h+: no ModRM, no EVEX form
 		jyes	al_imm
 
 		compute opcode, opcode shr 3
@@ -1527,7 +1608,7 @@ iterate <instr,basecode>, add,0, or,8, adc,10h, sbb,18h, and,20h, sub,28h, xor,3
 		jyes	rm_simm
 		check	x86.immsize < 2 & @src.imm relativeto 0 & @src.imm - 1 shl (size shl 3) >= -80h & @src.imm < 1 shl (size shl 3)
 		jyes	rm_simm_wrap
-		check	@dest.type = 'reg' & @dest.rm = 0
+		check	@dest.type = 'reg' & @dest.rm = 0 & x86.apx.evex = 0
 		jyes	ax_imm
 		compute rm, opcode shr 3
 		xcall	x86.store_instruction@dest, (81h),rm,size,@src.imm
@@ -3367,7 +3448,9 @@ iterate <prefix,opcode>, lock,0F0h, repnz,0F2h, repne,0F2h, rep,0F3h, repz,0F3h,
 
 	calminstruction prefix? instr&
 		emit	1, opcode
+		compute x86.apx.legacy_prefix, opcode	; only segment overrides may precede EVEX
 		assemble instr
+		compute x86.apx.legacy_prefix, 0
 	end calminstruction
 
 end iterate

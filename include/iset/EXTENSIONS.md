@@ -115,7 +115,19 @@ These are easy to get wrong. Each one was confirmed while writing this note.
    the wrong gate. A layer must gate only its own forms. Constants are no
    different: a user source that assigns `VEX_GPR` or `XOP_08_W0` changes
    every instruction assembled after it. `tests/iset/_dupnames.py` (§3.3)
-   lists every reviewed stack and fails on any new name defined twice.
+   lists every reviewed stack and fails on any new name defined twice,
+   unless every later definition names itself in its body (a layer that
+   passes on, as the APX layers in `apx.inc` do).
+6. **`iterate` substitutes parameters inside dotted names too.** In
+   `iterate <prefix,opcode>`, the global `x86.apx.prefix` becomes
+   `x86.apx.lock`, `x86.apx.rep`, ... and the code silently reads and writes
+   the wrong variable. Give globals used inside an `iterate` names that no
+   parameter can match (`x86.apx.legacy_prefix`).
+7. **A layer that re-enters its own mnemonic through a helper needs a
+   guard.** Only inside the layer does the name mean the earlier
+   definition; a helper (`APX.promote`) that assembles `add …` reaches the
+   layer again. The APX layers pass straight down while `x86.apx.evex` is
+   set.
 
 ---
 

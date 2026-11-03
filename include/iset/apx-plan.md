@@ -385,6 +385,44 @@ directly (change in place instead of stacking); (c) only define the
 layer under an `APX` include guard (last resort: it would be a second
 scheme, which we are avoiding).
 
+**Phase 3 result (2026-11-02, done).**
+- *Mechanism.* One layer per mnemonic (28, one `iterate`) in `apx.inc`.
+  Its fast path is two `match`es and a few constant `check`s, then the
+  earlier definition by name. A form with `{nf}`, `{evex}` or one operand
+  more (NDD) goes to the shared CALM helper `APX.promote`. The helper strips
+  `{nf}`, splits off the NDD register (with its size check, and the size
+  keyword for an unsized memory source), sets `x86.apx.evex/nd/nf/v`, and
+  assembles the legacy form again. All operand logic is the legacy
+  definition's own. `x86.store_instruction` writes the EVEX prefix in
+  place of REX/REX2 (map 4, with the six map-1 opcode moves) and sets
+  `x86.apx.done`; the helper errors if no path did. The layer passes
+  straight down while `x86.apx.evex` is set, because the helper's own call
+  re-enters it (EXTENSIONS.md §1.3 rule 7).
+- *Legacy changes:* the ALU accumulator short forms (04h/05h…) are skipped
+  in EVEX mode (no ModRM); the lock/rep/segment prefix instructions record
+  their byte in `x86.apx.legacy_prefix`, so EVEX refuses LOCK/REP. That
+  variable was first named `x86.apx.prefix` and was silently renamed by
+  the `iterate <prefix,…>` it is used in (§1.3 rule 6).
+- *Scope.* NDD + NF: add or and sub xor inc dec neg shl sal shr sar rol ror
+  shld shrd imul(AF). NDD only: adc sbb not rcl rcr. NF only: mul div idiv
+  imul (F6/F7, 69/6B) popcnt lzcnt tzcnt. Left for Phase 4: cmovcc NDD
+  (its NF bit means CFCMOV), setcc/imul `{zu}`, ccmp/ctest, maps 2/3.
+- *Verification.* 72/72 valid forms from a hand list and 11 more
+  edge forms byte-identical with llvm-mc; the sweep: 15,750 forms
+  identical, 0 failures (llvm-only forms down from 3,170 to 2,991).
+  `apx_ndd.asm`: 87 byte checks, 13 refusals.
+- `_dupnames.py` now follows `include` lines (the order fasmg sees
+  definitions; `apx.inc` sorts first but is included last), and accepts a
+  stack whose later definitions all name themselves in their body: the 28
+  APX layers pass, a G12-style redefinition still fails.
+- **Discovery point 3, measured.** Phases 0–3 against win32: fasmg
+  self-build 384 → 414 ms (+7.8%), fasmgw 915 → 975 ms (+6.6%), identical
+  bytes; the layers alone are about +2.5% (414 vs 404 ms), the cost of the
+  second dispatch on every ALU/shift/inc/dec/imul instruction. Not yet
+  acted on. If that is too much, option (b) above moves the fast-path test
+  into the legacy definitions (no second dispatch) at the price of editing
+  them in place.
+
 ### Phase 4 — the rest of APX_F
 
 - `ccmpSCC` / `ctestSCC` with `{dfv=of,sf,zf,cf}` as the first operand
@@ -459,3 +497,6 @@ Gates: APX_F **and** the instruction's own feature (XED's
 - 2026-11-02: Phase 2 done (`apx.inc`: push2/pop2(p), pushp/popp, jmpabs,
   r16–r31 in register lists). Intel overrules llvm-mc on rsp and pop2
   with one register twice.
+- 2026-11-02: Phase 3 done: NDD/{nf}/{evex} for the legacy integer set
+  through layers and `APX.promote`; ~2.5% cost for the layers, recorded
+  at discovery point 3 for a decision.

@@ -38,16 +38,27 @@ REVIEWED = {
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 inc = os.path.join(root, 'include')
-files = [os.path.join(inc, 'x86-2.inc')] + sorted(
-    os.path.join(inc, 'iset', f) for f in os.listdir(os.path.join(inc, 'iset')) if f.endswith('.inc'))
 
+# definitions in the order fasmg sees them: x86-2.inc, entering each
+# include 'iset/...' where it stands (apx.inc is last although it sorts first)
 defs = collections.defaultdict(list)
-for path in files:
+passes_on = {}	# 'file:line' -> the body references the definition's own name
+seen = set()
+
+
+def scan(path):
+    if path in seen:
+        return
+    seen.add(path)
     text = open(path, encoding='utf-8', errors='replace').read()
     lines = text.replace('\\\r\n', ' ').replace('\\\n', ' ').splitlines()
     stack = []
     for no, line in enumerate(lines, 1):
         code = line.split(';', 1)[0].strip()
+        m = re.match(r"include\s+'(iset/[\w.]+)'", code)
+        if m:
+            scan(os.path.join(inc, m.group(1)))
+            continue
         m = re.match(r'iterate\s+<([^>]*)>\s*,(.*)', code)
         if m:
             params = [p.strip() for p in m.group(1).split(',')]
@@ -65,6 +76,12 @@ for path in files:
         m = re.match(r'(macro|calminstruction)\s+([\w.#@]+)\?', code)
         if not m:
             continue
+        body = []
+        for later in lines[no:]:
+            if re.match(r'\s*end\s+(macro|calminstruction)\b', later):
+                break
+            body.append(later.split(';', 1)[0])
+        own = re.compile(r'(?<![\w.#])=?' + re.escape(m.group(2)) + r'\??(?![\w#])', re.I)
         names = [m.group(2)]
         for params, rows in reversed(stack):
             out = []
@@ -78,13 +95,23 @@ for path in files:
                         t = re.sub(r'(^|#)' + re.escape(p) + r'($|#)', lambda mm: mm.group(1) + v + mm.group(2), t)
                     out.append(t.replace('#', ''))
             names = out
+        where = '%s:%d' % (os.path.relpath(path, root), no)
+        passes_on[where] = any(own.search(b) for b in body)
         for n in names:
-            defs[n.lower()].append('%s:%d' % (os.path.relpath(path, root), no))
+            defs[n.lower()].append(where)
+
+
+scan(os.path.join(inc, 'x86-2.inc'))
 
 if __name__ == '__main__':	# imported by _apx_sweep.py for `defs`
-    new = {k: v for k, v in defs.items() if len(v) > 1 and k not in REVIEWED}
+    # A stack whose every later definition names itself in its body passes
+    # forms on to the earlier one (a layer); anything else needs review.
+    dups = {k: v for k, v in defs.items() if len(v) > 1 and k not in REVIEWED}
+    layers = {k: v for k, v in dups.items() if all(passes_on[w] for w in v[1:])}
+    new = {k: v for k, v in dups.items() if k not in layers}
     gone = sorted(k for k in REVIEWED if len(defs.get(k, [])) < 2)
-    print('%d names scanned, %d reviewed stacks' % (len(defs), len(REVIEWED)))
+    print('%d names scanned, %d reviewed stacks, %d layers that pass on'
+          % (len(defs), len(REVIEWED), len(layers)))
     for k in sorted(new):
         print('NEW DUPLICATE  %-24s %s' % (k, ', '.join(new[k])))
     for k in gone:
