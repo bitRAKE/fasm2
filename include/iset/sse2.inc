@@ -1,5 +1,5 @@
 
-iterate <instr,ext>, sqrt,51h, rsqrt,52h, rcp,53h, add,58h, mul,59h, sub,5Ch, min,5Dh, div,5Eh, max,5Fh
+iterate <instr,ext>, sqrt,51h, add,58h, mul,59h, sub,5Ch, min,5Dh, div,5Eh, max,5Fh
 	macro instr#pd? dest*,src*
 		require SSE2+
 		SSE.basic_instruction 66h,ext,16,dest,src

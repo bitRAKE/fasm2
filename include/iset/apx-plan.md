@@ -15,14 +15,25 @@ running the code needs emulation (§2).
 
 ## 1. Ground truth so far
 
-**Encoding authority, in order** (user decision). When sources disagree,
-the higher one wins, and the disagreement is noted in the test source:
+**Encoding authority, in order** (user decision, revised 2026-11-03).
+When sources disagree, the higher one wins, and the disagreement is noted
+in the test source:
 1. Intel's APX documents (`C:\git\_DOC\APX\`, below).
-2. LLVM source: the X86 target and its `llvm/test/MC/X86/apx/` tests,
+2. XED, the latest: Intel's decoder, with a history of accuracy and
+   independent of LLVM. The programmatic source of truth: what XED
+   refuses is #UD, and fasm2 does not emit it (`_apx_xed.py`).
+3. LLVM source: the X86 target and its `llvm/test/MC/X86/apx/` tests,
    largely written by Intel engineers. `*-intel.s` (63 files) are an
    Intel-syntax corpus with expected bytes, one file per mnemonic group.
-3. The latest XED.
-4. Others: Zydis/zydis-db, NASM, MSVC output, QEMU/SDE behaviour.
+   It encodes forms that #UD (§5.3), so it is the byte reference for
+   valid forms only.
+4. GCC/binutils (GNU as, in WSL): an independent encoder with a history
+   of accuracy, to compare against.
+5. Others: Zydis/zydis-db, NASM, MSVC output.
+
+Execution would outrank all of these on real hardware. Emulators
+(QEMU, SDE) are not trusted as a source of truth; XED stands in until
+hardware is available.
 
 LLVM state: the build in `build-native` is at 4d58566 (2026-07-11). The
 checkout was updated to fc16f15 (2026-11-02); the 18k commits between
@@ -36,7 +47,8 @@ changed, so the existing build stays a valid reference.
 | Tool | APX status |
 |------|------------|
 | LLVM 23 `llvm-mc` (`C:\git\llvm-project\build-native\bin`) | Encodes every form tried with `-triple=x86_64 --show-encoding -mattr=+egpr,+push2pop2,+ppx,+ndd,+ccmp,+nf,+cf,+zu` (plus `+avx512f`, `+bmi` for those forms). |
-| XED v2025.12.14 | Decodes REX2 and EVEX map 4 (`xed -64 -d D54801C0` → ADD). `data\src\xed\datafiles\apx-f\` holds the patterns and `cpuid*.xed.txt` the gates. |
+| Intel oneAPI 2026.2 clang (build 20261001; checked 2026-11-03, then uninstalled) | Intel's shipping LLVM fork. It has no `llvm-mc`, but `clang -cc1as -triple x86_64 -filetype asm -show-encoding -output-asm-variant=1 -target-feature +egpr …` prints the same encodings (the variant option takes `=`). It has every APX feature (egpr, push2pop2, ppx, ndd, ccmp, nf, cf, zu, jmpabs) plus `prefer-ndd-mem`, `prefer-setzucc` and `inline-asm-use-gpr32`. `-march=diamondrapids` and `novalake` define `__APX_F__` and AVX10.2. `core-apx` defines the separate APX macros but not `__APX_F__` or `__JMPABS__`. 2026-11-03: it reproduces all 6,680 encodings in LLVM's `test/MC/X86/apx` (Intel and AT&T syntax), and the full sweep is identical to upstream llvm-mc's: 34,776 same, the same 963 llvm-only forms, 0 failures. So Intel's product and upstream LLVM agree, and this is no independent second reference. |
+| XED v2025.12.14; v2026.08.23 at `C:\git\_Intel\xed` (with mbuild beside it) | Decodes REX2 and EVEX map 4 (`xed -64 -d D54801C0` → ADD). `data\src\xed\datafiles\apx-f\` holds the patterns and `cpuid*.xed.txt` the gates. Build: run `python mfile.py --host-cpu=x86-64 --build-dir=obj-wkit examples` from a vcvars64 shell (25 s); the kit is in `obj-wkit\wkit`. XED is Intel's and independent of LLVM. It **refuses** the forms the spec says #UD, with a reason instead of a decode: `BAD_REGISTER` (push2/pop2 with rsp), `BAD_REG_MATCH` (`pop2 rax, rax`), `GENERAL_ERROR` (REX2 before 0F 38 or on xsave/xrstor), `BAD_LOCK_PREFIX`. `tests/iset/_xedcheck.c` (built into the kit's `bin`) decodes many lines in one process for `_apx_xed.py`. |
 | ZydisInfo | Decodes REX2 (`D5 48 01 C0` → `add rax, r16`). |
 | zydis-db (`C:\git\zyantific\zydis-db\datafiles`, 2026-06) | APX forms are in `instructions.json`, for generating test cases. |
 | NASM 3.02rc7 (`C:\git\nasm\nasm.exe`) | Intel-syntax reference: assembles REX2, NDD, `{nf}` (before or after the mnemonic), `push2`, `ccmp {dfv=…}`, `{zu} setb`. Doc: `doc\syntax.src` §`apx_*`. Rejects Intel's `setzuCC` mnemonic. |
@@ -655,7 +667,7 @@ fasm2 upstream (tgrysztar/fasm2; all present on `master` aab8758,
 |---|--------|-------|------------|------|
 | G17 | `cmpxchg16b [r8]` assembles `48 41 0F C7 08`; the CPU ignores the 48h and runs cmpxchg8b | `use64` / `cmpxchg16b [r8]` | `x86.store_operand_prefix, (8)` emits REX.W as its own byte before `x86.store_instruction`'s REX | fixed, `tests/iset/cmpxchg16b.asm` |
 | G15 | AVX `*_imm8` helpers accept a memory operand as the imm8 and use a stale value | `vroundpd xmm0, xmm1, 3` then `vroundpd xmm0, xmm1, [rax]`: both `C4 E3 79 09 C1 03`, no error | `AVX_512.single_source_instruction_imm8` never checks `@aux.type = 'imm'` | open |
-| G16 | `rcppd`, `rcpsd`, `rsqrtpd`, `rsqrtsd` assemble (no such instructions) | `rcppd xmm0, xmm1` | `sse2.inc` reuses SSE's iterate list including `rsqrt`/`rcp` | open |
+| G16 | `rcppd`, `rcpsd`, `rsqrtpd`, `rsqrtsd` assemble (no such instructions; XED: GENERAL_ERROR) | `rcppd xmm0, xmm1` | `sse2.inc` reuses SSE's iterate list including `rsqrt`/`rcp` | fixed, `tests/iset/sse2_rcp.asm` |
 | G16b | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | as shown | `sse.inc`: `@src.size = 'mem'` / `@src.size = 'mmreg'` compare the *size* with a type string (meant `@src.type`), so the size check never applies | open |
 | G18 | `crc32 rbx, al` assembles `F2 0F 38 F0 D8` (the `crc32 ebx, al` encoding; same result) | as shown | `sse4.inc` crc32: no `select_operand_prefix` for an 8-bit source | fixed, `tests/iset/crc32.asm` |
 | G19 | `wrssq rax, r8` assembles (`4C 0F 38 F6 C0`, Mod=11); WRSS/WRUSS are `m, r` only | as shown | `cet.inc`: `@dest.type = 'reg' \| @dest.type = 'mem'` | fixed, `tests/iset/cet_wrss.asm` |
@@ -679,6 +691,22 @@ defined only when ModRM.Mod = 3", but X4 extends the SIB index, which
 exists only when Mod ≠ 3. LLVM and fasm2 both encode X4 for the index
 (`add rax, [rax+r20*4], rcx` = `62 F4 F8 …`, U = 0). Ask before relying on
 the sentence.
+
+XED v2026.08.23 confirms every row above: it refuses each of llvm-mc's
+bytes (`BAD_REGISTER`, `BAD_REG_MATCH`, `GENERAL_ERROR`). Intel's oneAPI
+2026.2 assembler produces the same bytes as llvm-mc (shared MC code), so a
+fix upstream reaches it too.
+
+**Policy: fasm2 assembles no instruction that raises #UD** unless the
+source asks for those bytes outright (`db`, or a future explicit option).
+`tests/iset/_apx_xed.py` checks it. XED must decode every form fasm2
+accepts in the sweep (r16, r8 and the edge registers) and in LLVM's APX
+corpus: 2026-11-03, 44,560 forms, all decoded (G16, fixed, was the
+only failure). XED shows #UD; it does not show a wrong but valid
+instruction (G15, G16b), which is what the comparison with llvm-mc is for.
+An encoding-selection prefix that cannot apply (`{rex2} movbe`,
+`{evex} vaesimc`, `{vex3} add`) is a preference, as in fasmg: dropped,
+with valid bytes, never #UD bytes.
 
 NASM 3.02rc7: rejects Intel's recommended `setzuCC` mnemonic (817241 §3)
 and accepts only `{zu}`; not a defect (fasm2 chose `{zu}` too), noted for
@@ -710,3 +738,12 @@ syntax comparisons.
 - 2026-11-02: Phase 3 done: NDD/{nf}/{evex} for the legacy integer set
   through layers and `APX.promote`; ~2.5% cost for the layers, recorded
   at discovery point 3 for a decision.
+- 2026-11-03: Intel oneAPI 2026.2's assembler checked as a reference
+  (through `clang -cc1as`; the toolkit was then uninstalled). It agrees with upstream llvm-mc on the whole LLVM APX
+  corpus and on the sweep, so authorities 2 and "Intel's product" agree
+  for every form tested.
+- 2026-11-03: XED v2026.08.23 built; it refuses every #UD form llvm-mc
+  encodes. Policy: fasm2 emits no #UD instruction; `_apx_xed.py` decodes
+  all 44,560 accepted forms with XED. G16 fixed (its only failure).
+- 2026-11-03: authority order revised: Intel docs, XED, LLVM, GCC/binutils,
+  others. Hardware execution outranks all; emulators are not trusted.

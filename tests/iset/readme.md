@@ -86,6 +86,7 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `avx_operand_state.asm` | G20 | vpinsrq/vlddqu assemble first in a source (operand parsed with `AVX_512.parse_operand`). |
 | `vpbroadcastq.asm` | G21 | EVEX vpbroadcastq is W1 (was vbroadcasti32x2); masked xmm/ymm vpbroadcastd/q need AVX512VL. |
 | `vcompress.asm` | G22 | vcompressps/pd in map 2 (map 1 was undecodable). |
+| `sse2_rcp.asm` | G16 | no rcppd/rcpsd/rsqrtpd/rsqrtsd (#UD; the SSE2 list reused rsqrt/rcp); rcpps/rsqrtss and the rest of the SSE2 list keep their bytes. |
 | `crc32.asm` | G18 | `crc32 r64, r/m8` carries REX.W. |
 | `cet_wrss.asm` | G19 | WRSS/WRUSS take a memory destination only. |
 | `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |
@@ -110,3 +111,9 @@ any change to an operand parser or an encoder. It takes about a minute.
 Intel-syntax tests (`llvm/test/MC/X86/apx/*-intel.s`, a local checkout) and
 compares each encoding; it is the progress measure for the APX phases, not
 a regression test (it needs the LLVM tree).
+`python tests/iset/_apx_xed.py [-v]` decodes every form fasm2 accepts in the
+sweep (also with r8) and in that corpus with XED, Intel's decoder, which
+refuses bytes that raise #UD. fasm2 must emit none (policy in
+`include/iset/apx-plan.md` §5.3). It needs `_xedcheck.exe`, built from
+`_xedcheck.c` against an XED kit (the command is in the file); it takes a
+few minutes.
