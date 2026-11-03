@@ -327,9 +327,7 @@ macro format?.MS? variant
 		__include 'format/coffms.inc'
 		use32
 	else match =NEWCOFF?, variant
-		if ~ definite format
-			format binary as 'obj'
-		end if
+		format?.default_extension = 'obj'
 		__include 'format/newcoffms.inc'
 		use32
 	else
@@ -345,9 +343,7 @@ macro format?.MS64? variant
 		__include 'format/coffms.inc'
 		use64
 	else match =NEWCOFF?, variant
-		if ~ definite format
-			format binary as 'obj'
-		end if
+		format?.default_extension = 'obj'
 		__include 'format/newcoffms.inc'
 		use64
 	else
