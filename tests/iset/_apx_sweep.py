@@ -91,6 +91,7 @@ REVIEWED = [
     (r'rcppd|rcpsd|rsqrtpd|rsqrtsd', r'.*', 'G16 pre-existing: no such instructions (EXTENSIONS.md 2.4)'),
     (r'v\w+', r'(xmm|ymm|zmm)0, (xmm|ymm|zmm)1, \[r16\]', 'G15 pre-existing: imm8 operand not checked (EXTENSIONS.md 2.4)'),
     (r'tile\w+', r'.*\[r16,rax\].*', "fasm2's AMX [base, index] syntax, which llvm-mc lacks; bytes equal [base+index] (apx_vex.asm)"),
+    (r'v(gather|scatter)pf[01][dq]p[sd]', r'\[r16\+zmm1\]\{k1\}', 'AVX512PF: llvm-mc wants a size on the memory operand; bytes checked with one in apx_vector.asm'),
 ]
 
 # not instructions: settings, prefixes that take an instruction, directives

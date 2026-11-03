@@ -82,6 +82,10 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `apx_conditional.asm` | APX Phase 4a | cmov<cc> NDD, cfcmov<cc> (load/store/register/NDD forms), set<cc> in map 4 and `{zu}`, imul `{zu}` (with `{nf}`), ccmp/ctest (DFV set or number, SCC incl. t/f), `{evex}` cmp/test; refusals for forms that do not exist. |
 | `apx_promoted.asm` | APX Phase 4b | legacy map 2 instructions in EVEX map 4 with r16–r31 or `{evex}` (movbe incl. register form, crc32, adcx/adox incl. NDD, invept/invvpid/invpcid, wrss/wruss, enqcmd(s), movdir64b, movdiri, RAO-INT, urdmsr/uwrmsr incl. map 7 imm form); `use evex` without APX_F leaves legacy instructions alone. |
 | `apx_vex.asm` | APX Phase 4c | promoted VEX instructions in APX EVEX form: BMI1/2 (with `{nf}` on andn/bextr/blsi/blsmsk/blsr/bzhi), CMPccXADD, KMOV*, AMX tile config/load/store (incl. `[base, index]`); B4/X4/R4/V4, unscaled disp8, VEX forms unchanged with `use evex` and no APX_F. |
+| `apx_vector.asm` | APX Phase 5 | r16–r31 in vector instructions: EVEX base/index/GPR operands (B4, X4, R4), VSIB base, VEX→EVEX when an EVEX form exists (with its AVX-512/VL gates), VEX-only refused. |
+| `avx_operand_state.asm` | G20 | vpinsrq/vlddqu assemble first in a source (operand parsed with `AVX_512.parse_operand`). |
+| `vpbroadcastq.asm` | G21 | EVEX vpbroadcastq is W1 (was vbroadcasti32x2); masked xmm/ymm vpbroadcastd/q need AVX512VL. |
+| `vcompress.asm` | G22 | vcompressps/pd in map 2 (map 1 was undecodable). |
 | `crc32.asm` | G18 | `crc32 r64, r/m8` carries REX.W. |
 | `cet_wrss.asm` | G19 | WRSS/WRUSS take a memory destination only. |
 | `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |

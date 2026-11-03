@@ -547,6 +547,33 @@ bytes as llvm-mc (or, where Intel's spec disagrees, to the spec).
 **Discovery point 5.** AVX10 interaction: AVX10.2 may change what
 "enabled" means here. Revisit with the AVX10.2 plan.
 
+**Phase 5 result (2026-11-02, done).**
+- `AVX_512.store_instruction`: for an instruction that is not
+  APX_PROMOTED, r16–r31 now force its EVEX form (`apx = 2`) instead of
+  being refused, unless it has none (EVEX_FORBIDDEN: VEX-only such as
+  vaesimc and the VEX gathers; XOP), which still refuses. The EVEX form
+  keeps its usual gates (AVX512F, AVX512VL for xmm/ymm; "AVX512F or higher
+  required" when AVX-512 is off). B4/X4 reuse the 4c code; X4 is set only
+  for a GPR index (`egpr = 1`): the VSIB parser marks a base r16–r31 with
+  `egpr = 2`, so a vector index keeps U = 1. disp8 keeps EVEX scaling.
+- "Enabled" for now means `x86.simd >= AVX512F` (+ VL); AVX10 is not
+  modelled separately (discovery point 5 stands for the AVX10.2 plan).
+- Found on the way, all pre-existing (upstream) and fixed with tests:
+  G20 vpinsrq/vlddqu unset operand state, G21 vpbroadcastq EVEX W0
+  (= vbroadcasti32x2) and missing AVX512VL gate, G22 vcompressps/pd in
+  map 1 (#UD). G21 and G22 were silent misencodes.
+- Tests: `apx_vector.asm` (38 byte checks, 4 refusals),
+  `avx_operand_state.asm`, `vpbroadcastq.asm`, `vcompress.asm`. Corpus:
+  **3,039 same, 0 DIFF**; the 184 refused are the 180 implied-count
+  shifts (by design) and MSR-IMM (4, not implemented). Sweep 34,776
+  same, 0 failures (llvm-only forms 2,561 → 963: the rest are llvm-mc
+  accepting a vector index in non-VSIB instructions, `[r16+zmm1]`, and an
+  extra immediate after vcvt*2si, plus fasm2's stricter size rules).
+- No measurable cost.
+
+**APX complete** for everything LLVM's tests cover, except MSR-IMM, which
+is its own extension (`MSR_IMM`, not planned yet).
+
 ---
 
 ## 4. Open questions
@@ -584,6 +611,7 @@ identical in every row):
 | Phase 4b | +40 ms (+10.5%) | +75 ms (+8.3%) | one more check in `x86.store_instruction` (r16+ or `{evex}` on the map-2 path); the branch itself is unchanged (420–423 ms, 977–980 ms in both measurements); the ratio moves with the baseline, which drifted 378–395 ms between sessions |
 
 | Phase 4c | +36 ms (+9.4%) | +70 ms (+7.6%) | none on the plain path (the APX test in `AVX_512.store_instruction` runs only for APX_PROMOTED instructions); branch time unchanged from 4b |
+| Phase 5 | +34 ms (+8.7%) | +69 ms (+7.5%) | none measurable: branch 424 ms / 982–986 ms, as after 4c |
 
 Measurement note: best of 5–7 runs, but the baseline tree varies by ±2–4%
 between sessions; compare branch times measured in one session (interleaved
@@ -631,6 +659,9 @@ fasm2 upstream (tgrysztar/fasm2; all present on `master` aab8758,
 | G16b | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | as shown | `sse.inc`: `@src.size = 'mem'` / `@src.size = 'mmreg'` compare the *size* with a type string (meant `@src.type`), so the size check never applies | open |
 | G18 | `crc32 rbx, al` assembles `F2 0F 38 F0 D8` (the `crc32 ebx, al` encoding; same result) | as shown | `sse4.inc` crc32: no `select_operand_prefix` for an 8-bit source | fixed, `tests/iset/crc32.asm` |
 | G19 | `wrssq rax, r8` assembles (`4C 0F 38 F6 C0`, Mod=11); WRSS/WRUSS are `m, r` only | as shown | `cet.inc`: `@dest.type = 'reg' \| @dest.type = 'mem'` | fixed, `tests/iset/cet_wrss.asm` |
+| G20 | `vpinsrq xmm0, xmm1, rax, 1` and `vlddqu xmm0, [rax]` fail with "invalid expression" when first in a source | either line alone after `use64` | `avx.inc`: the stored operand is parsed with `x86.parse_operand`, leaving `mask`/`evex_b`/`memsize` undefined (or stale) | fixed, `tests/iset/avx_operand_state.asm` |
+| G21 | `vpbroadcastq zmm0, [rax]` assembles `62 F2 7D 48 59 00`, which XED and Zydis decode as `vbroadcasti32x2` | as shown | `avx.inc`: VEX_66_0F38_W0 without EVEX_W1 for the q form; no EVEX_VL for d/q | fixed, `tests/iset/vpbroadcastq.asm` |
+| G22 | `vcompresspd [rax], xmm0` assembles `62 F1 FD 08 8A 00`, which XED cannot decode | as shown | `avx.inc`: `VEX_66_0F_W0/W1` (map 1) for vcompressps/pd instead of `VEX_66_0F38` | fixed, `tests/iset/vcompress.asm` |
 
 LLVM (llvm-project, X86 AsmParser/MCCodeEmitter), all on LLVM 23 (build
 4d58566 and source fc16f15, no tests cover them). Intel's spec says each
@@ -663,6 +694,8 @@ syntax comparisons.
 - 2026-11-02: placement rule: options after the mnemonic only (`{nf}`,
   `{zu}`, `{dfv=…}`), encoding selection before it (`{rex2}`, `{evex}`).
   ZU as `{zu}`, not `setzuCC`/`imulzu`.
+- 2026-11-02: Phases 4a–4c and 5 done (see each result). LLVM's APX
+  corpus: 3,039 forms identical, 0 different. G18–G22 found and fixed.
 - 2026-11-02: encoding authority order recorded (Intel docs, LLVM, XED,
   others); LLVM checkout update has no APX encoding changes. Phase 0
   done: refusal in the three operand parsers, sweep 0 leaks; Phase 1

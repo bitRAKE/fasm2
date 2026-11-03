@@ -40,7 +40,7 @@
 ; FAIL 4: 'disallowed combination of registers'
 ; FAIL 5: 'extended register not supported by this encoding'
 ; FAIL 6: 'extended register not supported by this encoding'
-; FAIL 7: 'extended register not supported by this encoding'
+; FAIL 7: 'AVX512F or higher required'
 ; FAIL 8: 'extended register not supported by this encoding'
 ; FAIL 9: 'extended register not supported by this encoding'
 ; FAIL 10: 'extended register not supported by this encoding'
@@ -50,7 +50,7 @@
 ; FAIL 14: 'extended register not supported by this instruction'
 ; FAIL 15: 'extended register not supported: [r16]'
 ; FAIL 16: 'extended register not supported: r16'
-; FAIL 17: 'extended register not supported: [r16+zmm1]'
+; FAIL 17: 'APX_F or higher required'
 ; FAIL 18: 'extended register not supported: [r16,rax]'
 ; FAIL 19: 'invalid address'
 
@@ -188,13 +188,14 @@ else if FAIL = 3	; and 64-bit code
 else if FAIL = 4	; like REX, REX2 turns ah-bh into spl-dil
 	mov ah, r16b
 
-else if FAIL = 5	; VEX/EVEX: APX EVEX bits not implemented yet
-	vpaddd zmm2, zmm1, [r16]
+else if FAIL = 5	; r16-r31 need the EVEX form; a VEX gather has none
+	vpgatherdd xmm0, [r16+xmm1], xmm2
 
 else if FAIL = 6	; a VEX instruction with no EVEX form is not promoted
 	vaesimc xmm0, [r16]
 
-else if FAIL = 7	; GPR in ModRM.reg of a VEX instruction
+else if FAIL = 7	; the EVEX form needs AVX-512
+	use i386, x64, AVX2, APX_F
 	vcvtss2si r16d, xmm0
 
 else if FAIL = 8	; XOP
@@ -224,7 +225,8 @@ else if FAIL = 15	; MPX: no CPU has MPX and APX
 else if FAIL = 16
 	bndcl bnd0, r16
 
-else if FAIL = 17	; VSIB base (EVEX)
+else if FAIL = 17	; VSIB base r16-r31 needs APX_F too
+	use i386, x64, AVX512F
 	vpgatherdd zmm0{k1}, [r16+zmm1]
 
 else if FAIL = 18	; MPX [base, index] (AMX's takes r16-r31: apx_vex.asm)

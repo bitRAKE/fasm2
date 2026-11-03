@@ -473,7 +473,10 @@ iterate context, @dest,@src,@src2,@aux
 		      base_and_index:
 			compute base, 0 scaleof (1 metadataof base_registers)
 			check	base >= 16
-			jyes	extended_register
+			jno	vsib_base_ok
+			compute egpr, 2		; base r16-r31 (B4); the index is a vector register, not X4
+			call	x86.require_egpr
+		    vsib_base_ok:
 			check	mode & mode <> 0 scaleof (1 metadataof (1 metadataof base_registers)) shl 3
 			jyes	invalid_address
 			compute mode, 0 scaleof (1 metadataof (1 metadataof base_registers)) shl 3
@@ -521,10 +524,6 @@ iterate context, @dest,@src,@src2,@aux
 			exit
 		  invalid_address_size:
 			err	'invalid address size'
-			exit
-		  extended_register:
-			stringify operand
-			err	'extended register not supported: ' bappend operand
 			exit
 
 		end calminstruction
@@ -579,11 +578,15 @@ iterate context, @dest,@src,@src2,@aux
 			compute apx, 1
 			compute memsize, 1		; disp8 is not scaled for promoted instructions
 			jump	egpr_ok
-		    apx_not_promoted:
-			check	egpr | (reg or vreg or rm) and x86.EGPR	; vector instructions: APX EVEX not implemented yet
+		    apx_not_promoted:		; vector instructions: r16-r31 only in their EVEX form (spec 3.1.2.3.3)
+			check	egpr | (reg or vreg or rm) and x86.EGPR
 			jno	egpr_ok
-			err	'extended register not supported by this encoding'
+			check	evex_f and EVEX_FORBIDDEN | vex_mpw and 11111b >= 8
+			jno	egpr_evex
+			err	'extended register not supported by this encoding'	; VEX only, XOP
 			exit
+		    egpr_evex:
+			compute apx, 2
 		    egpr_ok:
 
 			check	segment_prefix
@@ -687,7 +690,7 @@ iterate context, @dest,@src,@src2,@aux
 			jno	apx_x4
 			compute evex, evex or 1 shl 3		; B4 (P0 bit 3, not inverted)
 		    apx_x4:
-			check	x86.apx.evex & x86.apx.nf
+			check	apx = 1 & x86.apx.evex & x86.apx.nf
 			jno	apx_bits_ok
 			compute evex, evex or 1 shl 18		; NF (P2 bit 2)
 		    apx_bits_ok:
@@ -729,9 +732,9 @@ iterate context, @dest,@src,@src2,@aux
 			compute evex_displacement_size, displacement_size
 
 		    choose_prefix:
-			check	apx
+			check	apx = 1
 			jyes	apx_evex
-			check	evex_flags and EVEX_REQUIRED | evex and 11011111_00000000_00010000b | rm and 10000b
+			check	apx = 2 | evex_flags and EVEX_REQUIRED | evex and 11011111_00000000_00010000b | (rm and 10000b & rm and x86.EGPR = 0)
 			jyes	evex_required
 			check	~ evex_flags and (EVEX_FORBIDDEN or EVEX_FORBIDDEN_VL) & ( (evex_displacement_size + 1 < displacement_size & ~ x86.vexsize) | x86.vexsize = 4)
 			jyes	evex
@@ -744,6 +747,11 @@ iterate context, @dest,@src,@src2,@aux
 			call	x86.require.AVX512VL
 			jump	evex
 		    evex_forbidden:
+			check	apx = 2			; r16-r31 need the EVEX form, which needs AVX-512
+			jno	evex_invalid
+			call	x86.require.AVX512F
+			exit
+		    evex_invalid:
 			err	'invalid operand'
 
 		    vex:
@@ -772,7 +780,7 @@ iterate context, @dest,@src,@src2,@aux
 
 		    apx_evex:		; promoted VEX: [R3 X3 B3 R4 B4 mmm] [W vvvv ~X4 pp] [0 0 L 0 ~V4 NF 0 0]
 			compute x86.apx.done, 1
-			check	mod <> 11b & mode > 16 & rm = 4 & egpr & index and 10000b
+			check	mod <> 11b & mode > 16 & rm = 4 & egpr = 1 & index and 10000b
 			jyes	evex_4byte_w		; X4 = 1: U stays 0
 			compute evex, evex or 1 shl 10
 			jump	evex_4byte_w
@@ -786,6 +794,8 @@ iterate context, @dest,@src,@src2,@aux
 			jno	dq_ok
 			call	x86.require.AVX512DQ
 		      dq_ok:
+			check	mod <> 11b & mode > 16 & rm = 4 & egpr = 1 & index and 10000b
+			jyes	evex_4byte_w		; X4 = 1 (GPR index r16-r31): U stays 0
 			compute evex, evex or 1 shl 10
 		    evex_4byte_w:
 			check	evex_flags and EVEX_W1
@@ -1368,7 +1378,7 @@ macro vbroadcastsd? dest*,src*
 	end if
 end macro
 
-iterate <instr,opcode,opcode_g,msize>, vpbroadcastd,58h,7Ch,4, vpbroadcastq,59h,7Ch,8
+iterate <instr,opcode,opcode_g,msize,evex_f>, vpbroadcastd,58h,7Ch,4,EVEX_AS_VEX+EVEX_VL, vpbroadcastq,59h,7Ch,8,EVEX_AS_VEX+EVEX_VL+EVEX_W1
 
 	macro instr? dest*,src*
 		require AVX2+
@@ -1379,7 +1389,7 @@ iterate <instr,opcode,opcode_g,msize>, vpbroadcastd,58h,7Ch,4, vpbroadcastq,59h,
 				err 'invalid operand size'
 			end if
 			@src.memsize = msize
-			AVX_512.store_instruction@src @dest.size,VEX_66_0F38_W0,EVEX_AS_VEX,opcode,@dest.mask,@dest.rm
+			AVX_512.store_instruction@src @dest.size,VEX_66_0F38_W0,evex_f,opcode,@dest.mask,@dest.rm	; vpbroadcastq: EVEX.W1 (G21)
 		else if @dest.type = 'mmreg' & @src.type = 'reg'
 			if @src.size <> msize & (@src.size <> 4 | msize = 8)
 				err 'invalid operand size'
@@ -2882,7 +2892,7 @@ iterate <instr,unit,vex_mpw,opcode>, vrcp14ss,4,VEX_66_0F38_W0,4Dh, vrcp14sd,8,V
 
 end iterate
 
-iterate <instr,vex_mpw,opcode>, vcompressps,VEX_66_0F_W0,8Ah, vcompresspd,VEX_66_0F_W1,8Ah, vpcompressd,VEX_66_0F38_W0,8Bh, vpcompressq,VEX_66_0F38_W1,8Bh
+iterate <instr,vex_mpw,opcode>, vcompressps,VEX_66_0F38_W0,8Ah, vcompresspd,VEX_66_0F38_W1,8Ah, vpcompressd,VEX_66_0F38_W0,8Bh, vpcompressq,VEX_66_0F38_W1,8Bh	; vcompressp*: map 2 (G22)
 
 	macro instr? dest*,src*
 		AVX_512.parse_k1z_operand@dest dest
@@ -3942,7 +3952,7 @@ end macro
 macro vpinsrq? dest*,src*,src2*,aux*
 	AVX_512.parse_operand@dest dest
 	AVX_512.parse_operand@src src
-	x86.parse_operand@src2 src2
+	AVX_512.parse_operand@src2 src2		; sets mask/evex_b/memsize (G20)
 	x86.parse_operand@aux aux
 	if @dest.type = 'mmreg' & @src.type = 'mmreg' & (@src2.type = 'reg' | @src2.type = 'mem') & @aux.type = 'imm'
 		if @dest.size <> 16 | @src.size <> 16 | @src2.size and not 8 | @aux.size and not 1
@@ -4098,7 +4108,7 @@ end macro
 
 macro vlddqu? dest*,src*
 	AVX_512.parse_operand@dest dest
-	x86.parse_operand@src src
+	AVX_512.parse_operand@src src		; sets mask/evex_b/memsize (G20)
 	if @dest.type = 'mmreg' & @src.type = 'mem'
 		if @src.size and not @dest.size
 			err 'operand sizes do not match'
