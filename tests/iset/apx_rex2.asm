@@ -24,8 +24,9 @@
 ;	  register in their low bits (push/pop 50h+r, mov B8h+r, xchg 90h+r,
 ;	  bswap 0Fh C8h+r);
 ;	- every other encoder refuses the marked operand: VEX/EVEX/XOP (until
-;	  APX EVEX), msr.inc's map 7 form, MPX (no CPU has MPX and APX), and
-;	  XSAVE*/XRSTOR* (#UD with REX2).
+;	  APX EVEX), MPX (no CPU has MPX and APX), XSAVE*/XRSTOR* (#UD with REX2),
+;	  and maps 2/3 except the instructions APX promotes to EVEX map 4
+;	  (apx_promoted.asm; SSE, AES and SHA are not promoted).
 ;	{rex2} asks for REX2 without an extended register; like {vex3} it is a
 ;	preference, ignored where REX2 is not allowed. There Intel's spec
 ;	outranks LLVM, which writes D5 00 0F 38 F0 for {rex2} movbe ("REX2
@@ -199,17 +200,17 @@ else if FAIL = 7	; GPR in ModRM.reg of a VEX instruction
 else if FAIL = 8	; XOP
 	vpcmov xmm0, xmm1, [r16], xmm2
 
-else if FAIL = 9	; map 2 (0F 38): no REX2; EVEX form not implemented yet
-	movbe rax, [r16]
+else if FAIL = 9	; map 2 (0F 38): no REX2, and SSE is not promoted to EVEX
+	pshufb xmm0, [r16]
 
-else if FAIL = 10	; map 2 with a mandatory prefix
-	adcx r16, rax
+else if FAIL = 10	; map 3 (0F 3A): no REX2, not promoted
+	pextrd r16d, xmm0, 1
 
 else if FAIL = 11	; AMX (VEX)
 	tileloadd tmm0, [rax+r16]
 
-else if FAIL = 12	; msr.inc map 7
-	urdmsr r16, 1
+else if FAIL = 12	; legacy AES (map 2) is not promoted either
+	aesenc xmm0, [r16]
 
 else if FAIL = 13	; XSAVE* #UD with REX2
 	xsave [r16]

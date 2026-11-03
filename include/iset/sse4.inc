@@ -253,6 +253,9 @@ macro crc32? dest*,src*
 			x86.select_operand_prefix@src @src.size
 			x86.store_instruction@src <0Fh,38h,0F1h>,@dest.rm
 		else if @src.size > 0
+			if @dest.size = 8	; crc32 r64, r/m8: REX.W (G18)
+				x86.select_operand_prefix@src 8
+			end if
 			x86.store_instruction@src <0Fh,38h,0F0h>,@dest.rm
 		else
 			err 'operand size not specified'

@@ -88,7 +88,7 @@ iterate <instr,prefix,ext>, wrssd,0,0F6h, wrussd,66h,0F5h
 		else if @dest.size and not @src.size
 			err 'operand sizes do not match'
 		end if
-		if @src.type = 'reg' & ( @dest.type = 'reg' | @dest.type = 'mem' )
+		if @src.type = 'reg' & @dest.type = 'mem'	; memory destination only (G19)
 			@dest.opcode_prefix = prefix
 			x86.store_instruction@dest <0Fh,38h,ext>,@src.rm
 		else
@@ -110,7 +110,7 @@ iterate <instr,prefix,ext>, wrssq,0,0F6h, wrussq,66h,0F5h
 		else if @dest.size and not @src.size
 			err 'operand sizes do not match'
 		end if
-		if @src.type = 'reg' & ( @dest.type = 'reg' | @dest.type = 'mem' )
+		if @src.type = 'reg' & @dest.type = 'mem'	; memory destination only (G19)
 			x86.select_operand_prefix@dest 8
 			@dest.opcode_prefix = prefix
 			x86.store_instruction@dest <0Fh,38h,ext>,@src.rm

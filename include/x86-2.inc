@@ -1146,9 +1146,12 @@ iterate context, @dest,@src,@src2,@aux
 			jno	rex2_ready
 			compute rex2, rex2 or 10h
 		    rex2_ready:
+			local	evex_auto
 			check	x86.apx.evex
 			jyes	store_evex
-
+			check	(rex2 | x86.vexsize = 4) & x86.mode = 64
+			jyes	map2_test
+		    legacy_prefixes:
 			check	prefix = 48h
 			jyes	operand_prefix_ok
 
@@ -1215,7 +1218,26 @@ iterate context, @dest,@src,@src2,@aux
 			err	'extended register not supported by this encoding'
 			exit
 
+		    map2_test:		; legacy map 2 has no REX2: r16-r31 and {evex} take EVEX map 4
+			asm	virtual at 0
+			asm	db opcode
+			asm	x86.rex2_length = $
+			asm	load x86.rex2_opcode:$ from 0
+			asm	end virtual
+			check	x86.rex2_opcode and 0FFFFh = 380Fh
+			jno	legacy_prefixes
+			check	rex2 | x86.ext and x86.APX_F.ext	; {evex} without APX_F: legacy
+			jno	legacy_prefixes
+			compute x86.apx.nd, 0
+			compute x86.apx.nf, 0
+			compute x86.apx.v, 0
+			compute x86.apx.ccmp, 0
+			compute evex_auto, 1
+			jump	evex_common
+
 		    store_evex:		; APX: 62 [~R3 ~X3 ~B3 ~R4 B4 1 0 0] [W ~V3-V0 ~X4 pp] [0 0 0 ND ~V4 NF 0 0], map 4
+			compute evex_auto, 0
+		    evex_common:
 			local	evex_b, evex_x, evex_pp
 			check	x86.apx.legacy_prefix >= 0F0h	; LOCK, REP: #UD before EVEX
 			jno	evex_prefix_ok
@@ -1244,10 +1266,54 @@ iterate context, @dest,@src,@src2,@aux
 			asm	x86.rex2_length = $
 			asm	load x86.rex2_opcode:$ from 0
 			asm	end virtual
+			check	x86.rex2_opcode and 0FFFFh = 380Fh
+			jyes	evex_map2
 			check	x86.rex2_opcode and 0FFh = 0Fh
 			jyes	evex_map1
 			check	opcode_prefix
 			jno	evex_store
+			jump	evex_none
+		    evex_map2:		; all promoted (spec 3.1.2.3.1 2e); map 4 opcodes as llvm-mc encodes them
+			compute x86.rex2_length, x86.rex2_length - 2
+			compute x86.rex2_opcode, x86.rex2_opcode shr 16
+			check	opcode_prefix = 66h
+			jno	evex_map2_f3
+			compute evex_pp, 1
+		    evex_map2_f3:
+			check	opcode_prefix = 0F3h
+			jno	evex_map2_f2
+			compute evex_pp, 2
+		    evex_map2_f2:
+			check	opcode_prefix = 0F2h
+			jno	evex_map2_pp
+			compute evex_pp, 3
+		    evex_map2_pp:
+			check	x86.rex2_opcode = 0F0h | x86.rex2_opcode = 0F1h
+			jno	evex_map2_inv
+			check	opcode_prefix = 0F2h		; crc32 keeps F0/F1, F2 dropped
+			jno	evex_movbe
+			compute evex_pp, 0
+			check	prefix = 66h
+			jno	evex_store
+			compute evex_pp, 1
+			jump	evex_store
+		    evex_movbe:
+			compute x86.rex2_opcode, x86.rex2_opcode - 90h		; 60h, 61h
+			jump	evex_store
+		    evex_map2_inv:		; invept/invvpid/invpcid: F0-F2 with pp = F3
+			check	x86.rex2_opcode >= 80h & x86.rex2_opcode <= 82h
+			jno	evex_map2_wrss
+			compute x86.rex2_opcode, x86.rex2_opcode + 70h
+			compute evex_pp, 2
+			jump	evex_store
+		    evex_map2_wrss:		; wruss F5 -> 65, adcx/adox/wrss F6 -> 66
+			check	x86.rex2_opcode = 0F5h | x86.rex2_opcode = 0F6h
+			jno	evex_map2_same
+			compute x86.rex2_opcode, x86.rex2_opcode - 90h
+			jump	evex_store
+		    evex_map2_same:		; movdir64b/enqcmd(s)/urdmsr/uwrmsr F8, movdiri F9, aadd... FC
+			check	x86.rex2_opcode = 0F8h | x86.rex2_opcode = 0F9h | x86.rex2_opcode = 0FCh
+			jyes	evex_store
 			jump	evex_none
 		    evex_map1:		; promoted map 1 instructions get map 4 opcodes (spec 3.1.5)
 			compute x86.rex2_length, x86.rex2_length - 1
@@ -1293,6 +1359,13 @@ iterate context, @dest,@src,@src2,@aux
 			compute x86.apx.done, 1
 			jump	opcode_stored
 		    evex_none:
+			check	evex_auto
+			jno	evex_none_layer
+			check	rex2
+			jno	legacy_prefixes		; {evex} is a preference: legacy form
+			err	'extended register not supported by this encoding'
+			exit
+		    evex_none_layer:
 			compute x86.apx.done, 1		; reported here, not again by the layer
 			err	'no EVEX form for this instruction'
 			exit
@@ -4627,6 +4700,13 @@ macro movbe? dest*,src*
 	else if @dest.type = 'mem' & @src.type = 'reg' & @src.size > 1
 		x86.select_operand_prefix@dest @src.size
 		x86.store_instruction@dest <0Fh,38h,0F1h>,@src.rm
+	else if @dest.type = 'reg' & @src.type = 'reg' & @dest.size > 1	; APX: EVEX only
+		require APX_F+
+		require bits64+
+		x86.select_operand_prefix@dest @src.size
+		x86.vexsize =: 4
+		x86.store_instruction@dest <0Fh,38h,0F1h>,@src.rm
+		restore x86.vexsize
 	else
 		err 'invalid combination of operands'
 	end if

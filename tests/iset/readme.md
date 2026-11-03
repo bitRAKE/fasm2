@@ -80,6 +80,9 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `apx_instructions.asm` | APX Phase 2 | push2/pop2 and PPX forms (APX EVEX layout: B4 not inverted, V4 inverted, ND/U set; operand roles), pushp/popp (REX2.W even for rax–r15), jmpabs, r16–r31 in push/pop register lists; refusals: APX_F, 64-bit only, rsp and pop2 with one register twice (#UD, which llvm-mc encodes), memory and non-64-bit operands. |
 | `apx_ndd.asm` | APX Phase 3 | EVEX map 4 of the legacy integer instructions: NDD, `{nf}` after the mnemonic, `{evex}`; operand roles, map 1 → map 4 opcodes, pp for 66h, X4/B4, NDD size for an unsized memory source, imul's NDD vs imm form; legacy forms (04h/05h short forms included) unchanged; refusals: `{nf}` where only NDD exists, unknown options, NDD size, ah–bh, LOCK/REP, APX_F, 64-bit only, the instruction's own feature. |
 | `apx_conditional.asm` | APX Phase 4a | cmov<cc> NDD, cfcmov<cc> (load/store/register/NDD forms), set<cc> in map 4 and `{zu}`, imul `{zu}` (with `{nf}`), ccmp/ctest (DFV set or number, SCC incl. t/f), `{evex}` cmp/test; refusals for forms that do not exist. |
+| `apx_promoted.asm` | APX Phase 4b | legacy map 2 instructions in EVEX map 4 with r16–r31 or `{evex}` (movbe incl. register form, crc32, adcx/adox incl. NDD, invept/invvpid/invpcid, wrss/wruss, enqcmd(s), movdir64b, movdiri, RAO-INT, urdmsr/uwrmsr incl. map 7 imm form); `use evex` without APX_F leaves legacy instructions alone. |
+| `crc32.asm` | G18 | `crc32 r64, r/m8` carries REX.W. |
+| `cet_wrss.asm` | G19 | WRSS/WRUSS take a memory destination only. |
 | `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |
 
 `_dupnames.py` is a separate check: `python tests/iset/_dupnames.py` fails on any

@@ -477,6 +477,37 @@ Gates: APX_F **and** the instruction's own feature (XED's
   ccmp 440, ctest 272, cfcmov 210, cmov 96, setcc 32, setzucc 46,
   imulzu 12 all byte-identical; sweep 21,840 same, 0 failures.
 
+**Phase 4b result (2026-11-02, done): legacy maps 2/3.**
+- *Design pivot:* no layers. Legacy maps 2/3 have no REX2, and spec rule
+  2e promotes all their GPR instructions, so `x86.store_instruction`
+  itself switches to EVEX map 4 when r16–r31 (or `{evex}` with APX_F on)
+  meet a map 2 opcode. The test sits before any prefix byte is emitted
+  (EVEX absorbs 66/F2/F3 into pp) and captures the opcode only on that
+  path. No instruction definition changed for it: movbe, crc32, invept,
+  invvpid, invpcid, wrss/wruss, enqcmd(s), movdir64b, movdiri, RAO-INT,
+  urdmsr/uwrmsr gained r16–r31 at once.
+- Map 4 opcode/pp table taken from llvm-mc's encodings (the spec's table
+  did not survive text extraction): movbe F0/F1 → 60/61; crc32 F0/F1
+  (F2 dropped; 66 for 16-bit); 80–82 → F0–F2 with pp=F3; F5 → 65; F6 → 66;
+  F8, F9, FC unchanged with their prefix as pp.
+- Layers only where the form needs them: adcx/adox (NDD). movbe gained
+  the register form (EVEX only, F1 direction). urdmsr/uwrmsr imm32 take
+  EVEX map 7 in msr.inc.
+- *Regression found and fixed before commit:* `{evex}` is `vexsize = 4`,
+  which AVX-512 code may set globally (`use evex`). Without a gate every
+  `add`/`crc32`/`cmp` would then demand APX_F. `{evex}` now promotes only
+  when APX_F is on (layers, map-2 path, msr.inc); `apx_promoted.asm`
+  checks `use AMD64, AVX512, evex` keeps legacy bytes.
+- Found on the way: G18 (`crc32 r64, r/m8` without REX.W) and G19 (WRSS
+  with a register destination), both pre-existing, fixed with tests.
+- Tests: `apx_promoted.asm` (58 byte checks, 6 refusals), `crc32.asm`,
+  `cet_wrss.asm`; corpus: adx 16, cet 8, crc32 22, enqcmd 8, invpcid 2,
+  movbe 18, movdir64b 4, movdiri 4, rao-int 16, user-msr 8, vmx 4 all
+  identical (whole corpus: 2,802 same, 95 DIFF, all VEX `{evex}` forms for
+  4c); sweep 22,505 same, 0 failures.
+- Not done: MSR-IMM (`rdmsr`/`wrmsrns` with an immediate, its own CPUID
+  feature) is not implemented at all (4 corpus lines refused).
+
 ### Phase 5 — extended GPRs in vector instructions
 
 - EVEX: put B4 (P0 bit 3) and X4 (inverted P1 bit 2, the old `U` bit) in
@@ -524,6 +555,11 @@ identical in every row):
 | Phase 2 | no change | no change | new mnemonics only |
 | Phase 3 | +30 ms (+7.8%) | +60 ms (+6.6%) | the layers: a second dispatch (`arrange` + `assemble`) for every add/or/and/sub/xor/adc/sbb/inc/dec/neg/not/mul/div/idiv/imul/shift/shld/shrd/popcnt/lzcnt/tzcnt, plus two `match`es and constant checks; `check x86.apx.evex` in `x86.store_instruction` |
 | Phase 4a | +28 ms (+7.1%) | +73 ms (+8.0%) | layers also over set<cc>, cmov<cc> and (for `{evex}` only, one check) cmp/test; within noise of Phase 3 (±1%) |
+| Phase 4b | +40 ms (+10.5%) | +75 ms (+8.3%) | one more check in `x86.store_instruction` (r16+ or `{evex}` on the map-2 path); the branch itself is unchanged (420–423 ms, 977–980 ms in both measurements); the ratio moves with the baseline, which drifted 378–395 ms between sessions |
+
+Measurement note: best of 5–7 runs, but the baseline tree varies by ±2–4%
+between sessions; compare branch times measured in one session (interleaved
+runs, as for 4b) before reading a phase's cost.
 
 The ALU/shift-heavy sources pay most. Per-instruction work dominates:
 the code paths that only APX uses (REX2 opcode capture in `virtual`, EVEX
@@ -565,6 +601,8 @@ fasm2 upstream (tgrysztar/fasm2; all present on `master` aab8758,
 | G15 | AVX `*_imm8` helpers accept a memory operand as the imm8 and use a stale value | `vroundpd xmm0, xmm1, 3` then `vroundpd xmm0, xmm1, [rax]`: both `C4 E3 79 09 C1 03`, no error | `AVX_512.single_source_instruction_imm8` never checks `@aux.type = 'imm'` | open |
 | G16 | `rcppd`, `rcpsd`, `rsqrtpd`, `rsqrtsd` assemble (no such instructions) | `rcppd xmm0, xmm1` | `sse2.inc` reuses SSE's iterate list including `rsqrt`/`rcp` | open |
 | G16b | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | as shown | `sse.inc`: `@src.size = 'mem'` / `@src.size = 'mmreg'` compare the *size* with a type string (meant `@src.type`), so the size check never applies | open |
+| G18 | `crc32 rbx, al` assembles `F2 0F 38 F0 D8` (the `crc32 ebx, al` encoding; same result) | as shown | `sse4.inc` crc32: no `select_operand_prefix` for an 8-bit source | fixed, `tests/iset/crc32.asm` |
+| G19 | `wrssq rax, r8` assembles (`4C 0F 38 F6 C0`, Mod=11); WRSS/WRUSS are `m, r` only | as shown | `cet.inc`: `@dest.type = 'reg' \| @dest.type = 'mem'` | fixed, `tests/iset/cet_wrss.asm` |
 
 LLVM (llvm-project, X86 AsmParser/MCCodeEmitter), all on LLVM 23 (build
 4d58566 and source fc16f15, no tests cover them). Intel's spec says each

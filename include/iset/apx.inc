@@ -302,7 +302,7 @@ end calminstruction
 iterate <instr,count,flags>, \
 	add,2,APX.NF+APX.NDD+APX.SIZED, or,2,APX.NF+APX.NDD+APX.SIZED, and,2,APX.NF+APX.NDD+APX.SIZED, \
 	sub,2,APX.NF+APX.NDD+APX.SIZED, xor,2,APX.NF+APX.NDD+APX.SIZED, \
-	adc,2,APX.NDD+APX.SIZED, sbb,2,APX.NDD+APX.SIZED, \
+	adc,2,APX.NDD+APX.SIZED, sbb,2,APX.NDD+APX.SIZED, adcx,2,APX.NDD+APX.SIZED, adox,2,APX.NDD+APX.SIZED, \
 	inc,1,APX.NF+APX.NDD, dec,1,APX.NF+APX.NDD, neg,1,APX.NF+APX.NDD, not,1,APX.NDD, \
 	mul,1,APX.NF, div,1,APX.NF, idiv,1,APX.NF, imul,0,APX.NF+APX.NDD+APX.ZU+APX.SIZED, \
 	shl,2,APX.NF+APX.NDD, sal,2,APX.NF+APX.NDD, shr,2,APX.NF+APX.NDD, sar,2,APX.NF+APX.NDD, \
@@ -337,7 +337,7 @@ iterate <instr,count,flags>, \
 		jyes	legacy
 		match	{a} b, operands		; {nf} or {zu} after the mnemonic
 		jyes	promote
-		check	x86.vexsize = 4		; {evex}
+		check	x86.vexsize = 4 & x86.ext and x86.APX_F.ext	; {evex}, when APX is on
 		jyes	promote
 		check	flags and APX.NDD
 		jno	legacy
@@ -517,7 +517,7 @@ iterate instr, cmp, test
 
 	calminstruction instr? operands&
 		local	line
-		check	x86.apx.evex | x86.vexsize <> 4
+		check	x86.apx.evex | x86.vexsize <> 4 | x86.ext and x86.APX_F.ext = 0
 		jyes	legacy
 		xcall	APX.conditional, <instr>,(1Ah),operands
 		exit

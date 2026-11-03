@@ -214,10 +214,10 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G14 and G17 are fixed. Each has a test in `tests/iset/` that passes on
+G1–G14 and G17–G19 are fixed. Each has a test in `tests/iset/` that passes on
 this branch and fails on the tree before the fix (see `tests/iset/readme.md`).
 G15, G16 and G16b are open: the APX sweep found them (`tests/iset/_apx_sweep.py`
-lists them as reviewed, with the same behaviour for r8 as for r16). G15–G17
+lists them as reviewed, with the same behaviour for r8 as for r16). G15–G19
 are upstream defects (present on `master`); repros and root causes for an
 upstream report are in [`apx-plan.md`](apx-plan.md) §5.3.
 
@@ -241,6 +241,8 @@ upstream report are in [`apx-plan.md`](apx-plan.md) §5.3.
 | G16 *(open)* | `sse2.inc` reuses SSE's `iterate` list, so `rsqrt`/`rcp` also generate `rsqrtpd`, `rsqrtsd`, `rcppd`, `rcpsd` | Four instructions that do not exist (66h/F2h on 0F 52/53) assemble without error | Drop `rsqrt` and `rcp` from the SSE2 list | — |
 | G16b *(open)* | `cvtss2si`/`cvttss2si` (`sse.inc`) accept an `mm` source | `cvtss2si eax, mm0` assembles as `cvtss2si eax, xmm0` | The size check compares `@src.size` with `'mem'`/`'mmreg'` (meant `@src.type`), so it never applies; fix the comparison and accept xmm/m32 only | — |
 | G17 | `cmpxchg16b` wrote REX.W with `x86.store_operand_prefix` before `x86.store_instruction`'s own REX | `cmpxchg16b [r8]` was `48 41 0F C7 08`; only the REX next to the opcode counts, so it executed `cmpxchg8b [r8]` | `x86.select_operand_prefix@dest 8`, so W joins the one REX (or REX2) | `cmpxchg16b.asm` |
+| G18 | `crc32 r64, r/m8` (`sse4.inc`) wrote no REX.W | `crc32 rbx, al` was `F2 0F 38 F0 D8`, the `crc32 ebx, al` encoding (same result, as the destination is zero-extended; not the SDM form) | W for a 64-bit destination | `crc32.asm` |
+| G19 | `wrssd/wrssq/wrussd/wrussq` (`cet.inc`) accepted a register destination | `wrssq rax, r8` assembled with ModRM.mod = 11; only `m32/m64, r` exists | memory destination only | `cet_wrss.asm` |
 
 ---
 
