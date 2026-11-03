@@ -658,7 +658,9 @@ What is known now:
 - **APX** (`push2`/`pop2`, REX2, NDD/NF forms of existing ALU instructions,
   `ccmp`/`ctest`, `jmpabs`, 32 GPRs) touches the core GPR encoder and the
   register elements: a REX2 prefix path and EVEX promotion of legacy maps.
-  Gate: `APX_F` (7.1:EDX[21]) in window 192.
+  Gate: `APX_F` (7.1:EDX[21]) in window 192. The phased plan, starting with
+  refusing r16–r31 everywhere before the names exist, is in
+  [`apx-plan.md`](apx-plan.md).
 - **AVX10.2** adds EVEX forms of VNNI-INT8/16, BF16 arithmetic, saturating
   conversions, and more. These fit the family files above as one more gate
   each, keyed on `avx10 >= 2`. The AVX10.1 versioning itself is just the
