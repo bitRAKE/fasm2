@@ -8,8 +8,50 @@ Update this file as answers come in, and keep the history short.
 `EXTENSIONS.md` §5.8 points here.
 
 Context (2026-11): processors with APX are not yet public; the first parts
-are expected around the end of the year. Encodings can be checked now, but
-running the code needs emulation (§2).
+are expected around the end of the year. Encodings are checked against
+Intel's documents, XED, llvm-mc and GNU as; no APX code has been executed
+(§2).
+
+## Status (2026-11-03)
+
+**Implemented (APX_F):** r16–r31 through REX2 in legacy maps 0 and 1;
+EVEX map 4 forms of the legacy integer instructions (NDD, `{nf}`, `{zu}`,
+`{evex}`); push2/pop2(p), pushp/popp, jmpabs, ccmp/ctest with `{dfv=}`,
+cfcmov; EVEX forms of the map-2 and VEX general-purpose instructions;
+r16–r31 in EVEX vector instructions (and VEX instructions promoted to EVEX
+where an EVEX form exists).
+
+**How it is checked:** by bytes, not by execution.
+- LLVM's APX test corpus (`*-intel.s`): 3,039 forms identical, none
+  different (`_apx_corpus.py`).
+- Every mnemonic with extended-register operand patterns against llvm-mc:
+  34,783 forms identical, every difference reviewed (`_apx_sweep.py`).
+- Against GNU as 2.47 the same way; every difference explained
+  (`_apx_gas.py`).
+- XED decodes every form fasm2 accepts there; fasm2 emits no instruction
+  XED refuses (#UD) (`_apx_xed.py`).
+- `tests/iset` (byte and error checks per change) and `tests/IEV` (the same
+  in Tomasz Grysztar's form, with boundary and refusal references).
+
+**Limits and open items:**
+- Nothing has run on hardware or under an emulator; flag results, CCMP
+  flag substitution and PUSH2/POP2 alignment are checked as bytes only.
+- Not implemented on the APX side: MSR-IMM (`rdmsr`/`wrmsrns` with an
+  immediate). Shifts and rotates with an implied count of 1 are refused by
+  design (fasm2 wants the count; 180 corpus lines).
+- Absent instructions and forms are listed as refusal tests, so each gap
+  is known and flips when filled: `tests/IEV/fail/absent.ref` (145
+  mnemonics XED has and fasm2 does not, AVX10.2 most of them) and
+  `fail/absent_forms.ref` (MSR-IMM, AVX-512 VL gaps, AVX10.2 EVEX forms of
+  VEX instructions).
+- Open defects: G25 (`urdmsr` register operands swapped, also in
+  llvm-mc; §5.3). Values below a field's signed minimum wrap in fasmg's
+  `emit` (`add al, -81h` is `add al, 7Fh`; `tests/IEV/readme.md`).
+- Cost: assembly is about 8–10% slower on fasmg's self-build (§5.1); the
+  layered structure stays for now (§5.2).
+- Where fasm2 and llvm-mc differ on purpose, Intel's documents decide:
+  fasm2 refuses forms the spec says #UD, and a one-line `{rex2}`/`{evex}`
+  that cannot apply is an error (§5.3).
 
 ---
 
@@ -636,9 +678,9 @@ identical in every row):
 | Phase 3 | +30 ms (+7.8%) | +60 ms (+6.6%) | the layers: a second dispatch (`arrange` + `assemble`) for every add/or/and/sub/xor/adc/sbb/inc/dec/neg/not/mul/div/idiv/imul/shift/shld/shrd/popcnt/lzcnt/tzcnt, plus two `match`es and constant checks; `check x86.apx.evex` in `x86.store_instruction` |
 | Phase 4a | +28 ms (+7.1%) | +73 ms (+8.0%) | layers also over set<cc>, cmov<cc> and (for `{evex}` only, one check) cmp/test; within noise of Phase 3 (±1%) |
 | Phase 4b | +40 ms (+10.5%) | +75 ms (+8.3%) | one more check in `x86.store_instruction` (r16+ or `{evex}` on the map-2 path); the branch itself is unchanged (420–423 ms, 977–980 ms in both measurements); the ratio moves with the baseline, which drifted 378–395 ms between sessions |
-
 | Phase 4c | +36 ms (+9.4%) | +70 ms (+7.6%) | none on the plain path (the APX test in `AVX_512.store_instruction` runs only for APX_PROMOTED instructions); branch time unchanged from 4b |
 | Phase 5 | +34 ms (+8.7%) | +69 ms (+7.5%) | none measurable: branch 424 ms / 982–986 ms, as after 4c |
+| Review (2026-11-03) | +39 ms (+10.3%) | +76 ms (+8.5%) | best of 7, interleaved with win32 in one session: branch 415 ms / 970 ms (no slower than after Phase 5; the baseline ran faster: 376 / 894 ms); after G15–G27, the option and address checks, the r13 swap and one-line encoding requests |
 
 Measurement note: best of 5–7 runs, but the baseline tree varies by ±2–4%
 between sessions; compare branch times measured in one session (interleaved

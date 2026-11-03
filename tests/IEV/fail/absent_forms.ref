@@ -1,0 +1,44 @@
+; absent_forms.ref -- forms fasm2 does not have, of instructions it has
+;
+; Each line is one llvm-mc 23 assembles (and GNU as 2.47, where it has the
+; extension). When a form is implemented its line here stops failing: move
+; it to pass/ with its bytes. Mnemonics fasm2 lacks entirely are in
+; absent.ref (generated). The messages are fasm2's as they are today; some
+; say little about the cause (noted).
+
+use64
+use everything
+
+; MSR-IMM: rdmsr/wrmsrns with an immediate MSR address
+rdmsr rax, 1234h			; 'extra characters on line'
+rdmsr r16, 1234h			; 'extra characters on line'
+wrmsrns 1234h, rax			; 'extra characters on line'
+
+; AVX-512 (VL) forms
+vbroadcasti32x2 xmm0, qword [rax]	; 'invalid operand size'
+; message says nothing about the cause: the ymm register form is missing
+vpermq ymm0, ymm1, ymm2			; 'variable term used where not expected'
+vpermpd ymm0, ymm1, ymm2		; 'variable term used where not expected'
+vpermq ymm0, ymm1, [rax]		; 'invalid combination of operands'
+; shift by imm8 with a memory source: the zmm forms exist, xmm/ymm not
+vpsrlw xmm0, [rax], 1			; 'operand sizes do not match'
+vpsrad ymm0, [rax], 2			; 'operand sizes do not match'
+
+; AVX10.2 EVEX forms of VEX instructions fasm2 has
+vpdpbssd zmm0, zmm1, zmm2		; 'invalid operand'
+vpdpbssd xmm16, xmm1, xmm2		; 'invalid operand'
+vpdpwsud zmm0, zmm1, zmm2		; 'invalid operand'
+vsm4key4 zmm0, zmm1, zmm2		; 'invalid operand'
+vsm4rnds4 xmm16, xmm1, xmm2		; 'invalid operand'
+vmpsadbw zmm0, zmm1, zmm2, 1		; 'invalid operand'
+vmpsadbw xmm16, xmm1, xmm2, 1		; 'invalid operand'
+
+; refused by design, not absent: fasm2 wants the count of a shift or
+; rotate written (llvm-mc and GNU as take "shl rax" as a count of 1)
+shl rax					; 'missing argument'
+shr dword [rax]				; 'missing argument'
+rol r16					; 'missing argument'
+; and the default flags value of ccmp/ctest (llvm-mc refuses these too;
+; GNU as takes no {dfv=} as {dfv=})
+ccmpb rax, rbx				; 'default flags value expected'
+ctestz rax, rbx				; 'default flags value expected'
