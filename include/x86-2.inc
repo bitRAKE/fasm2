@@ -352,17 +352,73 @@ macro use? names*&
 	end iterate
 end macro
 
+; An encoding selected for one line ({vex2}, {vex3}, {evex}, {rex2}) is a
+; request, like a size on a jump: an instruction that cannot have it is an
+; error. Through `use` the same settings stay preferences.
+
+macro x86.select settings&
+	local want
+	want = 0
+	iterate setting, settings
+		match =vex2?, setting
+			want = 0C5h
+		else match =vex3?, setting
+			want = 0C4h
+		else match =evex?, setting
+			want = 62h
+		else match =rex2?, setting
+			want = 0D5h
+		end match
+	end iterate
+	x86.selection.byte =: want
+	x86.selection.start =: $
+end macro
+
+macro x86.select_check
+	local n, at, b
+	if x86.selection.byte
+		n = $ - x86.selection.start
+		if n > 0
+			at = 0
+			b = 0
+			while at < n	; the first byte after legacy prefixes
+				load b:1 from x86.selection.start + at
+				if b = 26h | b = 2Eh | b = 36h | b = 3Eh | b = 64h | b = 65h | b = 66h | b = 67h | b = 0F0h | b = 0F2h | b = 0F3h
+					at = at + 1
+				else
+					break
+				end if
+			end while
+			if at = n | b <> x86.selection.byte
+				if x86.selection.byte = 0C5h
+					err '{vex2} cannot encode this instruction'
+				else if x86.selection.byte = 0C4h
+					err '{vex3} cannot encode this instruction'
+				else if x86.selection.byte = 62h
+					err '{evex} cannot encode this instruction'
+				else
+					err '{rex2} cannot encode this instruction'
+				end if
+			end if
+		end if
+	end if
+	restore x86.selection.byte, x86.selection.start
+end macro
+
 calminstruction ?? &line&
-	local settings, instruction
+	local settings, instruction, selection
 	match {settings} instruction, line
 	jyes annotated
 	assemble line
 	exit
     annotated:
 	asm x86.settings.store
+	arrange selection, =x86.=select settings
 	arrange settings, =use settings
 	assemble settings
+	assemble selection
 	assemble instruction
+	asm x86.select_check
 	asm x86.settings.restore
 end calminstruction
 
@@ -1214,7 +1270,7 @@ iterate context, @dest,@src,@src2,@aux
 			jump	opcode_stored
 		    rex2_reserved:	; maps 2 and 3 (0F 38, 0F 3A) are row 3 of map 1
 			check	rex2
-			jno	store_rex	; {rex2} is a preference: REX where REX2 is not allowed
+			jno	store_rex	; use rex2 is a preference: REX where REX2 is not allowed ({rex2}: x86.select_check)
 			err	'extended register not supported by this encoding'
 			exit
 
@@ -1362,7 +1418,7 @@ iterate context, @dest,@src,@src2,@aux
 			check	evex_auto
 			jno	evex_none_layer
 			check	rex2
-			jno	legacy_prefixes		; {evex} is a preference: legacy form
+			jno	legacy_prefixes		; use evex is a preference: legacy form ({evex}: x86.select_check)
 			err	'extended register not supported by this encoding'
 			exit
 		    evex_none_layer:

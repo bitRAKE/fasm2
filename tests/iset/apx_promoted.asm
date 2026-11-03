@@ -34,6 +34,8 @@
 ; FAIL 4: 'bits64 or higher required'
 ; FAIL 5: '{nf} not supported by this instruction'
 ; FAIL 6: 'invalid combination of operands'
+; FAIL 7: '{evex} cannot encode this instruction'
+; FAIL 8: '{evex} cannot encode this instruction'
 
 macro expect bytes*, line&
 	local n, got, k, want
@@ -109,12 +111,12 @@ if ~ defined FAIL
 	expect <62h,0D7h,7Fh,08h,0F8h,0C1h,7Bh,00h,00h,00h>, {evex} urdmsr r9, 123
 	expect <62h,0D7h,7Eh,08h,0F8h,0C1h,7Bh,00h,00h,00h>, {evex} uwrmsr 123, r9
 	expect <62h,0F4h,7Fh,08h,0F8h,0C3h>, {evex} urdmsr rax, rbx
-	expect <66h,0Fh,38h,00h,00h>, {evex} pshufb xmm0, [rax]	; SSE is not promoted: {evex} is a preference
 
 	; without APX_F, {evex} (here: "use evex", as for AVX-512 code) leaves
 	; legacy instructions alone
 	use AMD64, AVX512, MOVBE, ADX, evex
 	expect <48h,01h,0D8h>, add rax, rbx
+	expect <66h,0Fh,38h,00h,00h>, pshufb xmm0, [rax]	; SSE is not promoted
 	expect <0F2h,0Fh,38h,0F0h,0C3h>, crc32 eax, bl
 	expect <48h,83h,0F8h,01h>, cmp rax, 1
 	expect <48h,0Fh,38h,0F0h,03h>, movbe rax, [rbx]
@@ -145,5 +147,13 @@ else if FAIL = 5	; adcx/adox have NDD, not NF
 else if FAIL = 6
 	use everything
 	movbe al, bl
+
+else if FAIL = 7	; a one-line {evex} is a request: SSE is not promoted
+	use everything
+	{evex} pshufb xmm0, [rax]
+
+else if FAIL = 8	; without APX_F a legacy instruction has no EVEX form
+	use AMD64, AVX512
+	{evex} add rax, rbx
 
 end if

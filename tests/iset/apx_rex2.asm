@@ -27,10 +27,11 @@
 ;	  APX EVEX), MPX (no CPU has MPX and APX), XSAVE*/XRSTOR* (#UD with REX2),
 ;	  and maps 2/3 except the instructions APX promotes to EVEX map 4
 ;	  (apx_promoted.asm; SSE, AES and SHA are not promoted).
-;	{rex2} asks for REX2 without an extended register; like {vex3} it is a
-;	preference, ignored where REX2 is not allowed. There Intel's spec
-;	outranks LLVM, which writes D5 00 0F 38 F0 for {rex2} movbe ("REX2
-;	followed by 0x0F triggers #UD") and D5 80 AE 20 for {rex2} xsave.
+;	{rex2} asks for REX2 without an extended register. On one line it is
+;	a request, like a size on a jump: where REX2 is not allowed it is an
+;	error. There Intel's spec outranks LLVM, which writes D5 00 0F 38 F0
+;	for {rex2} movbe ("REX2 followed by 0x0F triggers #UD") and
+;	D5 80 AE 20 for {rex2} xsave. Through `use rex2` it stays a preference.
 ;	tests/iset/_apx_sweep.py compares every accepted extended-register form
 ;	of every mnemonic with llvm-mc.
 ;
@@ -53,6 +54,10 @@
 ; FAIL 17: 'APX_F or higher required'
 ; FAIL 18: 'extended register not supported: [r16,rax]'
 ; FAIL 19: 'invalid address'
+; FAIL 20: '{rex2} cannot encode this instruction'
+; FAIL 21: '{rex2} cannot encode this instruction'
+; FAIL 22: '{rex2} cannot encode this instruction'
+; FAIL 23: '{rex2} cannot encode this instruction'
 
 macro expect bytes*, line&
 	local n, got, k, want
@@ -157,13 +162,17 @@ if ~ defined FAIL
 	expect <0D5h,80h,28h,00h>, {rex2} movaps xmm0, [rax]
 	expect <0F3h,0D5h,80h,0B8h,0C1h>, {rex2} popcnt eax, ecx
 	expect <0D5h,00h,0FFh,20h>, {rex2} jmp qword [rax]
-	; ... ignored where REX2 is not allowed (Intel 3.1.2.1, not llvm-mc)
-	expect <0Fh,38h,0F0h,01h>, {rex2} movbe eax, [rcx]
-	expect <0Fh,0AEh,20h>, {rex2} xsave [rax]
-	expect <0A8h,01h>, {rex2} test al, 1
+	; ... and `use rex2` is a preference, ignored where REX2 is not allowed
+	; (Intel 3.1.2.1, not llvm-mc); {rex2} there is an error (FAIL 20-23)
+	use rex2
+	expect <0D5h,08h,01h,0D8h>, add rax, rbx
+	expect <0Fh,38h,0F0h,01h>, movbe eax, [rcx]
+	expect <0Fh,0AEh,20h>, xsave [rax]
+	expect <0A8h,01h>, test al, 1
 	use32
-	expect <89h,0C8h>, {rex2} mov eax, ecx
+	expect <89h,0C8h>, mov eax, ecx
 	use64
+	use rexauto
 
 	; the names are registers of the right class and number
 	irp <reg,class,number>, r16b,x86.r8,16, r16l,x86.r8,16, r31b,x86.r8,31, \
@@ -234,5 +243,18 @@ else if FAIL = 18	; MPX [base, index] (AMX's takes r16-r31: apx_vex.asm)
 
 else if FAIL = 19	; no 16-bit addressing with extended registers
 	mov ax, [r16w]
+
+else if FAIL = 20	; a one-line {rex2} is a request: map 2 has no REX2
+	{rex2} movbe eax, [rcx]
+
+else if FAIL = 21	; XSAVE* #UD with REX2
+	{rex2} xsave [rax]
+
+else if FAIL = 22	; REX2 is not allowed on map 0 row A
+	{rex2} test al, 1
+
+else if FAIL = 23	; REX2 only in 64-bit code
+	use32
+	{rex2} mov eax, ecx
 
 end if

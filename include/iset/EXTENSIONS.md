@@ -163,8 +163,12 @@ How code calls it:
 
 `{settings} instr` (the `??` hook) applies `use settings` to one line only.
 
-Users who need one specific encoding already have `{vex2}`, `{vex3}` and
-`{evex}`.
+Users who need one specific encoding already have `{vex2}`, `{vex3}`,
+`{evex}` and `{rex2}`. On one line each is a request, like a size on a jump:
+an instruction that cannot have that encoding is an error (`{vex3} cannot
+encode this instruction`; `x86.select_check` reads the first byte after
+legacy prefixes; `tests/iset/encoding_request.asm`). Set with `use` for a
+block, they stay preferences, dropped where they cannot apply.
 
 ### 2.2 Central VEX/EVEX gating
 

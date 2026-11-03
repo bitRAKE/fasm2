@@ -87,6 +87,7 @@ The runner calls `fasmg.exe` directly, the way `fasm2.cmd` does, because
 | `vpbroadcastq.asm` | G21 | EVEX vpbroadcastq is W1 (was vbroadcasti32x2); masked xmm/ymm vpbroadcastd/q need AVX512VL. |
 | `vcompress.asm` | G22 | vcompressps/pd in map 2 (map 1 was undecodable). |
 | `sse2_rcp.asm` | G16 | no rcppd/rcpsd/rsqrtpd/rsqrtsd (#UD; the SSE2 list reused rsqrt/rcp); rcpps/rsqrtss and the rest of the SSE2 list keep their bytes. |
+| `encoding_request.asm` | new | a one-line `{vex2}`/`{vex3}`/`{evex}`/`{rex2}` is a request: honoured (also after legacy prefixes, in 32-bit code) or an error; `use` keeps them preferences. |
 | `crc32.asm` | G18 | `crc32 r64, r/m8` carries REX.W. |
 | `cet_wrss.asm` | G19 | WRSS/WRUSS take a memory destination only. |
 | `cmpxchg16b.asm` | G17 | REX.W in the same REX as the address bits: `cmpxchg16b [r8]` was `48 41 0F C7 08`, which executes as `cmpxchg8b`. |

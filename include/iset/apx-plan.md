@@ -277,6 +277,9 @@ encoder, revise Phase 0's helper so they call it instead.
   goes through `MPX.parse_operand`).
 - `{rex2}` (`rexsize = 2`) is a preference like `{vex3}`: ignored where
   REX2 is not allowed and outside 64-bit code. XSAVE* suspends it.
+  *Revised 2026-11-03:* on one line, `{rex2}` (like `{vex2}`, `{vex3}`,
+  `{evex}`) is a request and an error where it cannot apply; only
+  `use rex2` stays a preference (§5.3).
 - **Authority in practice:** llvm-mc writes `{rex2} movbe` as `D5 00 0F 38
   F0` and `{rex2} xsave` as `D5 80 AE 20`; Intel says both #UD. fasm2
   follows Intel; `apx_rex2.asm` records it.
@@ -704,9 +707,17 @@ accepts in the sweep (r16, r8 and the edge registers) and in LLVM's APX
 corpus: 2026-11-03, 44,560 forms, all decoded (G16, fixed, was the
 only failure). XED shows #UD; it does not show a wrong but valid
 instruction (G15, G16b), which is what the comparison with llvm-mc is for.
-An encoding-selection prefix that cannot apply (`{rex2} movbe`,
-`{evex} vaesimc`, `{vex3} add`) is a preference, as in fasmg: dropped,
-with valid bytes, never #UD bytes.
+**Policy: an encoding requested for one line is honoured or refused**
+(user decision 2026-11-03). `{vex2}`, `{vex3}`, `{evex}`, `{rex2}` before
+an instruction are a request, as a size on a jump is (`jz byte target`
+fails when out of range): `{rex2} movbe`, `{evex} vaesimc`, `{vex3} add`
+are errors (`{evex} cannot encode this instruction`), where fasmg drops
+them silently. They are used to control length (padding, alignment), so
+a silent fallback breaks layout unseen. `use vex3` etc. for a block stay
+preferences, since a block mixes instructions with and without the
+encoding. `x86.select_check` (x86-2.inc) reads the first byte after
+legacy prefixes; tests: `encoding_request.asm`, `apx_rex2.asm` FAIL
+20–23, `apx_promoted.asm` FAIL 7–8. Upstream difference from fasmg.
 
 NASM 3.02rc7: rejects Intel's recommended `setzuCC` mnemonic (817241 §3)
 and accepts only `{zu}`; not a defect (fasm2 chose `{zu}` too), noted for
@@ -747,3 +758,7 @@ syntax comparisons.
   all 44,560 accepted forms with XED. G16 fixed (its only failure).
 - 2026-11-03: authority order revised: Intel docs, XED, LLVM, GCC/binutils,
   others. Hardware execution outranks all; emulators are not trusted.
+- 2026-11-03: one-line `{vex2}`/`{vex3}`/`{evex}`/`{rex2}` are requests:
+  an error where they cannot apply (`x86.select_check`); `use` keeps
+  them preferences. Corpus, sweep and XED check unchanged (0 DIFF,
+  0 failures, 44,560 decoded).
