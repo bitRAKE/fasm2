@@ -49,6 +49,7 @@ including user code after the includes (G12, G13, §2.4). See §1.3 rule 5.
 | after the core ALU/system set | `fpu.inc`                           | `x86.parse_operand@*`, `x86.store_instruction@*`, `x86.store_operand_prefix` |
 | after SGX/system block | `vmx.inc`, `mpx.inc`, `cet.inc`, `uintr.inc`, `svm.inc` | the same (GPR/memory only) |
 | end of file            | `mmx` → `sse` → `sse2` → `sse3` → `sse4` → `avx` → `bmi` → `sha`, `aes`, `kl`, `gfni`, `pclmulqdq` → `3dnow` → `amx` | `MMX.*`, `SSE.*`, `AVX.*`, `AVX_512.*`, register elements `xmm16+`, `ymm*`, `zmm*`, `k*` |
+| very last              | `apx.inc`                                  | all of the above; later APX phases stack layers over earlier mnemonics here ([`apx-plan.md`](apx-plan.md)) |
 
 Placement rule (for pass count and readability, not visibility):
 - A file that touches XMM/YMM/ZMM/k registers, or that uses a VEX, EVEX or

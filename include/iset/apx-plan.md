@@ -283,8 +283,7 @@ encoder, revise Phase 0's helper so they call it instead.
   fasmgw 876 → 922 ms (about 5%, best of 5), identical bytes. The REX2 bit
   computation is behind one test of bit 4; the remaining cost is a few CALM
   checks per instruction and per operand.
-- Not done here: `push`/`pop` compact lists (`push rax r16`) still lack
-  r16–r31 (`x86.compact`); add them with Phase 2's push forms.
+- Compact lists (`push rax r16`) are done in Phase 2.
 
 ### Phase 2 — new mnemonics: `iset/apx.inc`
 
@@ -298,6 +297,30 @@ Header lists the CPUID requirement (APX_F, 64-bit). File is included by
 
 Tests: bytes vs. llvm-mc; gate off → `APX_F or higher required`; `pop2`
 with the same register twice is refused (#UD).
+
+**Phase 2 result (2026-11-02, done).**
+- `include/iset/apx.inc`, included last by `x86-2.inc` (Phase 3's layers
+  will live there). CALM throughout; gates `bits64` then `APX_F` first.
+- push2/pop2(p) emit the 4-byte EVEX directly (register-only, so no
+  ModRM/SIB logic is needed): P0 = F4h with B3 inverted at bit 5 and **B4
+  not inverted** at bit 3; P1 = W, ~vvvv, U=1; P2 = ND, ~V4. Operand roles
+  per spec Table 3.4: first operand in vvvv, pushed/popped first.
+- **Authority in practice, again:** llvm-mc encodes `push2 rsp, rax`,
+  `push2 rax, rsp` and `pop2 rax, rax`; spec 3.1.3.1.1 says #UD. fasm2
+  refuses (`rsp not allowed`, `pop2 registers must differ`).
+  `push2 rax, rax` is valid (only pop2 needs two registers).
+- pushp/popp force REX2 (the hint is REX2.W) by pushing `x86.rexsize = 2`
+  around `x86.store_operand_prefix`, and take register lists like push/pop.
+  `x86.compact` now lists r16–r31 (64/32/16-bit names), so `push`, `pop`,
+  `pushw`… lists take them too.
+- jmpabs: `D5 00 A1` + qword (relocatable through `call qword`).
+- Tests: `apx_instructions.asm` (38 byte checks from llvm-mc, 13 refusals);
+  the sweep picks the new mnemonics up by itself: 14,497 forms identical,
+  0 failures. No measurable cost beyond Phase 1.
+- For Phase 3: the map-4 EVEX for NDD/NF needs memory operands, so it
+  cannot reuse push2's direct emission. Plan: an `x86.store_instruction`
+  variant (or a mode of it) that writes the APX EVEX prefix where it now
+  writes REX/REX2, keeping its ModRM/SIB/displacement code.
 
 ### Phase 3 — EVEX map 4: NDD and NF forms of existing mnemonics
 
@@ -433,3 +456,6 @@ Gates: APX_F **and** the instruction's own feature (XED's
   turned the opt-in back into encoder decisions, verified by a differential
   sweep against llvm-mc. Intel overrules llvm-mc on `{rex2}` movbe/xsave.
   G17 fixed; G15/G16/G16b recorded.
+- 2026-11-02: Phase 2 done (`apx.inc`: push2/pop2(p), pushp/popp, jmpabs,
+  r16–r31 in register lists). Intel overrules llvm-mc on rsp and pop2
+  with one register twice.

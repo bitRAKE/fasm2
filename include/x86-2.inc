@@ -2392,6 +2392,12 @@ iterate reg, ax,cx,dx,bx,sp,bp,si,di,r8w,r9w,r10w,r11w,r12w,r13w,r14w,r15w, \
 	define x86.compact.reg? {reg}
 end iterate
 
+repeat 16, i:16
+	define x86.compact.r#i#w? {r#i#w}
+	define x86.compact.r#i#d? {r#i#d}
+	define x86.compact.r#i? {r#i}
+end repeat
+
 iterate <instr,handler,size>, push,push_instruction,0, pushw,push_instruction,2, pushd,push_instruction,4, pushq,push_instruction,8, \
 			      pop,pop_instruction,0, popw,pop_instruction,2, popd,pop_instruction,4, popq,pop_instruction,8
 
@@ -4687,3 +4693,5 @@ include 'iset/pclmulqdq.inc'
 include 'iset/3dnow.inc'
 
 include 'iset/amx.inc'
+
+include 'iset/apx.inc'		; last: later APX phases stack layers over earlier mnemonics
