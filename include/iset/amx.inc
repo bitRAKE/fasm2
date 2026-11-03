@@ -50,14 +50,16 @@ iterate context, @dest,@src,@src2,@aux
 
 		calminstruction AMX.parse_sib_operand#context operand&
 
-			local	b,i
+			local	b,i,s
 			match	[b=,i], operand
 			jyes	mpx_syntax
 
-			take	b, x86.usesib
+			; force SIB, then restore the setting's value in place: TAKE
+			; would pop the copy that a {settings} prefix pushed (G24)
+			compute s, x86.usesib
 			compute x86.usesib, 1
 			call	AVX_512.parse_operand#context, operand
-			take	x86.usesib, b
+			compute x86.usesib, s
 
 			check	type <> 'mem' | rm <> 4 | mode = 16
 			jyes	invalid_operand

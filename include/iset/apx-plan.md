@@ -28,7 +28,8 @@ in the test source:
    It encodes forms that #UD (§5.3), so it is the byte reference for
    valid forms only.
 4. GCC/binutils (GNU as, in WSL): an independent encoder with a history
-   of accuracy, to compare against.
+   of accuracy, to compare against. Binutils 2.47 is built for this
+   (table below); `_apx_gas.py` runs the comparison.
 5. Others: Zydis/zydis-db, NASM, MSVC output.
 
 Execution would outrank all of these on real hardware. Emulators
@@ -53,6 +54,7 @@ changed, so the existing build stays a valid reference.
 | zydis-db (`C:\git\zyantific\zydis-db\datafiles`, 2026-06) | APX forms are in `instructions.json`, for generating test cases. |
 | NASM 3.02rc7 (`C:\git\nasm\nasm.exe`) | Intel-syntax reference: assembles REX2, NDD, `{nf}` (before or after the mnemonic), `push2`, `ccmp {dfv=…}`, `{zu} setb`. Doc: `doc\syntax.src` §`apx_*`. Rejects Intel's `setzuCC` mnemonic. |
 | MSVC 14.51 `cl /feature:APX` | Accepted; emits APX when it helps (a trivial function did not). A source of real compiler output (`/FA`) to assemble and compare once Phase 3 exists. |
+| GNU binutils 2.47 (`as`, `objdump`; WSL Ubuntu 24.04, `~/opt/binutils-latest`) | Built 2026-11-03 from the signed release tarball (`binutils-2.47.tar.xz`, Nick Clifton's key 13FCEF89DD9E3C4F; `as --version`: 2.47.20260726) with `--disable-nls --disable-werror` and gas/binutils only; the distro's 2.42 stays as `/usr/bin/as`. It has all of APX_F: REX2, NDD, `{nf}`, `{evex}`, push2/pop2(p), pushp/popp, ccmp/ctest with `{dfv=}`, cfcmov, `setzu<cc>`, `imulzu`, jmpabs, and the promoted map 2/4 forms. Independent of LLVM (its own encoder, `gas/config/tc-i386.c`). `tests/iset/_apx_gas.py` compares it with fasm2 on the sweep and LLVM corpus forms: 2026-11-03, 299,295 forms, **36,352 same, 1,552 DIFF, 737 fasm-only, 14,704 gas-only**, 245,950 both refuse. Every DIFF and fasm-only form is explained (`REVIEWED`, §5.3). It found G23–G25. |
 | YASM, ASMC | No APX (checked: no REX2/EGPR in the trees). |
 
 **Documents** (`C:\git\_DOC\APX\`):
@@ -674,6 +676,16 @@ fasm2 upstream (tgrysztar/fasm2; all present on `master` aab8758,
 | G20 | `vpinsrq xmm0, xmm1, rax, 1` and `vlddqu xmm0, [rax]` fail with "invalid expression" when first in a source | either line alone after `use64` | `avx.inc`: the stored operand is parsed with `x86.parse_operand`, leaving `mask`/`evex_b`/`memsize` undefined (or stale) | fixed, `tests/iset/avx_operand_state.asm` |
 | G21 | `vpbroadcastq zmm0, [rax]` assembles `62 F2 7D 48 59 00`, which XED and Zydis decode as `vbroadcasti32x2` | as shown | `avx.inc`: VEX_66_0F38_W0 without EVEX_W1 for the q form; no EVEX_VL for d/q | fixed, `tests/iset/vpbroadcastq.asm` |
 | G22 | `vcompresspd [rax], xmm0` assembles `62 F1 FD 08 8A 00`, which XED cannot decode | as shown | `avx.inc`: `VEX_66_0F_W0/W1` (map 1) for vcompressps/pd instead of `VEX_66_0F38` | fixed, `tests/iset/vcompress.asm` |
+| G23 | `lddqu` uses the previous SSE instruction's destination: `addps xmm5, xmm1` / `lddqu xmm0, [rax]` = `F2 0F F0 28` (`lddqu xmm5, [rax]`), no error; first in a source, `invalid expression` | as shown | `sse3.inc`: `SSE.parse_operand@src dest` (meant `@dest`) | fixed, `tests/iset/sse3_lddqu.asm` |
+| G24 | after a `{settings}` prefix on tileloadd/tileloaddt1/tilestored, every later memory operand gets a SIB byte: `{vex3} tileloadd tmm1, [rax]` / `lea eax, [rax]` = `8D 04 20` | as shown (also `{evex}`, `{imm8}`) | `amx.inc` `AMX.parse_sib_operand`: `take`/`compute`/`take` on `x86.usesib` pops the copy the prefix pushed and overwrites the saved value with 1 | fixed (save and restore with `compute`), `tests/iset/amx_sib.asm` |
+| G25 (this branch, `msr.inc` from b3b0669; not upstream) | `urdmsr rax, rcx` assembles `F2 0F 38 F8 C1`, which is `urdmsr rcx, rax` (XED; GNU as writes `…C8`) | as shown, also the APX EVEX form | `msr.inc` puts the destination in ModRM.reg; SDM 093 URDMSR is Op/En **MR** (operand 1 = ModRM.rm, "load into register bbb the MSR at address in rrr"), XED's `REG0=GPR64_B():w`. The imm32 form already uses ModRM.rm. uwrmsr (RM) is right | **open**: fix in `msr.inc`, `msr.asm`, `apx_promoted.asm`; it changes bytes llvm-mc also writes (below), so decide first |
+
+Found by GNU as (`_apx_gas.py`): G23 and G24 hid in the sweep because each
+form is assembled in a 20,000-line source, and the line before decides
+what they do. Both the LLVM comparison and `_apx_corpus.py` got the
+expected bytes by chance. The GNU run put LLVM's corpus after the sweep
+lines in one source, where `{evex} tilestored` (G24) changed the bytes of
+`lea r16d, [rax]` and 62 more corpus lines that follow it.
 
 LLVM (llvm-project, X86 AsmParser/MCCodeEmitter), all on LLVM 23 (build
 4d58566 and source fc16f15, no tests cover them). Intel's spec says each
@@ -685,6 +697,7 @@ form #UDs; llvm-mc encodes it without a diagnostic:
 | `{rex2} xsave [rax]` | `D5 80 AE 20` | 3.1.2.1: REX2 on XSAVE*/XRSTOR* triggers #UD |
 | `push2 rsp, rax` / `push2 rax, rsp` | `62 F4 5C 18 FF F0` / `…FF F4` | 3.1.3.1.1: neither register may be RSP |
 | `pop2 rax, rax` | `62 F4 7C 18 8F C0` | 3.1.3.1.1: POP2's two registers must differ |
+| `urdmsr rax, rcx` (and the EVEX form) | `F2 0F 38 F8 C1` | not #UD but the other instruction: SDM 093 URDMSR is MR, so these bytes read the MSR at rax into rcx (G25; LLVM's `user-msr-intel.s` tests encode it the same way) |
 
 Intel (spec 355828-009, possible erratum): 3.1.2.3.1 says "EVEX.X4 is
 defined only when ModRM.Mod = 3", but X4 extends the SIB index, which
@@ -707,6 +720,34 @@ instruction (G15, G16b), which is what the comparison with llvm-mc is for.
 An encoding-selection prefix that cannot apply (`{rex2} movbe`,
 `{evex} vaesimc`, `{vex3} add`) is a preference, as in fasmg: dropped,
 with valid bytes, never #UD bytes.
+
+GNU as 2.47 (binutils), from `_apx_gas.py -x` with XED deciding:
+- **Defect:** REX2 on 3DNow! (`0F 0F … imm8`): `pfadd mm0, [r16]` =
+  `D5 90 0F 00 9E`, which XED refuses (GENERAL_ERROR): all 23 3DNow!
+  mnemonics, 161 forms. fasm2 refuses r16–r31 there. AMD-only ISA, so
+  low priority for a report.
+- Lenient, not wrong: wrong string or xlat operands (`movs byte [r16],
+  byte [rax]` = `A4`) and fasm-unknown spellings are accepted with a
+  warning or an alias (`movq r16, rax` = mov, `shrd r16d` = shr with a
+  `d` suffix, `setz r16` = setzuz, implied accumulator `idiv rax, r16`,
+  `lar r16, rax`). These make up most of the 14,704 gas-only forms.
+- Encoding choices where both are valid (XED decodes them the same):
+  register cfcmov<cc> with NF=0 (fasm2 and llvm-mc: NF=1, 1,303 forms),
+  EVEX movbe register form `60` (fasm2: `61`), EVEX vmovq m64 as
+  `66 0F 6E/7E W1` (fasm2: `F3 0F 7E` / `66 0F D6`), xchg's register
+  order, 67h before 66h, and REX.W dropped from lar/lsl/sldt/str with a
+  64-bit destination (zero-extended, so the same result; also without
+  APX).
+- Forms it refuses that XED decodes: `imulzu` with 32/64-bit operands,
+  `setzu<cc> m8` (both in LLVM's corpus), m512 with a `zmmword` size
+  (enqcmd(s), movdir64b).
+- Forms only GNU as and llvm-mc have, which fasm2 lacks (no wrong bytes):
+  ccmp/ctest without `{dfv=}` (GNU defaults to none), prefetchit0/1
+  without RIP-relative (a NOP there), AVX10.2 EVEX forms (vpdpw*/vpdpb*,
+  vsm4*, vmpsadbw) and MSR_IMM (rdmsr/wrmsrns imm32), plus three
+  non-APX AVX-512 gaps: `vbroadcasti32x2 xmm, m64`, `vpermq/vpermpd ymm,
+  ymm, ymm/m256`, and the memory forms of the shift-by-imm8 instructions
+  (`vpsrlw xmm0, [rax], 1`). Open.
 
 NASM 3.02rc7: rejects Intel's recommended `setzuCC` mnemonic (817241 §3)
 and accepts only `{zu}`; not a defect (fasm2 chose `{zu}` too), noted for
@@ -747,3 +788,13 @@ syntax comparisons.
   all 44,560 accepted forms with XED. G16 fixed (its only failure).
 - 2026-11-03: authority order revised: Intel docs, XED, LLVM, GCC/binutils,
   others. Hardware execution outranks all; emulators are not trusted.
+- 2026-11-03: GNU binutils 2.47 built in WSL (`~/opt/binutils-latest`)
+  as the second, LLVM-independent encoder; `_apx_gas.py` compares it with
+  fasm2 on the sweep and LLVM corpus forms: 299,295 forms, 36,352 same,
+  1,552 DIFF, 737 fasm-only, 14,704 gas-only; every DIFF and fasm-only
+  form explained (valid alternatives, GNU syntax, G15/G16b) except G25,
+  open. Found and fixed G23 (lddqu took the previous destination) and
+  G24 (`{settings}` on AMX tile load/store left `{sib}` on); G25 (urdmsr
+  register operands swapped, also in llvm-mc) is open. GNU defect: REX2
+  on 3DNow! (#UD per XED). After the fixes: sweep 34,783 same, 0
+  failures; corpus 3,039 same; XED decodes all 44,568 forms.

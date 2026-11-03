@@ -214,11 +214,13 @@ features, the change would not affect sources.
 
 ### 2.4 Defects to fix before adding anything
 
-G1–G14 and G16–G22 are fixed. Each has a test in `tests/iset/` that passes on
+G1–G14 and G16–G24 are fixed. Each has a test in `tests/iset/` that passes on
 this branch and fails on the tree before the fix (see `tests/iset/readme.md`).
 G15 and G16b are open: the APX sweep found them (`tests/iset/_apx_sweep.py`
-lists them as reviewed, with the same behaviour for r8 as for r16). G15–G22
-are upstream defects (present on `master`); repros and root causes for an
+lists them as reviewed, with the same behaviour for r8 as for r16). G25 is
+open: the GNU as comparison (`tests/iset/_apx_gas.py`) found it, with G23
+and G24. G15–G24 are upstream defects (present on `master`); G25 is in this
+branch's own `msr.inc` (b3b0669); repros and root causes for an
 upstream report are in [`apx-plan.md`](apx-plan.md) §5.3.
 
 | # | Defect | Effect | Fix | Test |
@@ -246,6 +248,9 @@ upstream report are in [`apx-plan.md`](apx-plan.md) §5.3.
 | G20 | `vpinsrq` and `vlddqu` (`avx.inc`) parsed the operand they store with `x86.parse_operand`, which leaves `mask`, `evex_b`, `memsize` unset | first in a source: `invalid expression`; after another AVX instruction: whatever it left behind | `AVX_512.parse_operand` | `avx_operand_state.asm` |
 | G21 | `vpbroadcastq` xmm/m64 form used W0 for EVEX too; `vpbroadcastd/q` lacked `EVEX_VL` | `vpbroadcastq zmm0, [rax]` decoded as `vbroadcasti32x2` (AVX512DQ, per-dword masking); masked xmm/ymm forms did not require AVX512VL | `EVEX_W1` for q, `EVEX_VL` for both | `vpbroadcastq.asm` |
 | G22 | `vcompressps/vcompresspd` declared map 1 (`VEX_66_0F_…`) instead of map 2 | `vcompresspd [rax], xmm0` = `62 F1 FD 08 8A 00`, undecodable (#UD) | `VEX_66_0F38_…` | `vcompress.asm` |
+| G23 | `lddqu` (`sse3.inc`) parsed its destination with `SSE.parse_operand@src` | first in a source: `invalid expression`; after `addps xmm5, xmm1`, `lddqu xmm0, [rax]` assembled as `lddqu xmm5, [rax]`: wrong register, no error | `SSE.parse_operand@dest dest` | `sse3_lddqu.asm` |
+| G24 | `AMX.parse_sib_operand` (`amx.inc`) forced SIB with `take`/`compute`/`take` on `x86.usesib` | under a `{settings}` prefix (`{evex}`, `{vex3}`, `{imm8}` …) on tileloadd/tileloaddt1/tilestored, `x86.usesib` stayed 1: every later memory operand got a SIB byte (`lea eax, [rax]` = `8D 04 20`) | save and restore the value with `compute` | `amx_sib.asm` |
+| G25 *(open)* | `urdmsr r64, r64` (`msr.inc`) puts the destination in ModRM.reg | `urdmsr rax, rcx` = `F2 0F 38 F8 C1`, which is `urdmsr rcx, rax` (SDM 093: Op/En MR; XED; GNU as `…C8`); llvm-mc does the same | destination in ModRM.rm, as the imm32 form already does; `msr.asm` and `apx_promoted.asm` expectations change | — |
 
 ---
 
